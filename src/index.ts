@@ -20,30 +20,104 @@ app.use(express.json());
 
 const PORT = 4242;
 
+interface BookingDetails {
+    date: string;
+    bayId: number;
+    startTime: string;
+    endTime: string;
+    duration: string;
+}
+
 interface PaymentRequestBody {
     amount: number; // Expect amount in cents
+    bookingDetails: BookingDetails;
 }
 
 app.post('/create-payment-intent', async (req: Request, res: Response) => {
-    const { amount } = req.body as PaymentRequestBody;
+    const { amount, bookingDetails } = req.body as PaymentRequestBody;
 
     if (!amount || amount <= 0) {
         return res.status(400).send({ error: 'Invalid amount' });
     }
 
+    if (!bookingDetails) {
+        return res.status(400).send({ error: 'Booking details are required' });
+    }
+
     try {
+        const date = new Date(bookingDetails.date);
+        const formattedDate = date.toLocaleDateString('en-US', {
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+        });
+
+        const metadata = {
+            bay_id: bookingDetails.bayId.toString(),
+            booking_date: bookingDetails.date,
+            start_time: bookingDetails.startTime,
+            end_time: bookingDetails.endTime,
+            duration: bookingDetails.duration,
+            year: date.getFullYear().toString(),
+            month: (date.getMonth() + 1).toString(),
+            day: date.getDate().toString(),
+            formatted_date: formattedDate,
+        };
+
         const paymentIntent = await stripe.paymentIntents.create({
             amount: amount,
             currency: 'usd',
             automatic_payment_methods: {
                 enabled: true,
             },
+            metadata: metadata,
         });
 
         res.send({
             clientSecret: paymentIntent.client_secret,
         });
     } catch (error: any) {
+        console.error("Error creating payment intent:", error);
+        res.status(500).send({ error: error.message });
+    }
+});
+
+interface UpdatePaymentIntentRequest {
+    paymentIntentId: string;
+    email: string;
+    firstName: string;
+    lastName: string;
+    phone: string;
+}
+
+app.post('/update-payment-intent', async (req: Request, res: Response) => {
+    const { paymentIntentId, email, firstName, lastName, phone } = req.body as UpdatePaymentIntentRequest;
+
+    if (!paymentIntentId) {
+        return res.status(400).send({ error: 'Payment Intent ID is required' });
+    }
+
+    try {
+        const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+
+        const newMetadata = {
+            ...paymentIntent.metadata,
+            email: email,
+            first_name: firstName,
+            last_name: lastName,
+            full_name: `${firstName} ${lastName}`,
+            phone: phone,
+            customer_info_updated_at: new Date().toISOString(),
+        };
+
+        await stripe.paymentIntents.update(paymentIntentId, {
+            metadata: newMetadata,
+        });
+
+        res.sendStatus(200);
+    } catch (error: any) {
+        console.error("Error updating payment intent:", error);
         res.status(500).send({ error: error.message });
     }
 });

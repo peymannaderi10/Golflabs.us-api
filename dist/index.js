@@ -28,23 +28,64 @@ app.use((0, cors_1.default)());
 app.use(express_1.default.json());
 const PORT = 4242;
 app.post('/create-payment-intent', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    const { amount } = req.body;
+    const { amount, bookingDetails } = req.body;
     if (!amount || amount <= 0) {
         return res.status(400).send({ error: 'Invalid amount' });
     }
+    if (!bookingDetails) {
+        return res.status(400).send({ error: 'Booking details are required' });
+    }
     try {
+        const date = new Date(bookingDetails.date);
+        const formattedDate = date.toLocaleDateString('en-US', {
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+        });
+        const metadata = {
+            bay_id: bookingDetails.bayId.toString(),
+            booking_date: bookingDetails.date,
+            start_time: bookingDetails.startTime,
+            end_time: bookingDetails.endTime,
+            duration: bookingDetails.duration,
+            year: date.getFullYear().toString(),
+            month: (date.getMonth() + 1).toString(),
+            day: date.getDate().toString(),
+            formatted_date: formattedDate,
+        };
         const paymentIntent = yield stripe.paymentIntents.create({
             amount: amount,
             currency: 'usd',
             automatic_payment_methods: {
                 enabled: true,
             },
+            metadata: metadata,
         });
         res.send({
             clientSecret: paymentIntent.client_secret,
         });
     }
     catch (error) {
+        console.error("Error creating payment intent:", error);
+        res.status(500).send({ error: error.message });
+    }
+}));
+app.post('/update-payment-intent', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    const { paymentIntentId, email, firstName, lastName, phone } = req.body;
+    if (!paymentIntentId) {
+        return res.status(400).send({ error: 'Payment Intent ID is required' });
+    }
+    try {
+        const paymentIntent = yield stripe.paymentIntents.retrieve(paymentIntentId);
+        const newMetadata = Object.assign(Object.assign({}, paymentIntent.metadata), { email: email, first_name: firstName, last_name: lastName, full_name: `${firstName} ${lastName}`, phone: phone, customer_info_updated_at: new Date().toISOString() });
+        yield stripe.paymentIntents.update(paymentIntentId, {
+            metadata: newMetadata,
+        });
+        res.sendStatus(200);
+    }
+    catch (error) {
+        console.error("Error updating payment intent:", error);
         res.status(500).send({ error: error.message });
     }
 }));
