@@ -156,65 +156,6 @@ interface PaymentRequestBody {
 // API ROUTES
 // =====================================================
 
-// Helper function to ensure user profile exists
-const ensureUserProfile = async (userId: string): Promise<void> => {
-  try {
-    // Check if user exists
-    const { data: existingUser, error: checkError } = await supabase
-      .from('user_profiles')
-      .select('id')
-      .eq('id', userId)
-      .single();
-
-    if (checkError && checkError.code !== 'PGRST116') { // PGRST116 is "no rows returned"
-      throw checkError;
-    }
-
-    // If user doesn't exist, create both user and profile
-    if (!existingUser) {
-      // First create the user record
-      const { error: userError } = await supabase
-        .from('users')
-        .insert({
-          id: userId,
-          email: `temp_${userId}@golflabs.us`,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        });
-
-      if (userError) {
-        throw userError;
-      }
-
-      // Then create the user profile
-      const { error: profileError } = await supabase
-        .from('user_profiles')
-        .insert({
-          id: userId,
-          email: `temp_${userId}@golflabs.us`,
-          full_name: 'Temporary User',
-          stripe_customer_id: null,
-          preferred_location_id: null,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-          deleted_at: null
-        });
-
-      if (profileError) {
-        // If profile creation fails, we should clean up the user record
-        await supabase
-          .from('users')
-          .delete()
-          .eq('id', userId);
-        throw profileError;
-      }
-    }
-  } catch (error) {
-    console.error('Error ensuring user profile:', error);
-    throw error;
-  }
-};
-
 app.post('/create-payment-intent', async (req: Request, res: Response) => {
     const { amount, bookingDetails } = req.body as PaymentRequestBody;
     
@@ -224,9 +165,6 @@ app.post('/create-payment-intent', async (req: Request, res: Response) => {
     }
 
     try {
-        // Ensure user profile exists before proceeding
-        await ensureUserProfile(bookingDetails.userId);
-
         // 1. Create Stripe Payment Intent first to get an ID
         const paymentIntent = await stripe.paymentIntents.create({
             amount,
