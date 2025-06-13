@@ -90,8 +90,103 @@ app.post('/stripe-webhook', express_1.default.raw({ type: 'application/json' }),
 // Use json parser for all other routes
 app.use(express_1.default.json());
 // =====================================================
+// TYPINGS
+// =====================================================
+// Helper function to parse time string (e.g., "2:30 PM") and return hours and minutes
+const parseTimeString = (timeStr) => {
+    try {
+        // If it's already an ISO string, extract the time part
+        if (timeStr.includes('T')) {
+            const timePart = timeStr.split('T')[1].split('.')[0]; // Get HH:MM:SS part
+            const [hours, minutes] = timePart.split(':').map(Number);
+            return { hours, minutes };
+        }
+        // Otherwise parse as 12-hour format
+        const [time, period] = timeStr.split(' ');
+        const [hours, minutes] = time.split(':').map(Number);
+        const isPM = period === 'PM';
+        const hour24 = isPM ? (hours === 12 ? 12 : hours + 12) : (hours === 12 ? 0 : hours);
+        return { hours: hour24, minutes };
+    }
+    catch (error) {
+        console.error('Error parsing time string:', timeStr, error);
+        throw new Error(`Invalid time format: ${timeStr}`);
+    }
+};
+// Helper function to create ISO timestamp from date and time string
+const createISOTimestamp = (date, timeStr) => {
+    try {
+        const { hours, minutes } = parseTimeString(timeStr);
+        const timestamp = new Date(date);
+        // Validate the date
+        if (isNaN(timestamp.getTime())) {
+            throw new Error(`Invalid date: ${date}`);
+        }
+        timestamp.setHours(hours, minutes, 0, 0);
+        return timestamp.toISOString();
+    }
+    catch (error) {
+        console.error('Error creating timestamp:', { date, timeStr }, error);
+        throw error;
+    }
+};
+// =====================================================
 // API ROUTES
 // =====================================================
+// Helper function to ensure user profile exists
+const ensureUserProfile = (userId) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        // Check if user exists
+        const { data: existingUser, error: checkError } = yield supabase
+            .from('user_profiles')
+            .select('id')
+            .eq('id', userId)
+            .single();
+        if (checkError && checkError.code !== 'PGRST116') { // PGRST116 is "no rows returned"
+            throw checkError;
+        }
+        // If user doesn't exist, create both user and profile
+        if (!existingUser) {
+            // First create the user record
+            const { error: userError } = yield supabase
+                .from('users')
+                .insert({
+                id: userId,
+                email: `temp_${userId}@golflabs.us`,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+            });
+            if (userError) {
+                throw userError;
+            }
+            // Then create the user profile
+            const { error: profileError } = yield supabase
+                .from('user_profiles')
+                .insert({
+                id: userId,
+                email: `temp_${userId}@golflabs.us`,
+                full_name: 'Temporary User',
+                stripe_customer_id: null,
+                preferred_location_id: null,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+                deleted_at: null
+            });
+            if (profileError) {
+                // If profile creation fails, we should clean up the user record
+                yield supabase
+                    .from('users')
+                    .delete()
+                    .eq('id', userId);
+                throw profileError;
+            }
+        }
+    }
+    catch (error) {
+        console.error('Error ensuring user profile:', error);
+        throw error;
+    }
+});
 app.post('/create-payment-intent', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const { amount, bookingDetails } = req.body;
     // Basic validation
@@ -99,6 +194,8 @@ app.post('/create-payment-intent', (req, res) => __awaiter(void 0, void 0, void 
         return res.status(400).send({ error: 'Missing amount or bookingDetails' });
     }
     try {
+        // Ensure user profile exists before proceeding
+        yield ensureUserProfile(bookingDetails.userId);
         // 1. Create Stripe Payment Intent first to get an ID
         const paymentIntent = yield stripe.paymentIntents.create({
             amount,
@@ -116,8 +213,8 @@ app.post('/create-payment-intent', (req, res) => __awaiter(void 0, void 0, void 
             p_location_id: bookingDetails.locationId,
             p_user_id: bookingDetails.userId,
             p_bay_id: bookingDetails.bayId,
-            p_start_time: new Date(bookingDetails.date).toISOString(), // Combine date and start time properly
-            p_end_time: new Date(bookingDetails.date).toISOString(), // Combine date and end time properly
+            p_start_time: createISOTimestamp(bookingDetails.date, bookingDetails.startTime),
+            p_end_time: createISOTimestamp(bookingDetails.date, bookingDetails.endTime),
             p_party_size: 1, // Or get from frontend
             p_total_amount: amount / 100, // Convert cents to dollars for DB
             p_payment_intent_id: paymentIntentId,
