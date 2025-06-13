@@ -133,60 +133,6 @@ const createISOTimestamp = (date, timeStr) => {
 // =====================================================
 // API ROUTES
 // =====================================================
-// Helper function to ensure user profile exists
-const ensureUserProfile = (userId) => __awaiter(void 0, void 0, void 0, function* () {
-    try {
-        // Check if user exists
-        const { data: existingUser, error: checkError } = yield supabase
-            .from('user_profiles')
-            .select('id')
-            .eq('id', userId)
-            .single();
-        if (checkError && checkError.code !== 'PGRST116') { // PGRST116 is "no rows returned"
-            throw checkError;
-        }
-        // If user doesn't exist, create both user and profile
-        if (!existingUser) {
-            // First create the user record
-            const { error: userError } = yield supabase
-                .from('users')
-                .insert({
-                id: userId,
-                email: `temp_${userId}@golflabs.us`,
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString()
-            });
-            if (userError) {
-                throw userError;
-            }
-            // Then create the user profile
-            const { error: profileError } = yield supabase
-                .from('user_profiles')
-                .insert({
-                id: userId,
-                email: `temp_${userId}@golflabs.us`,
-                full_name: 'Temporary User',
-                stripe_customer_id: null,
-                preferred_location_id: null,
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString(),
-                deleted_at: null
-            });
-            if (profileError) {
-                // If profile creation fails, we should clean up the user record
-                yield supabase
-                    .from('users')
-                    .delete()
-                    .eq('id', userId);
-                throw profileError;
-            }
-        }
-    }
-    catch (error) {
-        console.error('Error ensuring user profile:', error);
-        throw error;
-    }
-});
 app.post('/create-payment-intent', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const { amount, bookingDetails } = req.body;
     // Basic validation
@@ -194,8 +140,6 @@ app.post('/create-payment-intent', (req, res) => __awaiter(void 0, void 0, void 
         return res.status(400).send({ error: 'Missing amount or bookingDetails' });
     }
     try {
-        // Ensure user profile exists before proceeding
-        yield ensureUserProfile(bookingDetails.userId);
         // 1. Create Stripe Payment Intent first to get an ID
         const paymentIntent = yield stripe.paymentIntents.create({
             amount,
