@@ -278,6 +278,53 @@ app.get("/payment-intent-status", async (req, res) => {
   }
 });
 
+// Endpoint to get bookings for a specific date and location
+app.get('/bookings', async (req, res) => {
+  try {
+    const { locationId, date } = req.query;
+
+    if (!locationId || !date) {
+      return res.status(400).json({ error: 'locationId and date are required query parameters' });
+    }
+
+    // Query the bookings for the specified date and location
+    const { data, error } = await supabase
+      .from('bookings')
+      .select('id, bay_id, start_time, end_time, status')
+      .eq('location_id', locationId)
+      .gte('start_time', `${date}T00:00:00`)
+      .lt('start_time', `${date}T23:59:59`)
+      .neq('status', 'cancelled')
+      .neq('status', 'no_show');
+
+    if (error) {
+      console.error('Error fetching bookings:', error);
+      return res.status(500).json({ error: 'Failed to fetch bookings' });
+    }
+
+    // Format the bookings to match the frontend's expected format
+    const formattedBookings = data.map(booking => ({
+      id: booking.id,
+      bayId: booking.bay_id,
+      startTime: new Date(booking.start_time).toLocaleTimeString('en-US', { 
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true 
+      }),
+      endTime: new Date(booking.end_time).toLocaleTimeString('en-US', { 
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
+      })
+    }));
+
+    return res.json(formattedBookings);
+  } catch (error) {
+    console.error('Error in /bookings endpoint:', error);
+    return res.status(500).json({ error: 'An unexpected error occurred' });
+  }
+});
+
 // =====================================================
 // SERVER START
 // =====================================================
