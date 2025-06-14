@@ -533,6 +533,96 @@ app.get('/bookings', async (req, res) => {
   }
 });
 
+app.post('/calculate-price', async (req: Request, res: Response) => {
+    const { locationId, startTime, endTime } = req.body;
+
+    if (!locationId || !startTime || !endTime) {
+        return res.status(400).json({ error: 'locationId, startTime, and endTime are required' });
+    }
+
+    try {
+        const startDate = new Date(startTime);
+        const endDate = new Date(endTime);
+
+        if (isNaN(startDate.getTime()) || isNaN(endDate.getTime()) || startDate >= endDate) {
+            return res.status(400).json({ error: 'Invalid startTime or endTime' });
+        }
+
+        const { data: rules, error: rulesError } = await supabase
+            .from('pricing_rules')
+            .select('name, hourly_rate, start_time, end_time, days_of_week')
+            .eq('location_id', locationId);
+
+        if (rulesError) throw rulesError;
+        if (!rules || rules.length === 0) {
+            return res.status(404).json({ error: 'No pricing rules found for this location' });
+        }
+        
+        let total = 0;
+        const breakdown = [];
+        let cursorTime = new Date(startDate);
+        
+        let currentSegment: { rateName: string; start: string; rate: number; } | null = null;
+
+        while (cursorTime < endDate) {
+            const hour = cursorTime.getUTCHours();
+            const minute = cursorTime.getUTCMinutes();
+            
+            // Determine which rate applies based on time
+            let rule;
+            if (hour >= 9 || hour < 2) {
+                // Standard Rate: 9am-2am
+                rule = rules.find(r => r.name === "Standard Rate");
+            } else {
+                // Off-Peak Rate: 2am-9am
+                rule = rules.find(r => r.name === "Off-Peak Rate");
+            }
+
+            if (!rule) {
+                return res.status(500).json({ error: `No pricing rule found for ${cursorTime.toISOString()}` });
+            }
+
+            const priceForSlot = (rule.hourly_rate * 100) / 4; // price in cents for 15 mins
+
+            if (!currentSegment || currentSegment.rateName !== rule.name) {
+                if (currentSegment) {
+                    breakdown.push({
+                        ...currentSegment,
+                        end: cursorTime.toISOString(),
+                    });
+                }
+                currentSegment = {
+                    rateName: rule.name,
+                    start: cursorTime.toISOString(),
+                    rate: 0,
+                };
+            }
+            
+            currentSegment.rate += priceForSlot;
+            total += priceForSlot;
+
+            cursorTime.setUTCMinutes(cursorTime.getUTCMinutes() + 15);
+        }
+
+        if (currentSegment) {
+            breakdown.push({
+                ...currentSegment,
+                end: endDate.toISOString(),
+            });
+        }
+        
+        res.json({
+            total: total,
+            currency: 'usd',
+            breakdown: breakdown,
+        });
+
+    } catch (error: any) {
+        console.error('Error in /calculate-price:', error);
+        res.status(500).json({ error: 'Failed to calculate price', details: error.message });
+    }
+});
+
 // =====================================================
 // SERVER START
 // =====================================================
