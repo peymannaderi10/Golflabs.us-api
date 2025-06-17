@@ -207,7 +207,7 @@ app.post('/bookings/reserve', (req, res) => __awaiter(void 0, void 0, void 0, fu
         const p_start_time = createISOTimestamp(date, startTime);
         const p_end_time = createISOTimestamp(date, endTime);
         // Set expiration time using UTC timestamp
-        const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+        const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
         // Insert booking with 'reserved' status
         const { data, error } = yield supabase
             .from('bookings')
@@ -226,8 +226,8 @@ app.post('/bookings/reserve', (req, res) => __awaiter(void 0, void 0, void 0, fu
             .single();
         if (error) {
             console.error('Error creating reserved booking:', error);
-            // unique_violation for an overlapping booking, assuming you have constraints
-            if (error.code === '23505') {
+            // Handle exclusion constraint violation for overlapping bookings
+            if (error.code === '23P01') {
                 return res.status(409).send({ error: 'This time slot is no longer available.' });
             }
             throw error;
@@ -318,20 +318,23 @@ app.post('/bookings/:bookingId/create-payment-intent', (req, res) => __awaiter(v
 }));
 app.post('/update-payment-intent', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const { paymentIntentId, email, firstName, lastName, phone } = req.body;
-    if (!paymentIntentId) {
-        return res.status(400).send({ error: 'Payment Intent ID is required' });
-    }
     try {
-        const paymentIntent = yield stripe.paymentIntents.retrieve(paymentIntentId);
-        const newMetadata = Object.assign(Object.assign({}, paymentIntent.metadata), { email: email, first_name: firstName, last_name: lastName, full_name: `${firstName} ${lastName}`, phone: phone, customer_info_updated_at: new Date().toISOString() });
-        yield stripe.paymentIntents.update(paymentIntentId, {
-            metadata: newMetadata,
+        const paymentIntent = yield stripe.paymentIntents.update(paymentIntentId, {
+            receipt_email: email,
+            metadata: {
+                firstName,
+                lastName,
+                phone,
+            },
         });
-        res.sendStatus(200);
+        res.json({ success: true, paymentIntent });
     }
     catch (error) {
-        console.error("Error updating payment intent:", error);
-        res.status(500).send({ error: error.message });
+        console.error('Error updating payment intent:', error);
+        res.status(500).json({
+            error: 'Failed to update payment intent',
+            details: error instanceof Error ? error.message : 'Unknown error'
+        });
     }
 }));
 // Replace the session-status endpoint with this
@@ -400,8 +403,8 @@ app.get('/bookings', (req, res) => __awaiter(void 0, void 0, void 0, function* (
             .from('bookings')
             .select('id, bay_id, start_time, end_time, status')
             .eq('location_id', locationId)
-            .gte('start_time', startOfDay.toISOString())
             .lt('start_time', endOfDay.toISOString())
+            .gt('end_time', startOfDay.toISOString())
             .neq('status', 'cancelled')
             .neq('status', 'no_show')
             .neq('status', 'expired');
@@ -521,6 +524,91 @@ app.get('/bays', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     }
     catch (error) {
         console.error('Error in /bays endpoint:', error);
+        return res.status(500).json({ error: 'An unexpected error occurred' });
+    }
+}));
+// Endpoint to get future user-specific bookings
+app.get('/users/:userId/bookings/future', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    const { userId } = req.params;
+    if (!userId) {
+        return res.status(400).json({ error: 'User ID is required' });
+    }
+    try {
+        // Get current time in user's timezone (EST/EDT)
+        const now = new Date();
+        const userTimezone = 'America/New_York';
+        const userTime = new Date(now.toLocaleString('en-US', { timeZone: userTimezone }));
+        userTime.setHours(0, 0, 0, 0);
+        const nowISO = userTime.toISOString();
+        const { data, error } = yield supabase
+            .from('bookings')
+            .select('id, start_time, end_time, total_amount, status, bays (name, bay_number)')
+            .eq('user_id', userId)
+            .gte('start_time', nowISO)
+            .not('status', 'in', '("reserved","expired")')
+            .order('start_time', { ascending: true });
+        if (error) {
+            console.error('Error fetching future user bookings:', error);
+            return res.status(500).json({ error: 'Failed to fetch future user bookings' });
+        }
+        const formattedBookings = data.map((booking) => {
+            var _a, _b;
+            return ({
+                id: booking.id,
+                startTime: booking.start_time,
+                endTime: booking.end_time,
+                totalAmount: booking.total_amount,
+                status: booking.status,
+                bayName: ((_a = booking.bays) === null || _a === void 0 ? void 0 : _a.name) || 'N/A',
+                bayNumber: ((_b = booking.bays) === null || _b === void 0 ? void 0 : _b.bay_number) || 'N/A'
+            });
+        });
+        return res.json(formattedBookings);
+    }
+    catch (error) {
+        console.error(`Error in /users/${userId}/bookings/future endpoint:`, error);
+        return res.status(500).json({ error: 'An unexpected error occurred' });
+    }
+}));
+// Endpoint to get past user-specific bookings
+app.get('/users/:userId/bookings/past', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    const { userId } = req.params;
+    if (!userId) {
+        return res.status(400).json({ error: 'User ID is required' });
+    }
+    try {
+        // Get current time in user's timezone (EST/EDT)
+        const now = new Date();
+        const userTimezone = 'America/New_York';
+        const userTime = new Date(now.toLocaleString('en-US', { timeZone: userTimezone }));
+        userTime.setHours(0, 0, 0, 0);
+        const nowISO = userTime.toISOString();
+        const { data, error } = yield supabase
+            .from('bookings')
+            .select('id, start_time, end_time, total_amount, status, bays (name, bay_number)')
+            .eq('user_id', userId)
+            .lt('start_time', nowISO)
+            .order('start_time', { ascending: false });
+        if (error) {
+            console.error('Error fetching past user bookings:', error);
+            return res.status(500).json({ error: 'Failed to fetch past user bookings' });
+        }
+        const formattedBookings = data.map((booking) => {
+            var _a, _b;
+            return ({
+                id: booking.id,
+                startTime: booking.start_time,
+                endTime: booking.end_time,
+                totalAmount: booking.total_amount,
+                status: booking.status,
+                bayName: ((_a = booking.bays) === null || _a === void 0 ? void 0 : _a.name) || 'N/A',
+                bayNumber: ((_b = booking.bays) === null || _b === void 0 ? void 0 : _b.bay_number) || 'N/A'
+            });
+        });
+        return res.json(formattedBookings);
+    }
+    catch (error) {
+        console.error(`Error in /users/${userId}/bookings/past endpoint:`, error);
         return res.status(500).json({ error: 'An unexpected error occurred' });
     }
 }));

@@ -255,11 +255,32 @@ app.post('/bookings/reserve', async (req: Request, res: Response) => {
     }
 
     try {
+        // Parse the time strings to get hours and minutes
+        const parseTimeStr = (timeStr: string): { hours: number; minutes: number } => {
+            const [time, period] = timeStr.split(' ');
+            const [hours, minutes] = time.split(':').map(Number);
+            const isPM = period === 'PM';
+            const hour24 = isPM ? (hours === 12 ? 12 : hours + 12) : (hours === 12 ? 0 : hours);
+            return { hours: hour24, minutes };
+        };
+
+        // Validate that start and end times are on the same day
+        const startTimeParsed = parseTimeStr(startTime);
+        const endTimeParsed = parseTimeStr(endTime);
+
+        // If end time is earlier than start time, it suggests an overnight booking
+        if (endTimeParsed.hours < startTimeParsed.hours || 
+            (endTimeParsed.hours === startTimeParsed.hours && endTimeParsed.minutes < startTimeParsed.minutes)) {
+            return res.status(400).send({ 
+                error: 'Overnight bookings are not allowed. Please book within a single day (12am to 11:59pm).' 
+            });
+        }
+
         const p_start_time = createISOTimestamp(date, startTime);
         const p_end_time = createISOTimestamp(date, endTime);
         
         // Set expiration time using UTC timestamp
-        const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+        const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
 
         // Insert booking with 'reserved' status
         const { data, error } = await supabase
@@ -280,8 +301,8 @@ app.post('/bookings/reserve', async (req: Request, res: Response) => {
 
         if (error) {
             console.error('Error creating reserved booking:', error);
-            // unique_violation for an overlapping booking, assuming you have constraints
-            if (error.code === '23505') { 
+            // Handle exclusion constraint violation for overlapping bookings
+            if (error.code === '23P01') { 
                  return res.status(409).send({ error: 'This time slot is no longer available.' });
             }
             throw error;
@@ -391,33 +412,25 @@ interface UpdatePaymentIntentRequest {
 }
 
 app.post('/update-payment-intent', async (req: Request, res: Response) => {
-    const { paymentIntentId, email, firstName, lastName, phone } = req.body as UpdatePaymentIntentRequest;
-
-    if (!paymentIntentId) {
-        return res.status(400).send({ error: 'Payment Intent ID is required' });
-    }
+    const { paymentIntentId, email, firstName, lastName, phone } = req.body;
 
     try {
-        const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
-
-        const newMetadata = {
-            ...paymentIntent.metadata,
-            email: email,
-            first_name: firstName,
-            last_name: lastName,
-            full_name: `${firstName} ${lastName}`,
-            phone: phone,
-            customer_info_updated_at: new Date().toISOString(),
-        };
-
-        await stripe.paymentIntents.update(paymentIntentId, {
-            metadata: newMetadata,
+        const paymentIntent = await stripe.paymentIntents.update(paymentIntentId, {
+            receipt_email: email,
+            metadata: {
+                firstName,
+                lastName,
+                phone,
+            },
         });
 
-        res.sendStatus(200);
-    } catch (error: any) {
-        console.error("Error updating payment intent:", error);
-        res.status(500).send({ error: error.message });
+        res.json({ success: true, paymentIntent });
+    } catch (error) {
+        console.error('Error updating payment intent:', error);
+        res.status(500).json({ 
+            error: 'Failed to update payment intent',
+            details: error instanceof Error ? error.message : 'Unknown error'
+        });
     }
 });
 
@@ -493,12 +506,13 @@ app.get('/bookings', async (req, res) => {
     endOfDay.setUTCHours(23, 59, 59, 999);
 
     // Query the bookings for the specified date and location
+    // Only get bookings that are entirely within the requested day
     const { data, error } = await supabase
       .from('bookings')
       .select('id, bay_id, start_time, end_time, status')
       .eq('location_id', locationId)
       .gte('start_time', startOfDay.toISOString())
-      .lt('start_time', endOfDay.toISOString())
+      .lt('end_time', endOfDay.toISOString())
       .neq('status', 'cancelled')
       .neq('status', 'no_show')
       .neq('status', 'expired');
@@ -647,6 +661,99 @@ app.get('/bays', async (req, res) => {
     console.error('Error in /bays endpoint:', error);
     return res.status(500).json({ error: 'An unexpected error occurred' });
   }
+});
+
+// Endpoint to get future user-specific bookings
+app.get('/users/:userId/bookings/future', async (req: Request, res: Response) => {
+    const { userId } = req.params;
+
+    if (!userId) {
+        return res.status(400).json({ error: 'User ID is required' });
+    }
+
+    try {
+        // Get current time in user's timezone (EST/EDT)
+        const now = new Date();
+        const userTimezone = 'America/New_York';
+        const userTime = new Date(now.toLocaleString('en-US', { timeZone: userTimezone }));
+        userTime.setHours(0, 0, 0, 0);
+        const nowISO = userTime.toISOString();
+
+        const { data, error } = await supabase
+            .from('bookings')
+            .select('id, start_time, end_time, total_amount, status, bays (name, bay_number)')
+            .eq('user_id', userId)
+            .gte('start_time', nowISO)
+            .not('status', 'in', '("reserved","expired")')
+            .order('start_time', { ascending: true });
+
+        if (error) {
+            console.error('Error fetching future user bookings:', error);
+            return res.status(500).json({ error: 'Failed to fetch future user bookings' });
+        }
+
+        const formattedBookings = data.map((booking: any) => ({
+            id: booking.id,
+            startTime: booking.start_time,
+            endTime: booking.end_time,
+            totalAmount: booking.total_amount,
+            status: booking.status,
+            bayName: booking.bays?.name || 'N/A',
+            bayNumber: booking.bays?.bay_number || 'N/A'
+        }));
+
+        return res.json(formattedBookings);
+
+    } catch (error: any) {
+        console.error(`Error in /users/${userId}/bookings/future endpoint:`, error);
+        return res.status(500).json({ error: 'An unexpected error occurred' });
+    }
+});
+
+// Endpoint to get past user-specific bookings
+app.get('/users/:userId/bookings/past', async (req: Request, res: Response) => {
+    const { userId } = req.params;
+
+    if (!userId) {
+        return res.status(400).json({ error: 'User ID is required' });
+    }
+
+    try {
+        // Get current time in user's timezone (EST/EDT)
+        const now = new Date();
+        const userTimezone = 'America/New_York';
+        const userTime = new Date(now.toLocaleString('en-US', { timeZone: userTimezone }));
+        userTime.setHours(0, 0, 0, 0);
+        const nowISO = userTime.toISOString();
+
+        const { data, error } = await supabase
+            .from('bookings')
+            .select('id, start_time, end_time, total_amount, status, bays (name, bay_number)')
+            .eq('user_id', userId)
+            .lt('start_time', nowISO)
+            .order('start_time', { ascending: false });
+
+        if (error) {
+            console.error('Error fetching past user bookings:', error);
+            return res.status(500).json({ error: 'Failed to fetch past user bookings' });
+        }
+
+        const formattedBookings = data.map((booking: any) => ({
+            id: booking.id,
+            startTime: booking.start_time,
+            endTime: booking.end_time,
+            totalAmount: booking.total_amount,
+            status: booking.status,
+            bayName: booking.bays?.name || 'N/A',
+            bayNumber: booking.bays?.bay_number || 'N/A'
+        }));
+
+        return res.json(formattedBookings);
+
+    } catch (error: any) {
+        console.error(`Error in /users/${userId}/bookings/past endpoint:`, error);
+        return res.status(500).json({ error: 'An unexpected error occurred' });
+    }
 });
 
 // =====================================================
