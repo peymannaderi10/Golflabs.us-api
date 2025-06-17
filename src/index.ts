@@ -623,6 +623,32 @@ app.post('/calculate-price', async (req: Request, res: Response) => {
     }
 });
 
+// Endpoint to get bays per location and their status/availability
+app.get('/bays', async (req, res) => {
+  const { locationId } = req.query;
+
+  if (!locationId) {
+    return res.status(400).json({ error: 'Location ID is required' });
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('bays')
+      .select('id, status, location_id, bay_number, name')
+      .eq('location_id', locationId);
+
+    if (error) {
+      console.error('Error fetching bays:', error);
+      return res.status(500).json({ error: 'Failed to fetch bays' });
+    }
+
+    return res.json(data);
+  } catch (error) {
+    console.error('Error in /bays endpoint:', error);
+    return res.status(500).json({ error: 'An unexpected error occurred' });
+  }
+});
+
 // =====================================================
 // SERVER START
 // =====================================================
