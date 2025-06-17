@@ -204,6 +204,24 @@ app.post('/bookings/reserve', (req, res) => __awaiter(void 0, void 0, void 0, fu
         return res.status(400).send({ error: 'Missing required booking details' });
     }
     try {
+        // Parse the time strings to get hours and minutes
+        const parseTimeStr = (timeStr) => {
+            const [time, period] = timeStr.split(' ');
+            const [hours, minutes] = time.split(':').map(Number);
+            const isPM = period === 'PM';
+            const hour24 = isPM ? (hours === 12 ? 12 : hours + 12) : (hours === 12 ? 0 : hours);
+            return { hours: hour24, minutes };
+        };
+        // Validate that start and end times are on the same day
+        const startTimeParsed = parseTimeStr(startTime);
+        const endTimeParsed = parseTimeStr(endTime);
+        // If end time is earlier than start time, it suggests an overnight booking
+        if (endTimeParsed.hours < startTimeParsed.hours ||
+            (endTimeParsed.hours === startTimeParsed.hours && endTimeParsed.minutes < startTimeParsed.minutes)) {
+            return res.status(400).send({
+                error: 'Overnight bookings are not allowed. Please book within a single day (12am to 11:59pm).'
+            });
+        }
         const p_start_time = createISOTimestamp(date, startTime);
         const p_end_time = createISOTimestamp(date, endTime);
         // Set expiration time using UTC timestamp
@@ -399,12 +417,13 @@ app.get('/bookings', (req, res) => __awaiter(void 0, void 0, void 0, function* (
         const endOfDay = new Date(date);
         endOfDay.setUTCHours(23, 59, 59, 999);
         // Query the bookings for the specified date and location
+        // Only get bookings that are entirely within the requested day
         const { data, error } = yield supabase
             .from('bookings')
             .select('id, bay_id, start_time, end_time, status')
             .eq('location_id', locationId)
-            .lt('start_time', endOfDay.toISOString())
-            .gt('end_time', startOfDay.toISOString())
+            .gte('start_time', startOfDay.toISOString())
+            .lt('end_time', endOfDay.toISOString())
             .neq('status', 'cancelled')
             .neq('status', 'no_show')
             .neq('status', 'expired');
