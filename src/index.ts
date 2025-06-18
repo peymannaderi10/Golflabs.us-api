@@ -752,8 +752,8 @@ app.get('/users/:userId/bookings/past', async (req: Request, res: Response) => {
 
     } catch (error: any) {
         console.error(`Error in /users/${userId}/bookings/past endpoint:`, error);
-        return res.status(500).json({ error: 'An unexpected error occurred' });
-    }
+    return res.status(500).json({ error: 'An unexpected error occurred' });
+  }
 });
 
 // =====================================================
