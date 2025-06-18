@@ -663,6 +663,58 @@ app.get('/bays', async (req, res) => {
   }
 });
 
+// Endpoint to check for existing reserved bookings for a user
+app.get('/users/:userId/bookings/reserved', async (req: Request, res: Response) => {
+    const { userId } = req.params;
+
+    if (!userId) {
+        return res.status(400).json({ error: 'User ID is required' });
+    }
+
+    try {
+        // Get current time in UTC
+        const now = new Date().toISOString();
+
+        const { data, error } = await supabase
+            .from('bookings')
+            .select('id, start_time, end_time, total_amount, status, expires_at, bay_id, location_id, bays (name, bay_number)')
+            .eq('user_id', userId)
+            .eq('status', 'reserved')
+            .gt('expires_at', now) // Only get non-expired reservations
+            .order('created_at', { ascending: false })
+            .limit(1); // Get the most recent reservation
+
+        if (error) {
+            console.error('Error fetching reserved user bookings:', error);
+            return res.status(500).json({ error: 'Failed to fetch reserved user bookings' });
+        }
+
+        if (!data || data.length === 0) {
+            return res.json({ reservation: null });
+        }
+
+        const reservation = data[0];
+        const formattedReservation = {
+            id: reservation.id,
+            startTime: reservation.start_time,
+            endTime: reservation.end_time,
+            totalAmount: reservation.total_amount,
+            status: reservation.status,
+            expiresAt: reservation.expires_at,
+            bayId: reservation.bay_id,
+            locationId: reservation.location_id,
+            bayName: (reservation.bays as any)?.name || 'N/A',
+            bayNumber: (reservation.bays as any)?.bay_number || 'N/A'
+        };
+
+        return res.json({ reservation: formattedReservation });
+
+    } catch (error: any) {
+        console.error(`Error in /users/${userId}/bookings/reserved endpoint:`, error);
+        return res.status(500).json({ error: 'An unexpected error occurred' });
+    }
+});
+
 // Endpoint to get future user-specific bookings
 app.get('/users/:userId/bookings/future', async (req: Request, res: Response) => {
     const { userId } = req.params;
