@@ -225,7 +225,7 @@ app.post('/bookings/reserve', (req, res) => __awaiter(void 0, void 0, void 0, fu
         const p_start_time = createISOTimestamp(date, startTime);
         const p_end_time = createISOTimestamp(date, endTime);
         // Set expiration time using UTC timestamp
-        const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+        const expiresAt = new Date(Date.now() + 2 * 60 * 1000).toISOString();
         // Insert booking with 'reserved' status
         const { data, error } = yield supabase
             .from('bookings')
