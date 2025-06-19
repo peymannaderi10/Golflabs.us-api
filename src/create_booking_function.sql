@@ -1,6 +1,7 @@
 -- DATABASE FUNCTION: create_booking_and_payment_record
 
--- This function creates a new booking and a corresponding payment record in a single transaction.
+-- This function creates a new booking with proper logging and audit trails.
+-- Payment records are handled separately by the API when Stripe payment intent is created.
 
 -- PARAMS:
 -- - p_location_id: UUID of the location
@@ -10,12 +11,12 @@
 -- - p_end_time: End timestamp of the booking
 -- - p_party_size: Number of people in the party
 -- - p_total_amount: Total cost of the booking
--- - p_payment_intent_id: The Stripe Payment Intent ID
+-- - p_payment_intent_id: Temporary payment intent ID for tracking
 -- - p_user_agent: User agent of the client for logging
 -- - p_ip_address: IP address of the client for logging
 
 -- RETURNS:
--- - JSON object with the new booking_id and payment_id
+-- - JSON object with the new booking_id
 
 CREATE OR REPLACE FUNCTION create_booking_and_payment_record(
     p_location_id UUID,
@@ -35,27 +36,18 @@ SECURITY DEFINER
 AS $$
 DECLARE
     new_booking_id UUID;
-    new_payment_id UUID;
-    user_email VARCHAR;
     booking_details_json JSONB;
 BEGIN
-    -- Insert into bookings table with 'pending' status (will be updated to 'reserved' by API)
+    -- Insert into bookings table with 'reserved' status and set expiration
     INSERT INTO bookings (
         location_id, user_id, bay_id, start_time, end_time, 
-        party_size, total_amount, status, payment_intent_id, notes
+        party_size, total_amount, status, payment_intent_id, notes,
+        expires_at
     ) VALUES (
         p_location_id, p_user_id, p_bay_id, p_start_time, p_end_time,
-        p_party_size, p_total_amount, 'pending', p_payment_intent_id, 'Booking created via API'
+        p_party_size, p_total_amount, 'reserved', p_payment_intent_id, 'Booking created via API',
+        NOW() + INTERVAL '2 minutes'
     ) RETURNING id INTO new_booking_id;
-
-    -- Insert into payments table
-    INSERT INTO payments (
-        location_id, booking_id, user_id, stripe_payment_intent_id, 
-        amount, status, payment_method
-    ) VALUES (
-        p_location_id, new_booking_id, p_user_id, p_payment_intent_id,
-        p_total_amount, 'pending', 'card'
-    ) RETURNING id INTO new_payment_id;
 
     -- Log the initial access record
     INSERT INTO access_logs (
@@ -63,7 +55,7 @@ BEGIN
         action, success, "timestamp", ip_address, user_agent
     ) VALUES (
         p_location_id, new_booking_id, p_bay_id, p_user_id, 
-        'booking_created', true, NOW(), p_ip_address, p_user_agent
+        'booking_reserved', true, NOW(), p_ip_address, p_user_agent
     );
     
     -- Create JSONB object of the new booking for the audit log
@@ -75,7 +67,8 @@ BEGIN
         'start_time', p_start_time,
         'end_time', p_end_time,
         'total_amount', p_total_amount,
-        'status', 'pending'
+        'status', 'reserved',
+        'expires_at', NOW() + INTERVAL '2 minutes'
     );
 
     -- Log the audit trail for booking creation
@@ -86,22 +79,11 @@ BEGIN
         booking_details_json, p_user_id, p_ip_address, p_user_agent
     );
     
-    -- Fetch user email for notification
-    SELECT email INTO user_email FROM user_profiles WHERE id = p_user_id;
+    -- NOTE: No payment record or notification created here
+    -- Payment record will be created when Stripe payment intent is generated
+    -- Notification will be sent when user reaches checkout page
 
-    -- Insert notification record
-    IF user_email IS NOT NULL THEN
-        INSERT INTO notifications (
-            location_id, user_id, booking_id, type, channel, recipient, 
-            subject, content, status
-        ) VALUES (
-            p_location_id, p_user_id, new_booking_id, 'booking_reserved', 'email',
-            user_email, 'Your Booking Reservation is Confirmed', 
-            'Your booking has been reserved. Please complete the payment within 2 minutes to confirm.', 'pending'
-        );
-    END IF;
-
-    -- Return the IDs of the created records
-    RETURN jsonb_build_object('booking_id', new_booking_id, 'payment_id', new_payment_id);
+    -- Return the booking ID
+    RETURN jsonb_build_object('booking_id', new_booking_id);
 END;
 $$; 
