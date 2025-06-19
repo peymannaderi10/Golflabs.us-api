@@ -1,23 +1,21 @@
-import { createClient } from '@supabase/supabase-js';
+-- DATABASE FUNCTION: create_booking_and_payment_record
 
-// DATABASE FUNCTION: create_booking_and_payment_record
+-- This function creates a new booking and a corresponding payment record in a single transaction.
 
-// This function creates a new booking and a corresponding payment record in a single transaction.
+-- PARAMS:
+-- - p_location_id: UUID of the location
+-- - p_user_id: UUID of the user making the booking
+-- - p_bay_id: UUID of the bay being booked
+-- - p_start_time: Start timestamp of the booking
+-- - p_end_time: End timestamp of the booking
+-- - p_party_size: Number of people in the party
+-- - p_total_amount: Total cost of the booking
+-- - p_payment_intent_id: The Stripe Payment Intent ID
+-- - p_user_agent: User agent of the client for logging
+-- - p_ip_address: IP address of the client for logging
 
-// PARAMS:
-// - p_location_id: UUID of the location
-// - p_user_id: UUID of the user making the booking
-// - p_bay_id: UUID of the bay being booked
-// - p_start_time: Start timestamp of the booking
-// - p_end_time: End timestamp of the booking
-// - p_party_size: Number of people in the party
-// - p_total_amount: Total cost of the booking
-// - p_payment_intent_id: The Stripe Payment Intent ID
-// - p_user_agent: User agent of the client for logging
-// - p_ip_address: IP address of the client for logging
-
-// RETURNS:
-// - JSON object with the new booking_id and payment_id
+-- RETURNS:
+-- - JSON object with the new booking_id and payment_id
 
 CREATE OR REPLACE FUNCTION create_booking_and_payment_record(
     p_location_id UUID,
@@ -41,7 +39,7 @@ DECLARE
     user_email VARCHAR;
     booking_details_json JSONB;
 BEGIN
-    -- Insert into bookings table
+    -- Insert into bookings table with 'pending' status (will be updated to 'reserved' by API)
     INSERT INTO bookings (
         location_id, user_id, bay_id, start_time, end_time, 
         party_size, total_amount, status, payment_intent_id, notes
@@ -97,9 +95,9 @@ BEGIN
             location_id, user_id, booking_id, type, channel, recipient, 
             subject, content, status
         ) VALUES (
-            p_location_id, p_user_id, new_booking_id, 'booking_pending', 'email',
-            user_email, 'Your Booking is Pending Confirmation', 
-            'Your booking is pending payment. Please complete the payment to confirm.', 'pending'
+            p_location_id, p_user_id, new_booking_id, 'booking_reserved', 'email',
+            user_email, 'Your Booking Reservation is Confirmed', 
+            'Your booking has been reserved. Please complete the payment within 2 minutes to confirm.', 'pending'
         );
     END IF;
 

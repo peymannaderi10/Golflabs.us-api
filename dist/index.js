@@ -198,6 +198,7 @@ setInterval(handleExpiredReservations, 60 * 1000);
 // =====================================================
 // Phase 1: Reserve a booking
 app.post('/bookings/reserve', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _a, _b;
     const { locationId, userId, bayId, date, startTime, endTime, partySize, totalAmount } = req.body;
     // Basic validation
     if (!locationId || !userId || !bayId || !date || !startTime || !endTime || !partySize || !totalAmount) {
@@ -226,32 +227,49 @@ app.post('/bookings/reserve', (req, res) => __awaiter(void 0, void 0, void 0, fu
         const p_end_time = createISOTimestamp(date, endTime);
         // Set expiration time using UTC timestamp
         const expiresAt = new Date(Date.now() + 2 * 60 * 1000).toISOString();
-        // Insert booking with 'reserved' status
-        const { data, error } = yield supabase
-            .from('bookings')
-            .insert({
-            location_id: locationId,
-            user_id: userId,
-            bay_id: bayId,
-            start_time: p_start_time,
-            end_time: p_end_time,
-            party_size: partySize,
-            status: 'reserved',
-            expires_at: expiresAt,
-            total_amount: totalAmount // Add total amount
-        })
-            .select('id')
-            .single();
+        // Generate a temporary payment intent ID for the reservation
+        const tempPaymentIntentId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        // Extract IP address and user agent from request
+        const ipAddress = req.ip || req.connection.remoteAddress || '0.0.0.0';
+        const userAgent = req.get('User-Agent') || 'Unknown';
+        // Call the PostgreSQL function to create booking and all related records
+        const { data, error } = yield supabase.rpc('create_booking_and_payment_record', {
+            p_location_id: locationId,
+            p_user_id: userId,
+            p_bay_id: bayId,
+            p_start_time: p_start_time,
+            p_end_time: p_end_time,
+            p_party_size: partySize,
+            p_total_amount: totalAmount,
+            p_payment_intent_id: tempPaymentIntentId,
+            p_user_agent: userAgent,
+            p_ip_address: ipAddress
+        });
         if (error) {
-            console.error('Error creating reserved booking:', error);
-            // Handle exclusion constraint violation for overlapping bookings
-            if (error.code === '23P01') {
+            console.error('Error calling create_booking_and_payment_record function:', error);
+            // Handle common database errors
+            if (((_a = error.message) === null || _a === void 0 ? void 0 : _a.includes('duplicate key')) || ((_b = error.message) === null || _b === void 0 ? void 0 : _b.includes('already exists'))) {
                 return res.status(409).send({ error: 'This time slot is no longer available.' });
             }
             throw error;
         }
+        if (!(data === null || data === void 0 ? void 0 : data.booking_id)) {
+            throw new Error('Failed to create booking - no booking ID returned');
+        }
+        // Update the booking to have reserved status and set expiration
+        const { error: updateError } = yield supabase
+            .from('bookings')
+            .update({
+            status: 'reserved',
+            expires_at: expiresAt
+        })
+            .eq('id', data.booking_id);
+        if (updateError) {
+            console.error('Error updating booking to reserved status:', updateError);
+            throw updateError;
+        }
         res.status(201).send({
-            bookingId: data.id,
+            bookingId: data.booking_id,
             expiresAt: expiresAt
         });
     }
