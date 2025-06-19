@@ -279,6 +279,9 @@ app.post('/bookings/reserve', async (req: Request, res: Response) => {
         const p_start_time = createISOTimestamp(date, startTime);
         const p_end_time = createISOTimestamp(date, endTime);
         
+        // Set expiration time using UTC timestamp
+        const expiresAt = new Date(Date.now() + 2 * 60 * 1000).toISOString();
+
         // Generate a temporary payment intent ID for the reservation
         const tempPaymentIntentId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         
@@ -313,8 +316,19 @@ app.post('/bookings/reserve', async (req: Request, res: Response) => {
             throw new Error('Failed to create booking - no booking ID returned');
         }
 
-        // Calculate expiration time (2 minutes from now) for the response
-        const expiresAt = new Date(Date.now() + 2 * 60 * 1000).toISOString();
+        // Update the booking to have reserved status and set expiration
+        const { error: updateError } = await supabase
+            .from('bookings')
+            .update({
+                status: 'reserved',
+                expires_at: expiresAt
+            })
+            .eq('id', data.booking_id);
+
+        if (updateError) {
+            console.error('Error updating booking to reserved status:', updateError);
+            throw updateError;
+        }
 
         res.status(201).send({
             bookingId: data.booking_id,
