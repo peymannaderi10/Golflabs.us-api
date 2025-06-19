@@ -56,77 +56,168 @@ app.post('/stripe-webhook', express.raw({ type: 'application/json' }), async (re
         return res.status(400).send(`Webhook Error: ${err.message}`);
     }
 
-    // Handle the event
-    const paymentIntent = event.data.object as Stripe.PaymentIntent;
-    const bookingId = paymentIntent.metadata.booking_id;
-
-    if (!bookingId) {
-        console.warn(`Webhook received for event ${event.type} with no booking_id in metadata.`);
-        // Stripe sends some webhooks without metadata, it's safe to ignore them if we only care about bookings
-        return res.status(200).send({ received: true, message: 'No booking_id found, ignoring.' });
-    }
-
+    // Handle the event based on type
     switch (event.type) {
         case 'payment_intent.succeeded':
-            console.log(`Payment succeeded for booking ID: ${bookingId}. Updating database...`);
-
-            // Update booking status to 'confirmed' and clear expiration
-            const { error: bookingError } = await supabase
-                .from('bookings')
-                .update({ status: 'confirmed', expires_at: null })
-                .eq('id', bookingId);
-                
-            // Update payment status to 'succeeded'
-            const { error: paymentError } = await supabase
-                .from('payments')
-                .update({ status: 'succeeded', processed_at: new Date().toISOString() })
-                .eq('stripe_payment_intent_id', paymentIntent.id);
-
-            if (bookingError || paymentError) {
-                console.error(`Error updating database after payment for booking ${bookingId}:`, bookingError || paymentError);
-            } else {
-                console.log(`Successfully updated booking ${bookingId} to confirmed.`);
-            }
-            break;
-
         case 'payment_intent.canceled':
-            console.log(`Payment canceled for booking ID: ${bookingId}. Updating database...`);
-
-            // Update booking status to 'cancelled'
-            const { error: cancelBookingError } = await supabase
-                .from('bookings')
-                .update({ status: 'cancelled' })
-                .eq('id', bookingId)
-                .neq('status', 'confirmed'); // Don't cancel a booking that is already confirmed
-
-            // Update payment status to 'cancelled'
-            const { error: cancelPaymentError } = await supabase
-                .from('payments')
-                .update({ status: 'cancelled' })
-                .eq('stripe_payment_intent_id', paymentIntent.id);
-            
-            if (cancelBookingError || cancelPaymentError) {
-                console.error(`Error updating database after payment cancellation for booking ${bookingId}:`, cancelBookingError || cancelPaymentError);
-            } else {
-                console.log(`Successfully updated booking ${bookingId} to cancelled.`);
-            }
-            break;
-        
         case 'payment_intent.payment_failed':
-            console.log(`Payment failed for booking ID: ${bookingId}.`);
-            // Update payment record to failed. The booking remains 'reserved' until it expires.
-            const { error: paymentFailedError } = await supabase
-                .from('payments')
-                .update({ status: 'failed' })
-                .eq('stripe_payment_intent_id', paymentIntent.id);
+            const paymentIntent = event.data.object as Stripe.PaymentIntent;
+            const bookingId = paymentIntent.metadata.booking_id;
 
-            if (paymentFailedError) {
-                console.error(`Error updating payment status to failed for booking ${bookingId}:`, paymentFailedError);
+            if (!bookingId) {
+                console.warn(`Webhook received for event ${event.type} with no booking_id in metadata.`);
+                return res.status(200).send({ received: true, message: 'No booking_id found, ignoring.' });
+            }
+
+            if (event.type === 'payment_intent.succeeded') {
+                console.log(`Payment succeeded for booking ID: ${bookingId}. Updating database...`);
+
+                // Update booking status to 'confirmed' and clear expiration
+                const { error: bookingError } = await supabase
+                    .from('bookings')
+                    .update({ status: 'confirmed', expires_at: null })
+                    .eq('id', bookingId);
+                    
+                // Update payment status to 'succeeded'
+                const { error: paymentError } = await supabase
+                    .from('payments')
+                    .update({ status: 'succeeded', processed_at: new Date().toISOString() })
+                    .eq('stripe_payment_intent_id', paymentIntent.id);
+
+                if (bookingError || paymentError) {
+                    console.error(`Error updating database after payment for booking ${bookingId}:`, bookingError || paymentError);
+                } else {
+                    console.log(`Successfully updated booking ${bookingId} to confirmed.`);
+                }
+            } else if (event.type === 'payment_intent.canceled') {
+                console.log(`Payment canceled for booking ID: ${bookingId}. Updating database...`);
+
+                // Update booking status to 'cancelled'
+                const { error: cancelBookingError } = await supabase
+                    .from('bookings')
+                    .update({ status: 'cancelled' })
+                    .eq('id', bookingId)
+                    .neq('status', 'confirmed'); // Don't cancel a booking that is already confirmed
+
+                // Update payment status to 'cancelled'
+                const { error: cancelPaymentError } = await supabase
+                    .from('payments')
+                    .update({ status: 'cancelled' })
+                    .eq('stripe_payment_intent_id', paymentIntent.id);
+                
+                if (cancelBookingError || cancelPaymentError) {
+                    console.error(`Error updating database after payment cancellation for booking ${bookingId}:`, cancelBookingError || cancelPaymentError);
+                } else {
+                    console.log(`Successfully updated booking ${bookingId} to cancelled.`);
+                }
+            } else if (event.type === 'payment_intent.payment_failed') {
+                console.log(`Payment failed for booking ID: ${bookingId}.`);
+                // Update payment record to failed. The booking remains 'reserved' until it expires.
+                const { error: paymentFailedError } = await supabase
+                    .from('payments')
+                    .update({ status: 'failed' })
+                    .eq('stripe_payment_intent_id', paymentIntent.id);
+
+                if (paymentFailedError) {
+                    console.error(`Error updating payment status to failed for booking ${bookingId}:`, paymentFailedError);
+                }
             }
             break;
-        
+
+        // Refund webhook handlers
+        case 'charge.dispute.created':
+            const dispute = event.data.object as Stripe.Dispute;
+            const chargeId = dispute.charge;
+            console.log(`Dispute created for charge ${chargeId}. Handling dispute...`);
+
+            // Find the payment record by charge ID (you may need to store charge_id in payments table)
+            // For now, we'll log this and handle manually
+            console.warn(`Dispute created for charge ${chargeId}. Manual review required.`);
+            break;
+
         default:
-            console.log(`Unhandled event type ${event.type} for booking ID: ${bookingId}`);
+            // Handle refund events that may not be in the main Stripe.Event type
+            if (event.type.startsWith('refund.')) {
+                const refundEvent = event as any; // Type assertion for refund events
+                const refund = refundEvent.data.object as Stripe.Refund;
+                const refundBookingId = refund.metadata?.booking_id;
+                
+                if (!refundBookingId) {
+                    console.warn(`Refund webhook received with no booking_id in metadata: ${refund.id}, event type: ${event.type}`);
+                    break;
+                }
+
+                if (event.type === 'refund.created') {
+                    console.log(`Refund created for booking ID: ${refundBookingId}, refund ID: ${refund.id}`);
+
+                    // Update payment record with refund information
+                    const { error: refundCreateError } = await supabase
+                        .from('payments')
+                        .update({ 
+                            status: 'refunding',
+                            refund_amount: refund.amount / 100, // convert cents to dollars
+                            refunded_at: new Date().toISOString()
+                        })
+                        .eq('booking_id', refundBookingId);
+
+                    if (refundCreateError) {
+                        console.error(`Error updating payment with refund info for booking ${refundBookingId}:`, refundCreateError);
+                    } else {
+                        console.log(`Successfully updated payment record with refund info for booking ${refundBookingId}`);
+                    }
+                } else if (event.type === 'refund.updated') {
+                    console.log(`Refund updated for booking ID: ${refundBookingId}, status: ${refund.status}`);
+
+                    let paymentStatus = 'refunding';
+                    if (refund.status === 'succeeded') {
+                        paymentStatus = 'refunded';
+                    } else if (refund.status === 'failed') {
+                        paymentStatus = 'refund_failed';
+                    }
+
+                    const { error: refundUpdateError } = await supabase
+                        .from('payments')
+                        .update({ 
+                            status: paymentStatus,
+                            refund_amount: refund.amount / 100,
+                            refunded_at: refund.status === 'succeeded' ? new Date().toISOString() : undefined
+                        })
+                        .eq('booking_id', refundBookingId);
+
+                    if (refundUpdateError) {
+                        console.error(`Error updating payment refund status for booking ${refundBookingId}:`, refundUpdateError);
+                    } else {
+                        console.log(`Successfully updated payment refund status to ${paymentStatus} for booking ${refundBookingId}`);
+                    }
+                } else if (event.type.includes('refund') && event.type.includes('failed')) {
+                    console.log(`Refund failed for booking ID: ${refundBookingId}, refund ID: ${refund.id}`);
+
+                    // Update payment status to indicate refund failed
+                    const { error: refundFailedError } = await supabase
+                        .from('payments')
+                        .update({ 
+                            status: 'refund_failed'
+                        })
+                        .eq('booking_id', refundBookingId);
+
+                    // Update the cancellation record with failure information
+                    const { error: cancellationUpdateError } = await supabase
+                        .from('bookings_cancellations')
+                        .update({ 
+                            cancellation_reason: `Refund failed: ${refund.failure_reason || 'Unknown reason'}. Manual processing required.`
+                        })
+                        .eq('booking_id', refundBookingId);
+
+                    if (refundFailedError || cancellationUpdateError) {
+                        console.error(`Error updating records for failed refund on booking ${refundBookingId}:`, refundFailedError || cancellationUpdateError);
+                    } else {
+                        console.log(`Updated records for failed refund on booking ${refundBookingId}`);
+                    }
+                }
+            } else {
+                console.log(`Unhandled event type ${event.type}`);
+            }
+            break;
     }
 
     res.json({ received: true });
@@ -828,6 +919,146 @@ app.get('/users/:userId/bookings/past', async (req: Request, res: Response) => {
         console.error(`Error in /users/${userId}/bookings/past endpoint:`, error);
     return res.status(500).json({ error: 'An unexpected error occurred' });
   }
+});
+
+// Endpoint to cancel a booking (24-hour policy)
+app.post('/bookings/:bookingId/cancel', async (req: Request, res: Response) => {
+    const { bookingId } = req.params;
+    const { userId } = req.body;
+
+    if (!bookingId || !userId) {
+        return res.status(400).json({ error: 'Booking ID and User ID are required' });
+    }
+
+    try {
+        // 1. Get the booking details
+        const { data: booking, error: fetchError } = await supabase
+            .from('bookings')
+            .select('id, user_id, start_time, status, total_amount')
+            .eq('id', bookingId)
+            .eq('user_id', userId) // Ensure user owns the booking
+            .single();
+
+        if (fetchError || !booking) {
+            return res.status(404).json({ error: 'Booking not found or access denied' });
+        }
+
+        // 2. Check if booking can be cancelled
+        if (booking.status === 'cancelled') {
+            return res.status(400).json({ error: 'Booking is already cancelled' });
+        }
+
+        if (booking.status !== 'confirmed') {
+            return res.status(400).json({ error: 'Only confirmed bookings can be cancelled' });
+        }
+
+        // 3. Check 24-hour policy
+        const bookingStartTime = new Date(booking.start_time);
+        const now = new Date();
+        const hoursDifference = (bookingStartTime.getTime() - now.getTime()) / (1000 * 60 * 60);
+
+        if (hoursDifference < 24) {
+            return res.status(400).json({ 
+                error: 'Bookings cannot be cancelled within 24 hours of the start time',
+                hoursRemaining: Math.round(hoursDifference * 10) / 10
+            });
+        }
+
+        // 4. Get the payment record to process refund
+        const { data: payment, error: paymentError } = await supabase
+            .from('payments')
+            .select('stripe_payment_intent_id, amount, status')
+            .eq('booking_id', bookingId)
+            .eq('status', 'succeeded')
+            .single();
+
+        if (paymentError || !payment) {
+            // If no successful payment found, just cancel the booking
+            console.warn(`No successful payment found for booking ${bookingId}, cancelling without refund`);
+        }
+
+        // 5. Process Stripe refund if payment exists
+        let refundId = null;
+        if (payment && payment.stripe_payment_intent_id) {
+            try {
+                const refund = await stripe.refunds.create({
+                    payment_intent: payment.stripe_payment_intent_id,
+                    reason: 'requested_by_customer',
+                    metadata: {
+                        booking_id: bookingId,
+                        user_id: userId,
+                        cancelled_at: new Date().toISOString()
+                    }
+                });
+                refundId = refund.id;
+                console.log(`Refund created for booking ${bookingId}: ${refund.id}`);
+            } catch (stripeError: any) {
+                console.error(`Error creating refund for booking ${bookingId}:`, stripeError);
+                return res.status(500).json({ 
+                    error: 'Failed to process refund. Please contact support.',
+                    details: stripeError.message 
+                });
+            }
+        }
+
+        // 6. Update booking status to cancelled
+        const { error: updateBookingError } = await supabase
+            .from('bookings')
+            .update({ 
+                status: 'cancelled'
+            })
+            .eq('id', bookingId);
+
+        if (updateBookingError) {
+            console.error(`Error updating booking ${bookingId} to cancelled:`, updateBookingError);
+            throw updateBookingError;
+        }
+
+        // 7. Create cancellation record
+        const { error: cancellationError } = await supabase
+            .from('booking_cancellations')
+            .insert({
+                booking_id: bookingId,
+                cancelled_by: userId,
+                cancellation_reason: 'Customer requested cancellation',
+                cancellation_fee: 0, // No fee for 24+ hour cancellations
+                refund_amount: payment ? payment.amount : 0,
+                cancelled_at: new Date().toISOString()
+            });
+
+        if (cancellationError) {
+            console.error(`Error creating cancellation record for booking ${bookingId}:`, cancellationError);
+            // Don't fail the request since booking was already cancelled
+        }
+
+        // 8. Update payment status if refund was processed
+        if (payment && refundId) {
+            const { error: updatePaymentError } = await supabase
+                .from('payments')
+                .update({ 
+                    status: 'refunded',
+                    refund_amount: payment.amount,
+                    refunded_at: new Date().toISOString()
+                })
+                .eq('booking_id', bookingId);
+
+            if (updatePaymentError) {
+                console.error(`Error updating payment status for booking ${bookingId}:`, updatePaymentError);
+                // Don't fail the request since booking was already cancelled
+            }
+        }
+
+        res.json({
+            success: true,
+            bookingId,
+            refundId,
+            message: refundId ? 'Booking cancelled and refund processed' : 'Booking cancelled'
+        });
+
+    } catch (error: any) {
+        console.error(`Error cancelling booking ${bookingId}:`, error);
+        res.status(500).json({ error: 'Failed to cancel booking', details: error.message });
+    }
 });
 
 // =====================================================
