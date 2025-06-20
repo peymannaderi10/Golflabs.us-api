@@ -241,20 +241,24 @@ const parseTimeString = (timeStr) => {
     }
 };
 // Helper function to create ISO timestamp from date and time string
-const createISOTimestamp = (date, timeStr) => {
+const createISOTimestamp = (date, timeStr, timezone = 'America/New_York') => {
     try {
         const { hours, minutes } = parseTimeString(timeStr);
-        const timestamp = new Date(date);
-        // Validate the date
-        if (isNaN(timestamp.getTime())) {
-            throw new Error(`Invalid date: ${date}`);
-        }
-        // Set the time in UTC
-        timestamp.setUTCHours(hours, minutes, 0, 0);
-        return timestamp.toISOString();
+        // Create a date-time string in ISO format but without timezone
+        const isoString = `${date}T${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:00.000`;
+        // Create a date object from this string (will be in local server time)
+        const localDate = new Date(isoString);
+        // Convert to the target timezone using toLocaleString, then back to a Date object
+        const timeInTargetTZ = localDate.toLocaleString('sv-SE', { timeZone: timezone });
+        const targetDate = new Date(timeInTargetTZ);
+        // Calculate the offset between what we want and what we got
+        const offset = localDate.getTime() - targetDate.getTime();
+        // Apply the offset to get the correct UTC time
+        const utcDate = new Date(localDate.getTime() + offset);
+        return utcDate.toISOString();
     }
     catch (error) {
-        console.error('Error creating timestamp:', { date, timeStr }, error);
+        console.error('Error creating timestamp:', { date, timeStr, timezone }, error);
         throw error;
     }
 };
@@ -296,17 +300,20 @@ app.post('/bookings/reserve', (req, res) => __awaiter(void 0, void 0, void 0, fu
         return res.status(400).send({ error: 'Missing required booking details' });
     }
     try {
-        // Parse the time strings to get hours and minutes
-        const parseTimeStr = (timeStr) => {
-            const [time, period] = timeStr.split(' ');
-            const [hours, minutes] = time.split(':').map(Number);
-            const isPM = period === 'PM';
-            const hour24 = isPM ? (hours === 12 ? 12 : hours + 12) : (hours === 12 ? 0 : hours);
-            return { hours: hour24, minutes };
-        };
+        // First, get the location's timezone
+        const { data: location, error: locationError } = yield supabase
+            .from('locations')
+            .select('timezone')
+            .eq('id', locationId)
+            .single();
+        if (locationError || !location) {
+            console.error('Error fetching location timezone:', locationError);
+            return res.status(400).send({ error: 'Invalid location ID' });
+        }
+        const timezone = location.timezone || 'America/New_York';
         // Validate that start and end times are on the same day
-        const startTimeParsed = parseTimeStr(startTime);
-        const endTimeParsed = parseTimeStr(endTime);
+        const startTimeParsed = parseTimeString(startTime);
+        const endTimeParsed = parseTimeString(endTime);
         // If end time is earlier than start time, it suggests an overnight booking
         if (endTimeParsed.hours < startTimeParsed.hours ||
             (endTimeParsed.hours === startTimeParsed.hours && endTimeParsed.minutes < startTimeParsed.minutes)) {
@@ -314,8 +321,12 @@ app.post('/bookings/reserve', (req, res) => __awaiter(void 0, void 0, void 0, fu
                 error: 'Overnight bookings are not allowed. Please book within a single day (12am to 11:59pm).'
             });
         }
-        const p_start_time = createISOTimestamp(date, startTime);
-        const p_end_time = createISOTimestamp(date, endTime);
+        const p_start_time = createISOTimestamp(date, startTime, timezone);
+        const p_end_time = createISOTimestamp(date, endTime, timezone);
+        console.log(`Creating booking with timezone ${timezone}:`, {
+            input: { date, startTime, endTime },
+            output: { p_start_time, p_end_time }
+        });
         // Set expiration time using UTC timestamp
         const expiresAt = new Date(Date.now() + 2 * 60 * 1000).toISOString();
         // Generate a temporary payment intent ID for the reservation
@@ -533,19 +544,50 @@ app.get('/bookings', (req, res) => __awaiter(void 0, void 0, void 0, function* (
         if (!locationId || !date) {
             return res.status(400).json({ error: 'locationId and date are required query parameters' });
         }
-        // Create UTC date range for the specified date
-        const startOfDay = new Date(date);
-        startOfDay.setUTCHours(0, 0, 0, 0);
-        const endOfDay = new Date(date);
-        endOfDay.setUTCHours(23, 59, 59, 999);
+        // First, get the location's timezone
+        const { data: location, error: locationError } = yield supabase
+            .from('locations')
+            .select('timezone')
+            .eq('id', locationId)
+            .single();
+        if (locationError || !location) {
+            console.error('Error fetching location timezone:', locationError);
+            return res.status(400).json({ error: 'Invalid location ID' });
+        }
+        const timezone = location.timezone || 'America/New_York';
+        // Create date range for the specified date in the location's timezone
+        // We need to find all bookings that fall within the local date range
+        const requestedDate = new Date(date);
+        // Create start and end of day in the location's timezone
+        const startOfDayLocal = new Date(requestedDate);
+        startOfDayLocal.setHours(0, 0, 0, 0);
+        const endOfDayLocal = new Date(requestedDate);
+        endOfDayLocal.setHours(23, 59, 59, 999);
+        // Convert these local times to UTC using the same logic as createISOTimestamp
+        const convertLocalToUTC = (localDate) => {
+            // Convert to the target timezone using toLocaleString, then back to a Date object
+            const timeInTargetTZ = localDate.toLocaleString('sv-SE', { timeZone: timezone });
+            const targetDate = new Date(timeInTargetTZ);
+            // Calculate the offset between what we want and what we got
+            const offset = localDate.getTime() - targetDate.getTime();
+            // Apply the offset to get the correct UTC time
+            const utcDate = new Date(localDate.getTime() + offset);
+            return utcDate.toISOString();
+        };
+        const startOfDayUTC = convertLocalToUTC(startOfDayLocal);
+        const endOfDayUTC = convertLocalToUTC(endOfDayLocal);
+        console.log(`Fetching bookings for ${date} in timezone ${timezone}:`, {
+            localRange: `${startOfDayLocal.toISOString()} to ${endOfDayLocal.toISOString()}`,
+            utcRange: `${startOfDayUTC} to ${endOfDayUTC}`
+        });
         // Query the bookings for the specified date and location
-        // Only get bookings that are entirely within the requested day
+        // Get bookings that overlap with the requested day
         const { data, error } = yield supabase
             .from('bookings')
             .select('id, bay_id, start_time, end_time, status')
             .eq('location_id', locationId)
-            .gte('start_time', startOfDay.toISOString())
-            .lt('end_time', endOfDay.toISOString())
+            .gte('start_time', startOfDayUTC)
+            .lt('start_time', endOfDayUTC) // Only get bookings that start within the day
             .neq('status', 'cancelled')
             .neq('status', 'no_show')
             .neq('status', 'expired');
@@ -553,23 +595,32 @@ app.get('/bookings', (req, res) => __awaiter(void 0, void 0, void 0, function* (
             console.error('Error fetching bookings:', error);
             return res.status(500).json({ error: 'Failed to fetch bookings' });
         }
-        // Format the bookings to match the frontend's expected format
-        const formattedBookings = data.map(booking => ({
-            id: booking.id,
-            bayId: booking.bay_id,
-            startTime: new Date(booking.start_time).toLocaleTimeString('en-US', {
+        // Convert UTC timestamps back to local time for display
+        // But we need to do this conversion properly using the location's timezone
+        const formattedBookings = data.map(booking => {
+            const startTimeUTC = new Date(booking.start_time);
+            const endTimeUTC = new Date(booking.end_time);
+            // Convert to location timezone for display
+            const startTimeLocal = startTimeUTC.toLocaleString('en-US', {
                 hour: 'numeric',
                 minute: '2-digit',
                 hour12: true,
-                timeZone: 'UTC' // Ensure consistent timezone handling
-            }),
-            endTime: new Date(booking.end_time).toLocaleTimeString('en-US', {
+                timeZone: timezone
+            });
+            const endTimeLocal = endTimeUTC.toLocaleString('en-US', {
                 hour: 'numeric',
                 minute: '2-digit',
                 hour12: true,
-                timeZone: 'UTC' // Ensure consistent timezone handling
-            })
-        }));
+                timeZone: timezone
+            });
+            console.log(`Booking ${booking.id}: UTC ${booking.start_time} -> Local ${startTimeLocal}`);
+            return {
+                id: booking.id,
+                bayId: booking.bay_id,
+                startTime: startTimeLocal,
+                endTime: endTimeLocal
+            };
+        });
         return res.json(formattedBookings);
     }
     catch (error) {
@@ -921,6 +972,76 @@ app.post('/bookings/:bookingId/cancel', (req, res) => __awaiter(void 0, void 0, 
     catch (error) {
         console.error(`Error cancelling booking ${bookingId}:`, error);
         res.status(500).json({ error: 'Failed to cancel booking', details: error.message });
+    }
+}));
+// Endpoint to get all locations
+app.get('/locations', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { data, error } = yield supabase
+            .from('locations')
+            .select('id, name, slug, address, city, state, zip_code, phone, timezone, status')
+            .eq('status', 'active')
+            .is('deleted_at', null)
+            .order('name', { ascending: true });
+        if (error) {
+            console.error('Error fetching locations:', error);
+            return res.status(500).json({ error: 'Failed to fetch locations' });
+        }
+        const formattedLocations = data.map(location => ({
+            id: location.id,
+            name: location.name,
+            slug: location.slug,
+            address: location.address,
+            city: location.city,
+            state: location.state,
+            zipCode: location.zip_code,
+            phone: location.phone,
+            timezone: location.timezone,
+            status: location.status
+        }));
+        return res.json(formattedLocations);
+    }
+    catch (error) {
+        console.error('Error in /locations endpoint:', error);
+        return res.status(500).json({ error: 'An unexpected error occurred' });
+    }
+}));
+// Endpoint to get a specific location by ID
+app.get('/locations/:locationId', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    const { locationId } = req.params;
+    if (!locationId) {
+        return res.status(400).json({ error: 'Location ID is required' });
+    }
+    try {
+        const { data, error } = yield supabase
+            .from('locations')
+            .select('id, name, slug, address, city, state, zip_code, phone, timezone, status, settings')
+            .eq('id', locationId)
+            .eq('status', 'active')
+            .is('deleted_at', null)
+            .single();
+        if (error || !data) {
+            console.error(`Location ${locationId} not found:`, error);
+            return res.status(404).json({ error: 'Location not found' });
+        }
+        const formattedLocation = {
+            id: data.id,
+            name: data.name,
+            slug: data.slug,
+            address: data.address,
+            city: data.city,
+            state: data.state,
+            zipCode: data.zip_code,
+            phone: data.phone,
+            timezone: data.timezone,
+            status: data.status,
+            settings: data.settings
+        };
+        return res.json(formattedLocation);
+    }
+    catch (error) {
+        console.error(`Error in /locations/${locationId} endpoint:`, error);
+        return res.status(500).json({ error: 'An unexpected error occurred' });
     }
 }));
 // =====================================================
