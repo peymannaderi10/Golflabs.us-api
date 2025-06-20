@@ -289,7 +289,7 @@ setInterval(handleExpiredReservations, 60 * 1000);
 // =====================================================
 // Phase 1: Reserve a booking
 app.post('/bookings/reserve', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    var _a, _b;
+    var _a, _b, _c;
     const { locationId, userId, bayId, date, startTime, endTime, partySize, totalAmount } = req.body;
     // Basic validation
     if (!locationId || !userId || !bayId || !date || !startTime || !endTime || !partySize || !totalAmount) {
@@ -342,11 +342,15 @@ app.post('/bookings/reserve', (req, res) => __awaiter(void 0, void 0, void 0, fu
             if (((_a = error.message) === null || _a === void 0 ? void 0 : _a.includes('duplicate key')) || ((_b = error.message) === null || _b === void 0 ? void 0 : _b.includes('already exists'))) {
                 return res.status(409).send({ error: 'This time slot is no longer available.' });
             }
+            if ((_c = error.message) === null || _c === void 0 ? void 0 : _c.includes('Time slot is already booked')) {
+                return res.status(409).send({ error: 'This time slot is no longer available.' });
+            }
             throw error;
         }
         if (!(data === null || data === void 0 ? void 0 : data.booking_id)) {
             throw new Error('Failed to create booking - no booking ID returned');
         }
+        console.log(`Created new booking ${data.booking_id} for bay ${bayId} from ${p_start_time} to ${p_end_time}`);
         // Update the booking to have reserved status and set expiration
         const { error: updateError } = yield supabase
             .from('bookings')
@@ -359,6 +363,7 @@ app.post('/bookings/reserve', (req, res) => __awaiter(void 0, void 0, void 0, fu
             console.error('Error updating booking to reserved status:', updateError);
             throw updateError;
         }
+        console.log(`Successfully reserved booking ${data.booking_id}, expires at ${expiresAt}`);
         res.status(201).send({
             bookingId: data.booking_id,
             expiresAt: expiresAt
@@ -383,13 +388,21 @@ app.post('/bookings/:bookingId/create-payment-intent', (req, res) => __awaiter(v
         // 1. Verify the booking is valid for payment
         const { data: booking, error: fetchError } = yield supabase
             .from('bookings')
-            .select('id, status, expires_at, user_id, bay_id, location_id')
+            .select('id, status, expires_at, user_id, bay_id, location_id, created_at')
             .eq('id', bookingId)
             .single();
         if (fetchError || !booking) {
+            console.error(`Booking ${bookingId} not found:`, fetchError);
             return res.status(404).send({ error: 'Booking not found.' });
         }
+        console.log(`Payment intent requested for booking ${bookingId}:`, {
+            status: booking.status,
+            expires_at: booking.expires_at,
+            created_at: booking.created_at,
+            user_id: booking.user_id
+        });
         if (booking.status !== 'reserved') {
+            console.error(`Booking ${bookingId} has invalid status for payment: ${booking.status}`);
             return res.status(409).send({ error: `Booking cannot be paid for. Status: ${booking.status}` });
         }
         // Check expiration using UTC timestamp comparison
@@ -855,17 +868,19 @@ app.post('/bookings/:bookingId/cancel', (req, res) => __awaiter(void 0, void 0, 
                 });
             }
         }
-        // 6. Update booking status to cancelled
+        // 6. Update booking status to cancelled and immediately expire it
         const { error: updateBookingError } = yield supabase
             .from('bookings')
             .update({
-            status: 'cancelled'
+            status: 'cancelled',
+            expires_at: new Date().toISOString() // Immediately expire cancelled bookings to free the slot
         })
             .eq('id', bookingId);
         if (updateBookingError) {
             console.error(`Error updating booking ${bookingId} to cancelled:`, updateBookingError);
             throw updateBookingError;
         }
+        console.log(`Booking ${bookingId} cancelled and time slot freed for new reservations`);
         // 7. Create cancellation record
         const { error: cancellationError } = yield supabase
             .from('booking_cancellations')

@@ -37,7 +37,22 @@ AS $$
 DECLARE
     new_booking_id UUID;
     booking_details_json JSONB;
+    conflict_count INTEGER;
 BEGIN
+    -- Check for conflicting bookings (exclude cancelled, expired, and no_show bookings)
+    SELECT COUNT(*) INTO conflict_count
+    FROM bookings
+    WHERE bay_id = p_bay_id
+      AND location_id = p_location_id
+      AND start_time < p_end_time
+      AND end_time > p_start_time
+      AND status NOT IN ('cancelled', 'expired', 'no_show');
+
+    -- If there are conflicts, raise an exception
+    IF conflict_count > 0 THEN
+        RAISE EXCEPTION 'Time slot is already booked. Please choose a different time.';
+    END IF;
+
     -- Insert into bookings table with 'reserved' status and set expiration
     INSERT INTO bookings (
         location_id, user_id, bay_id, start_time, end_time, 
