@@ -506,7 +506,43 @@ app.post('/bookings/:bookingId/create-payment-intent', async (req: Request, res:
             return res.status(410).send({ error: 'Booking reservation has expired.' });
         }
 
-        // 2. Create Stripe Payment Intent
+        // 2. Check if a payment intent already exists for this booking
+        const { data: existingPayment, error: paymentCheckError } = await supabase
+            .from('payments')
+            .select('stripe_payment_intent_id, status')
+            .eq('booking_id', bookingId)
+            .in('status', ['pending', 'processing'])
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .single();
+
+        if (paymentCheckError && paymentCheckError.code !== 'PGRST116') {
+            console.error('Error checking existing payments:', paymentCheckError);
+            throw paymentCheckError;
+        }
+
+        // If we found an existing pending/processing payment, retrieve the payment intent
+        if (existingPayment?.stripe_payment_intent_id) {
+            try {
+                const existingPaymentIntent = await stripe.paymentIntents.retrieve(existingPayment.stripe_payment_intent_id);
+                
+                // Check if the payment intent is still valid (not succeeded, canceled, or failed)
+                if (['requires_payment_method', 'requires_confirmation', 'requires_action', 'processing'].includes(existingPaymentIntent.status)) {
+                    console.log(`Reusing existing payment intent ${existingPaymentIntent.id} for booking ${bookingId}`);
+                    return res.send({
+                        clientSecret: existingPaymentIntent.client_secret,
+                        bookingId: booking.id
+                    });
+                } else {
+                    console.log(`Existing payment intent ${existingPaymentIntent.id} has status ${existingPaymentIntent.status}, creating new one`);
+                }
+            } catch (stripeError) {
+                console.error('Error retrieving existing payment intent from Stripe:', stripeError);
+                // Continue to create a new payment intent if we can't retrieve the existing one
+            }
+        }
+
+        // 3. Create new Stripe Payment Intent
         const paymentIntent = await stripe.paymentIntents.create({
             amount,
             currency: 'usd',
@@ -519,7 +555,7 @@ app.post('/bookings/:bookingId/create-payment-intent', async (req: Request, res:
             }
         });
 
-        // 3. Create a corresponding payment record
+        // 4. Create a corresponding payment record
         const { error: paymentError } = await supabase
             .from('payments')
             .insert({
@@ -538,7 +574,9 @@ app.post('/bookings/:bookingId/create-payment-intent', async (req: Request, res:
              throw paymentError;
         }
 
-        // 4. Send the client secret back to the frontend
+        console.log(`Created new payment intent ${paymentIntent.id} for booking ${bookingId}`);
+
+        // 5. Send the client secret back to the frontend
         res.send({
             clientSecret: paymentIntent.client_secret,
             bookingId: booking.id
