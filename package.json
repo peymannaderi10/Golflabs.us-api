@@ -2,11 +2,11 @@
   "name": "golflabs-backend",
   "version": "1.0.0",
   "description": "Backend for GolfLabs",
-  "main": "dist/index.js",
+  "main": "dist/server.js",
   "scripts": {
     "build": "tsc",
-    "dev": "ts-node-dev src/index.ts",
-    "start": "node dist/index.js"
+    "dev": "ts-node-dev src/server.ts",
+    "start": "node dist/server.js"
   },
   "keywords": [],
   "author": "",
