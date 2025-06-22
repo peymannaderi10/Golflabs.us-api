@@ -212,21 +212,14 @@ class BookingService {
             if (!userId) {
                 throw new Error('User ID is required');
             }
-            // Get current date in user's timezone (America/New_York)
-            const userTimezone = 'America/New_York';
-            const now = new Date();
-            // Get today's date in the user's timezone
-            const todayInUserTZ = new Date(now.toLocaleString('en-US', { timeZone: userTimezone }));
-            // Create start of today in user's timezone
-            const startOfToday = new Date(todayInUserTZ.getFullYear(), todayInUserTZ.getMonth(), todayInUserTZ.getDate());
-            // Convert to UTC for database query
-            const startOfTodayUTC = new Date(startOfToday.getTime() - (startOfToday.getTimezoneOffset() * 60000));
-            const cutoffTime = startOfTodayUTC.toISOString();
+            // Use current time (now) as cutoff instead of start of today
+            // This ensures bookings that have already ended don't appear in "future" bookings
+            const now = new Date().toISOString();
             const { data, error } = yield database_1.supabase
                 .from('bookings')
                 .select('id, start_time, end_time, total_amount, status, bays (name, bay_number)')
                 .eq('user_id', userId)
-                .gte('start_time', cutoffTime)
+                .gte('end_time', now) // Use end_time to ensure booking hasn't finished yet
                 .not('status', 'in', '("reserved","expired")')
                 .order('start_time', { ascending: true });
             if (error) {
@@ -253,21 +246,13 @@ class BookingService {
             if (!userId) {
                 throw new Error('User ID is required');
             }
-            // Get current date in user's timezone (America/New_York)
-            const userTimezone = 'America/New_York';
-            const now = new Date();
-            // Get today's date in the user's timezone
-            const todayInUserTZ = new Date(now.toLocaleString('en-US', { timeZone: userTimezone }));
-            // Create start of today in user's timezone
-            const startOfToday = new Date(todayInUserTZ.getFullYear(), todayInUserTZ.getMonth(), todayInUserTZ.getDate());
-            // Convert to UTC for database query
-            const startOfTodayUTC = new Date(startOfToday.getTime() - (startOfToday.getTimezoneOffset() * 60000));
-            const cutoffTime = startOfTodayUTC.toISOString();
+            // Use current time (now) as cutoff - bookings that have ended
+            const now = new Date().toISOString();
             const { data, error } = yield database_1.supabase
                 .from('bookings')
                 .select('id, start_time, end_time, total_amount, status, bays (name, bay_number)')
                 .eq('user_id', userId)
-                .lt('start_time', cutoffTime)
+                .lt('end_time', now) // Use end_time to find bookings that have finished
                 .order('start_time', { ascending: false });
             if (error) {
                 console.error('Error fetching past user bookings:', error);

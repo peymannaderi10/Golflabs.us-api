@@ -964,18 +964,15 @@ app.get('/users/:userId/bookings/future', async (req: Request, res: Response) =>
     }
 
     try {
-        // Get current time in user's timezone (EST/EDT)
-        const now = new Date();
-        const userTimezone = 'America/New_York';
-        const userTime = new Date(now.toLocaleString('en-US', { timeZone: userTimezone }));
-        userTime.setHours(0, 0, 0, 0);
-        const nowISO = userTime.toISOString();
+        // Use current time (now) as cutoff instead of start of today
+        // This ensures bookings that have already ended don't appear in "future" bookings
+        const now = new Date().toISOString();
 
         const { data, error } = await supabase
             .from('bookings')
             .select('id, start_time, end_time, total_amount, status, bays (name, bay_number)')
             .eq('user_id', userId)
-            .gte('start_time', nowISO)
+            .gte('end_time', now) // Use end_time to ensure booking hasn't finished yet
             .not('status', 'in', '("reserved","expired")')
             .order('start_time', { ascending: true });
 
@@ -1011,18 +1008,14 @@ app.get('/users/:userId/bookings/past', async (req: Request, res: Response) => {
     }
 
     try {
-        // Get current time in user's timezone (EST/EDT)
-        const now = new Date();
-        const userTimezone = 'America/New_York';
-        const userTime = new Date(now.toLocaleString('en-US', { timeZone: userTimezone }));
-        userTime.setHours(0, 0, 0, 0);
-        const nowISO = userTime.toISOString();
+        // Use current time (now) as cutoff - bookings that have ended
+        const now = new Date().toISOString();
 
         const { data, error } = await supabase
             .from('bookings')
             .select('id, start_time, end_time, total_amount, status, bays (name, bay_number)')
             .eq('user_id', userId)
-            .lt('start_time', nowISO)
+            .lt('end_time', now) // Use end_time to find bookings that have finished
             .order('start_time', { ascending: false });
 
         if (error) {
@@ -1044,8 +1037,8 @@ app.get('/users/:userId/bookings/past', async (req: Request, res: Response) => {
 
     } catch (error: any) {
         console.error(`Error in /users/${userId}/bookings/past endpoint:`, error);
-    return res.status(500).json({ error: 'An unexpected error occurred' });
-  }
+        return res.status(500).json({ error: 'An unexpected error occurred' });
+    }
 });
 
 // Endpoint to cancel a booking (24-hour policy)

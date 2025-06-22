@@ -66,6 +66,49 @@ function handleStripeWebhook(req, res) {
                             console.error(`Error queuing thank you email for booking ${bookingId}:`, emailError);
                             // Don't fail the webhook if email fails
                         }
+                        // Check if booking starts within 15 minutes - if so, send reminder immediately
+                        try {
+                            // Get booking details to check start time
+                            const { data: bookingDetails, error: bookingFetchError } = yield database_1.supabase
+                                .from('bookings')
+                                .select('start_time, end_time')
+                                .eq('id', bookingId)
+                                .single();
+                            if (!bookingFetchError && bookingDetails) {
+                                const now = new Date();
+                                const bookingStart = new Date(bookingDetails.start_time);
+                                const minutesUntilStart = (bookingStart.getTime() - now.getTime()) / (1000 * 60);
+                                console.log(`Booking ${bookingId} starts in ${minutesUntilStart.toFixed(1)} minutes`);
+                                // If booking starts within 15 minutes, send reminder email immediately
+                                if (minutesUntilStart <= 15) {
+                                    console.log(`Booking ${bookingId} starts soon (${minutesUntilStart.toFixed(1)} min), sending immediate reminder`);
+                                    // Generate unlock token and link (same as reminder job)
+                                    const tokenData = {
+                                        bookingId,
+                                        startTime: bookingDetails.start_time,
+                                        endTime: bookingDetails.end_time,
+                                        expires: new Date(bookingDetails.end_time).getTime()
+                                    };
+                                    const unlockToken = Buffer.from(JSON.stringify(tokenData)).toString('base64');
+                                    const unlockLink = `${process.env.FRONTEND_URL || 'https://golflabs.us'}/unlock?token=${unlockToken}`;
+                                    // Update booking with unlock token
+                                    yield database_1.supabase
+                                        .from('bookings')
+                                        .update({
+                                        unlock_token: unlockToken,
+                                        unlock_token_expires_at: bookingDetails.end_time
+                                    })
+                                        .eq('id', bookingId);
+                                    // Send reminder email immediately
+                                    yield email_service_1.EmailService.sendReminderEmail(bookingId, unlockToken, unlockLink);
+                                    console.log(`Sent immediate reminder email for booking ${bookingId}`);
+                                }
+                            }
+                        }
+                        catch (reminderError) {
+                            console.error(`Error handling immediate reminder for booking ${bookingId}:`, reminderError);
+                            // Don't fail the webhook if reminder fails
+                        }
                     }
                 }
                 else if (event.type === 'payment_intent.canceled') {
