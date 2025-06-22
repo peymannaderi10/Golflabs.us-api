@@ -10,6 +10,7 @@ export interface BookingEmailData {
   bookingId: string;
   bayName: string;
   locationName: string;
+  locationTimezone: string;
   startTime: string;
   endTime: string;
   totalAmount: number;

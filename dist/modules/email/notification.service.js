@@ -163,7 +163,8 @@ class NotificationService {
           name
         ),
         locations (
-          name
+          name,
+          timezone
         )
       `)
                 .eq('id', bookingId)
@@ -199,6 +200,7 @@ class NotificationService {
                 bookingId: data.id,
                 bayName: bay.name,
                 locationName: location.name,
+                locationTimezone: location.timezone || 'America/New_York',
                 startTime: data.start_time,
                 endTime: data.end_time,
                 totalAmount: data.total_amount * 100, // Convert to cents for consistency
