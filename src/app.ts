@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import { handleStripeWebhook } from './modules/payments/stripe.webhooks';
+import { handleResendWebhook } from './modules/email/email.webhooks';
 import { bookingRoutes } from './modules/bookings/booking.routes';
 import { paymentRoutes } from './modules/payments/payment.routes';
 import { pricingRoutes } from './modules/pricing/pricing.routes';
@@ -17,8 +18,9 @@ export const app = express();
 // Use cors before the webhook route
 app.use(cors());
 
-// Stripe webhook endpoint needs raw body - must be before express.json()
+// Webhook endpoints need raw body - must be before express.json()
 app.post('/stripe-webhook', express.raw({ type: 'application/json' }), handleStripeWebhook);
+app.post('/resend-webhook', express.raw({ type: 'application/json' }), handleResendWebhook);
 
 // Use json parser for all other routes
 app.use(express.json());

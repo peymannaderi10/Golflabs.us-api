@@ -12,6 +12,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.handleStripeWebhook = handleStripeWebhook;
 const stripe_1 = require("../../config/stripe");
 const database_1 = require("../../config/database");
+const email_service_1 = require("../email/email.service");
 function handleStripeWebhook(req, res) {
     return __awaiter(this, void 0, void 0, function* () {
         var _a;
@@ -56,6 +57,15 @@ function handleStripeWebhook(req, res) {
                     }
                     else {
                         console.log(`Successfully updated booking ${bookingId} to confirmed.`);
+                        // Send thank you email notification
+                        try {
+                            yield email_service_1.EmailService.sendThankYouEmail(bookingId);
+                            console.log(`Queued thank you email for booking ${bookingId}`);
+                        }
+                        catch (emailError) {
+                            console.error(`Error queuing thank you email for booking ${bookingId}:`, emailError);
+                            // Don't fail the webhook if email fails
+                        }
                     }
                 }
                 else if (event.type === 'payment_intent.canceled') {

@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import Stripe from 'stripe';
 import { stripe, webhookSecret } from '../../config/stripe';
 import { supabase } from '../../config/database';
+import { EmailService } from '../email/email.service';
 
 export async function handleStripeWebhook(req: Request, res: Response) {
   const sig = req.headers['stripe-signature'] as string;
@@ -52,6 +53,15 @@ export async function handleStripeWebhook(req: Request, res: Response) {
           console.error(`Error updating database after payment for booking ${bookingId}:`, bookingError || paymentError);
         } else {
           console.log(`Successfully updated booking ${bookingId} to confirmed.`);
+          
+          // Send thank you email notification
+          try {
+            await EmailService.sendThankYouEmail(bookingId);
+            console.log(`Queued thank you email for booking ${bookingId}`);
+          } catch (emailError) {
+            console.error(`Error queuing thank you email for booking ${bookingId}:`, emailError);
+            // Don't fail the webhook if email fails
+          }
         }
       } else if (event.type === 'payment_intent.canceled') {
         console.log(`Payment canceled for booking ID: ${bookingId}. Updating database...`);
