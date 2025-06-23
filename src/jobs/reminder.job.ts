@@ -50,27 +50,66 @@ export async function enqueueReminders(): Promise<void> {
 
     console.log(`[Reminder Job] Found ${upcomingBookings.length} bookings needing reminders`);
 
-    for (const booking of upcomingBookings) {
-      try {
-        // Skip if we already queued a reminder
-        const exists = await NotificationService.notificationExists(booking.id, 'reminder');
-        if (exists) {
-          console.log(`[Reminder Job] Reminder already exists for booking ${booking.id}`);
-          continue;
-        }
+    // BATCH OPERATION: Check which bookings already have reminder notifications
+    const bookingIds = upcomingBookings.map(booking => booking.id);
+    const { data: existingReminders, error: reminderError } = await supabase
+      .from('notifications')
+      .select('booking_id')
+      .in('booking_id', bookingIds)
+      .eq('type', 'reminder');
 
-        // Generate unlock token and link
+    if (reminderError) {
+      console.error('[Reminder Job] Error checking existing reminders:', reminderError);
+      return;
+    }
+
+    // Create a Set for fast lookup of existing reminders
+    const existingReminderIds = new Set(
+      (existingReminders || []).map(reminder => reminder.booking_id)
+    );
+
+    // Filter out bookings that already have reminders
+    const bookingsNeedingReminders = upcomingBookings.filter(
+      booking => !existingReminderIds.has(booking.id)
+    );
+
+    if (bookingsNeedingReminders.length === 0) {
+      console.log('[Reminder Job] All upcoming bookings already have reminders');
+      return;
+    }
+
+    console.log(`[Reminder Job] Processing ${bookingsNeedingReminders.length} bookings without reminders`);
+
+    // BATCH OPERATION: Prepare all booking updates
+    const bookingUpdates = bookingsNeedingReminders.map(booking => {
+      const token = generateUnlockToken(booking.id, booking.start_time, booking.end_time);
+      return {
+        id: booking.id,
+        unlock_token: token,
+        unlock_token_expires_at: booking.end_time
+      };
+    });
+
+    // BATCH OPERATION: Update all bookings with unlock tokens at once
+    if (bookingUpdates.length > 0) {
+      const { error: updateError } = await supabase
+        .from('bookings')
+        .upsert(bookingUpdates, { 
+          onConflict: 'id',
+          ignoreDuplicates: false 
+        });
+
+      if (updateError) {
+        console.error('[Reminder Job] Error batch updating booking tokens:', updateError);
+        return;
+      }
+    }
+
+    // Process reminder emails (these need to be individual due to email service design)
+    for (const booking of bookingsNeedingReminders) {
+      try {
         const token = generateUnlockToken(booking.id, booking.start_time, booking.end_time);
         const unlockLink = `${resendConfig.frontendUrl}/unlock?token=${token}`;
-
-        // Update booking with unlock token
-        await supabase
-          .from('bookings')
-          .update({
-            unlock_token: token,
-            unlock_token_expires_at: booking.end_time
-          })
-          .eq('id', booking.id);
 
         // Queue the reminder email
         await EmailService.sendReminderEmail(booking.id, token, unlockLink);
