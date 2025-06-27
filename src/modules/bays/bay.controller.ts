@@ -10,15 +10,24 @@ export class BayController {
 
   getBays = async (req: Request, res: Response) => {
     try {
-      const { locationId } = req.query;
-      const bays = await this.bayService.getBaysByLocationId(locationId as string);
-      res.json(bays);
+      const locationId = req.query.locationId as string;
+      const bays = await this.bayService.getBaysByLocationId(locationId);
+      res.status(200).json(bays);
     } catch (error: any) {
-      console.error('Error in /bays endpoint:', error);
-      if (error.message === 'Location ID is required') {
-        return res.status(400).json({ error: error.message });
-      }
-      res.status(500).json({ error: 'An unexpected error occurred' });
+      res.status(500).json({ message: error.message });
+    }
+  };
+
+  updateHeartbeat = async (req: Request, res: Response) => {
+    try {
+      const { bayId } = req.params;
+      const kioskIp = req.ip;
+
+      const updatedBay = await this.bayService.updateBayHeartbeat(bayId, kioskIp);
+
+      res.status(200).json(updatedBay);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
     }
   };
 } 

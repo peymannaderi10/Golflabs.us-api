@@ -7,6 +7,7 @@ import { paymentRoutes } from './modules/payments/payment.routes';
 import { pricingRoutes } from './modules/pricing/pricing.routes';
 import { locationRoutes } from './modules/locations/location.routes';
 import { bayRoutes } from './modules/bays/bay.routes';
+import { logRoutes } from './modules/logs/log.routes';
 import { BookingController } from './modules/bookings/booking.controller';
 
 export const app = express();
@@ -44,6 +45,7 @@ app.use('/', paymentRoutes); // Payment routes are at root level for backwards c
 app.use('/', pricingRoutes); // Pricing routes are at root level for backwards compatibility
 app.use('/locations', locationRoutes);
 app.use('/bays', bayRoutes);
+app.use('/logs', logRoutes);
 
 // Health check endpoint
 app.get('/health', (req, res) => {
