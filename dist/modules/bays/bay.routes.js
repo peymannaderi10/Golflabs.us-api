@@ -7,3 +7,4 @@ exports.bayRoutes = (0, express_1.Router)();
 const controller = new bay_controller_1.BayController();
 // Bay routes
 exports.bayRoutes.get('/', controller.getBays);
+exports.bayRoutes.post('/:bayId/heartbeat', controller.updateHeartbeat);

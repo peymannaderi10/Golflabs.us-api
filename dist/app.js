@@ -13,6 +13,7 @@ const payment_routes_1 = require("./modules/payments/payment.routes");
 const pricing_routes_1 = require("./modules/pricing/pricing.routes");
 const location_routes_1 = require("./modules/locations/location.routes");
 const bay_routes_1 = require("./modules/bays/bay.routes");
+const log_routes_1 = require("./modules/logs/log.routes");
 const booking_controller_1 = require("./modules/bookings/booking.controller");
 exports.app = (0, express_1.default)();
 // =====================================================
@@ -41,6 +42,7 @@ exports.app.use('/', payment_routes_1.paymentRoutes); // Payment routes are at r
 exports.app.use('/', pricing_routes_1.pricingRoutes); // Pricing routes are at root level for backwards compatibility
 exports.app.use('/locations', location_routes_1.locationRoutes);
 exports.app.use('/bays', bay_routes_1.bayRoutes);
+exports.app.use('/logs', log_routes_1.logRoutes);
 // Health check endpoint
 exports.app.get('/health', (req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
