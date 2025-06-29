@@ -146,6 +146,9 @@ export class EmailService {
           console.error(`Failed to send notification ${notification.id}:`, error);
           await NotificationService.markAsFailed(notification.id, error.message);
         }
+
+        // Add a delay to respect API rate limits (e.g., 1 second)
+        await new Promise(res => setTimeout(res, 1000));
       }
 
       console.log(`Dispatched ${dispatched}/${pendingNotifications.length} notifications`);
