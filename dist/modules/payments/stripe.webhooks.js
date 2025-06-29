@@ -68,18 +68,18 @@ function handleStripeWebhook(req, res, socketService) {
                         }
                         // Trigger a real-time update for the kiosks at the location
                         try {
-                            // We need the location_id from the booking to know which room to broadcast to.
+                            // We need the location_id and bay_id from the booking to know which specific kiosk to notify.
                             const { data: booking, error: fetchError } = yield database_1.supabase
                                 .from('bookings')
-                                .select('location_id')
+                                .select('location_id, bay_id')
                                 .eq('id', bookingId)
                                 .single();
-                            if (fetchError || !(booking === null || booking === void 0 ? void 0 : booking.location_id)) {
-                                console.error(`Could not fetch location_id for booking ${bookingId} to trigger kiosk update.`, fetchError);
+                            if (fetchError || !(booking === null || booking === void 0 ? void 0 : booking.location_id) || !(booking === null || booking === void 0 ? void 0 : booking.bay_id)) {
+                                console.error(`Could not fetch location_id and bay_id for booking ${bookingId} to trigger kiosk update.`, fetchError);
                             }
                             else {
-                                console.log(`Payment confirmed for location ${booking.location_id}. Triggering kiosk update.`);
-                                yield socketService.triggerBookingUpdate(booking.location_id);
+                                console.log(`Payment confirmed for location ${booking.location_id}, bay ${booking.bay_id}. Triggering kiosk update.`);
+                                yield socketService.triggerBookingUpdate(booking.location_id, booking.bay_id, bookingId);
                             }
                         }
                         catch (kioskError) {
