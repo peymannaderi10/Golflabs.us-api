@@ -78,8 +78,8 @@ export class BookingController {
       res.json(result);
 
       // After successfully cancelling, trigger a real-time update
-      if (result.locationId) {
-        this.socketService.triggerBookingUpdate(result.locationId);
+      if (result.locationId && result.bayId) {
+        this.socketService.triggerBookingUpdate(result.locationId, result.bayId, bookingId);
       }
     } catch (error: any) {
       console.error(`Error cancelling booking ${req.params.bookingId}:`, error);
