@@ -22,7 +22,7 @@ exports.app = (0, express_1.default)();
 exports.httpServer = (0, http_1.createServer)(exports.app);
 const io = new socket_io_1.Server(exports.httpServer, {
     cors: {
-        origin: "*", // In production, you should restrict this to your kiosk's origin
+        origin: "*",
         methods: ["GET", "POST"]
     }
 });

@@ -18,7 +18,7 @@ export const httpServer = createServer(app);
 
 const io = new Server(httpServer, {
   cors: {
-    origin: "*", // In production, you should restrict this to your kiosk's origin
+    origin: "*", 
     methods: ["GET", "POST"]
   }
 });

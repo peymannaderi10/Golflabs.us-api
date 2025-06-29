@@ -20,7 +20,7 @@ const config = (0, environment_1.validateEnvironment)();
 // SERVER START
 // =====================================================
 const PORT = config.server.port;
-app_1.app.listen(PORT, () => {
+app_1.httpServer.listen(PORT, () => {
     console.log(`Backend server running on http://localhost:${PORT}`);
     console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
 });

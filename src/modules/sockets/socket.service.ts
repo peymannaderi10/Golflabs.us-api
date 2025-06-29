@@ -31,6 +31,15 @@ export class SocketService {
         }
       });
 
+      // Handle request from a kiosk for a full data refresh
+      socket.on('request_initial_bookings', (payload: { locationId: string; bayId: string }) => {
+        if (payload.locationId && payload.bayId) {
+          console.log(`Kiosk ${socket.id} requested initial bookings for bay ${payload.bayId}.`);
+          // Use the existing fallback method to send all bookings
+          this.sendAllBookingsUpdate(payload.locationId, payload.bayId);
+        }
+      });
+
       socket.on('disconnect', () => {
         console.log('Client disconnected:', socket.id);
       });

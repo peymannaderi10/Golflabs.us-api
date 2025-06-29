@@ -3,7 +3,7 @@ import dotenv from 'dotenv';
 // Load environment variables FIRST before any other imports
 dotenv.config();
 
-import { app } from './app';
+import { app, httpServer } from './app';
 import { validateEnvironment } from './config/environment';
 import { startScheduler } from './jobs/scheduler';
 
@@ -23,7 +23,7 @@ startScheduler();
 
 const PORT = config.server.port;
 
-app.listen(PORT, () => {
+httpServer.listen(PORT, () => {
   console.log(`Backend server running on http://localhost:${PORT}`);
   console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
 }); 
