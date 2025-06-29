@@ -265,29 +265,6 @@ const createISOTimestamp = (date, timeStr, timezone = 'America/New_York') => {
 // =====================================================
 // BACKGROUND JOBS
 // =====================================================
-// Function to handle expired reservations
-function handleExpiredReservations() {
-    return __awaiter(this, void 0, void 0, function* () {
-        try {
-            const now = new Date().toISOString();
-            const { error } = yield supabase
-                .from('bookings')
-                .update({ status: 'expired' })
-                .lt('expires_at', now)
-                .eq('status', 'reserved');
-            if (error) {
-                console.error('Error handling expired reservations:', error);
-                return;
-            }
-            console.log('Checked for expired reservations');
-        }
-        catch (error) {
-            console.error('Error in handleExpiredReservations:', error);
-        }
-    });
-}
-// Run the expiration check every minute
-setInterval(handleExpiredReservations, 60 * 1000);
 // =====================================================
 // API ROUTES
 // =====================================================

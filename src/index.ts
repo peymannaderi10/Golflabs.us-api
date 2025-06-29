@@ -307,30 +307,6 @@ interface PricingRule {
 // BACKGROUND JOBS
 // =====================================================
 
-// Function to handle expired reservations
-async function handleExpiredReservations() {
-    try {
-        const now = new Date().toISOString();
-        const { error } = await supabase
-            .from('bookings')
-            .update({ status: 'expired' })
-            .lt('expires_at', now)
-            .eq('status', 'reserved');
-
-        if (error) {
-            console.error('Error handling expired reservations:', error);
-            return;
-        }
-
-        console.log('Checked for expired reservations');
-    } catch (error) {
-        console.error('Error in handleExpiredReservations:', error);
-    }
-}
-
-// Run the expiration check every minute
-setInterval(handleExpiredReservations, 60 * 1000);
-
 // =====================================================
 // API ROUTES
 // =====================================================
