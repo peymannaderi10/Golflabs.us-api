@@ -25,11 +25,11 @@ class BookingController {
         });
         this.getBookings = (req, res) => __awaiter(this, void 0, void 0, function* () {
             try {
-                const { locationId, date } = req.query;
+                const { locationId, date, startTime } = req.query;
                 if (!locationId || !date) {
                     return res.status(400).json({ error: 'locationId and date are required query parameters' });
                 }
-                const bookings = yield this.bookingService.getBookings(locationId, date);
+                const bookings = yield this.bookingService.getBookings(locationId, date, startTime);
                 res.json(bookings);
             }
             catch (error) {

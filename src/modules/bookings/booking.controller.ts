@@ -23,13 +23,13 @@ export class BookingController {
 
   getBookings = async (req: Request, res: Response) => {
     try {
-      const { locationId, date } = req.query;
+      const { locationId, date, startTime } = req.query;
 
       if (!locationId || !date) {
         return res.status(400).json({ error: 'locationId and date are required query parameters' });
       }
 
-      const bookings = await this.bookingService.getBookings(locationId as string, date as string);
+      const bookings = await this.bookingService.getBookings(locationId as string, date as string, startTime as string | undefined);
       res.json(bookings);
     } catch (error: any) {
       console.error('Error in /bookings endpoint:', error);

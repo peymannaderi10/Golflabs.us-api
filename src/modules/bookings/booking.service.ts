@@ -113,7 +113,7 @@ export class BookingService {
     };
   }
 
-  async getBookings(locationId: string, date: string) {
+  async getBookings(locationId: string, date: string, startTime?: string) {
     if (!locationId || !date) {
       throw new Error('locationId and date are required parameters');
     }
@@ -133,7 +133,7 @@ export class BookingService {
     const timezone = location.timezone || 'America/New_York';
 
     // Use the same createISOTimestamp logic for consistent timezone conversion
-    const startOfDayUTC = createISOTimestamp(date, '12:00 AM', timezone);
+    const startOfDayUTC = createISOTimestamp(date, startTime || '12:00 AM', timezone);
     
     // For end of day, use 11:59:59 PM to stay within the same day
     // Since overnight bookings are not allowed, we only want bookings that START on this specific date

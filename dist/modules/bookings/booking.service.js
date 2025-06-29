@@ -98,7 +98,7 @@ class BookingService {
             };
         });
     }
-    getBookings(locationId, date) {
+    getBookings(locationId, date, startTime) {
         return __awaiter(this, void 0, void 0, function* () {
             if (!locationId || !date) {
                 throw new Error('locationId and date are required parameters');
@@ -115,7 +115,7 @@ class BookingService {
             }
             const timezone = location.timezone || 'America/New_York';
             // Use the same createISOTimestamp logic for consistent timezone conversion
-            const startOfDayUTC = (0, date_utils_1.createISOTimestamp)(date, '12:00 AM', timezone);
+            const startOfDayUTC = (0, date_utils_1.createISOTimestamp)(date, startTime || '12:00 AM', timezone);
             // For end of day, use 11:59:59 PM to stay within the same day
             // Since overnight bookings are not allowed, we only want bookings that START on this specific date
             const endOfDayUTC = (0, date_utils_1.createISOTimestamp)(date, '11:59 PM', timezone);
