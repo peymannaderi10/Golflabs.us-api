@@ -13,7 +13,7 @@ exports.handleStripeWebhook = handleStripeWebhook;
 const stripe_1 = require("../../config/stripe");
 const database_1 = require("../../config/database");
 const email_service_1 = require("../email/email.service");
-function handleStripeWebhook(req, res) {
+function handleStripeWebhook(req, res, socketService) {
     return __awaiter(this, void 0, void 0, function* () {
         var _a;
         const sig = req.headers['stripe-signature'];
@@ -65,6 +65,25 @@ function handleStripeWebhook(req, res) {
                         catch (emailError) {
                             console.error(`Error queuing thank you email for booking ${bookingId}:`, emailError);
                             // Don't fail the webhook if email fails
+                        }
+                        // Trigger a real-time update for the kiosks at the location
+                        try {
+                            // We need the location_id from the booking to know which room to broadcast to.
+                            const { data: booking, error: fetchError } = yield database_1.supabase
+                                .from('bookings')
+                                .select('location_id')
+                                .eq('id', bookingId)
+                                .single();
+                            if (fetchError || !(booking === null || booking === void 0 ? void 0 : booking.location_id)) {
+                                console.error(`Could not fetch location_id for booking ${bookingId} to trigger kiosk update.`, fetchError);
+                            }
+                            else {
+                                console.log(`Payment confirmed for location ${booking.location_id}. Triggering kiosk update.`);
+                                yield socketService.triggerBookingUpdate(booking.location_id);
+                            }
+                        }
+                        catch (kioskError) {
+                            console.error(`Error triggering kiosk update for booking ${bookingId}:`, kioskError);
                         }
                         // Check if booking starts within 15 minutes - if so, send reminder immediately
                         try {

@@ -12,7 +12,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.BookingController = void 0;
 const booking_service_1 = require("./booking.service");
 class BookingController {
-    constructor() {
+    constructor(socketService) {
         this.reserveBooking = (req, res) => __awaiter(this, void 0, void 0, function* () {
             try {
                 const result = yield this.bookingService.reserveBooking(req.body);
@@ -76,6 +76,10 @@ class BookingController {
                 const { userId } = req.body;
                 const result = yield this.bookingService.cancelBooking(bookingId, userId);
                 res.json(result);
+                // After successfully cancelling, trigger a real-time update
+                if (result.locationId) {
+                    this.socketService.triggerBookingUpdate(result.locationId);
+                }
             }
             catch (error) {
                 console.error(`Error cancelling booking ${req.params.bookingId}:`, error);
@@ -83,6 +87,7 @@ class BookingController {
             }
         });
         this.bookingService = new booking_service_1.BookingService();
+        this.socketService = socketService;
     }
 }
 exports.BookingController = BookingController;

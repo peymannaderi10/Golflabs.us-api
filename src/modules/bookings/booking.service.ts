@@ -316,7 +316,7 @@ export class BookingService {
     // 1. Get the booking details
     const { data: booking, error: fetchError } = await supabase
       .from('bookings')
-      .select('id, user_id, start_time, status, total_amount')
+      .select('id, user_id, start_time, status, total_amount, location_id')
       .eq('id', bookingId)
       .eq('user_id', userId)
       .single();
@@ -429,6 +429,7 @@ export class BookingService {
       success: true,
       bookingId,
       refundId,
+      locationId: booking.location_id,
       message: refundId ? 'Booking cancelled and refund processed' : 'Booking cancelled'
     };
   }

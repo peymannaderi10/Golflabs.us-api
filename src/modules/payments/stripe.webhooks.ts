@@ -3,8 +3,9 @@ import Stripe from 'stripe';
 import { stripe, webhookSecret } from '../../config/stripe';
 import { supabase } from '../../config/database';
 import { EmailService } from '../email/email.service';
+import { SocketService } from '../sockets/socket.service';
 
-export async function handleStripeWebhook(req: Request, res: Response) {
+export async function handleStripeWebhook(req: Request, res: Response, socketService: SocketService) {
   const sig = req.headers['stripe-signature'] as string;
 
   if (!webhookSecret) {
@@ -61,6 +62,25 @@ export async function handleStripeWebhook(req: Request, res: Response) {
           } catch (emailError) {
             console.error(`Error queuing thank you email for booking ${bookingId}:`, emailError);
             // Don't fail the webhook if email fails
+          }
+
+          // Trigger a real-time update for the kiosks at the location
+          try {
+            // We need the location_id from the booking to know which room to broadcast to.
+            const { data: booking, error: fetchError } = await supabase
+              .from('bookings')
+              .select('location_id')
+              .eq('id', bookingId)
+              .single();
+
+            if (fetchError || !booking?.location_id) {
+              console.error(`Could not fetch location_id for booking ${bookingId} to trigger kiosk update.`, fetchError);
+            } else {
+              console.log(`Payment confirmed for location ${booking.location_id}. Triggering kiosk update.`);
+              await socketService.triggerBookingUpdate(booking.location_id);
+            }
+          } catch (kioskError) {
+            console.error(`Error triggering kiosk update for booking ${bookingId}:`, kioskError);
           }
 
           // Check if booking starts within 15 minutes - if so, send reminder immediately

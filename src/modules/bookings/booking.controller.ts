@@ -1,11 +1,14 @@
 import { Request, Response } from 'express';
 import { BookingService } from './booking.service';
+import { SocketService } from '../sockets/socket.service';
 
 export class BookingController {
   private bookingService: BookingService;
+  private socketService: SocketService;
 
-  constructor() {
+  constructor(socketService: SocketService) {
     this.bookingService = new BookingService();
+    this.socketService = socketService;
   }
 
   reserveBooking = async (req: Request, res: Response) => {
@@ -73,6 +76,11 @@ export class BookingController {
       const { userId } = req.body;
       const result = await this.bookingService.cancelBooking(bookingId, userId);
       res.json(result);
+
+      // After successfully cancelling, trigger a real-time update
+      if (result.locationId) {
+        this.socketService.triggerBookingUpdate(result.locationId);
+      }
     } catch (error: any) {
       console.error(`Error cancelling booking ${req.params.bookingId}:`, error);
       res.status(500).json({ error: 'Failed to cancel booking', details: error.message });
