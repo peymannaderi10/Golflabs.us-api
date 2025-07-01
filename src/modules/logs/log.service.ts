@@ -4,11 +4,16 @@ export interface AccessLogData {
   bay_id: string;
   booking_id?: string;
   user_id?: string;
-  action: 'session_started' | 'session_ended';
+  action: 'session_started' | 'session_ended' | 'door_unlock_button_pressed' | 'door_unlock_success' | 'door_unlock_failure' | 'booking_reserved';
   success: boolean;
   ip_address?: string;
   error_message?: string;
   location_id?: string;
+  user_agent?: string;
+  unlock_method?: 'email_link' | 'admin_override' | 'mobile_app';
+  response_time_ms?: number;
+  unlock_token_used?: string;
+  metadata?: any; // JSON field for flexible data storage
 }
 
 export class LogService {

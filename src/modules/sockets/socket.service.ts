@@ -199,4 +199,45 @@ export class SocketService {
     // 'en-CA' gives the YYYY-MM-DD format needed by the getBookings method.
     return new Date().toLocaleDateString('en-CA', { timeZone: location.timezone });
   }
+
+  /**
+   * Sends an unlock command to a specific kiosk via websocket
+   * @param locationId The ID of the location
+   * @param bayId The ID of the bay/kiosk to unlock
+   * @param duration Duration in seconds to unlock the door
+   * @param bookingId The booking ID for logging purposes
+   * @returns Promise<boolean> indicating success
+   */
+  public async sendUnlockCommand(locationId: string, bayId: string, duration: number, bookingId: string): Promise<boolean> {
+    if (!locationId || !bayId) {
+      console.error('sendUnlockCommand: Missing locationId or bayId');
+      return false;
+    }
+
+    const room = `location-${locationId}-bay-${bayId}`;
+    
+    // Check if any kiosks are connected to this room
+    const socketsInRoom = await this.io.in(room).fetchSockets();
+    
+    if (socketsInRoom.length === 0) {
+      console.warn(`No kiosks connected for room ${room}. Cannot send unlock command.`);
+      return false;
+    }
+
+    const unlockPayload = {
+      type: 'door_unlock',
+      duration,
+      bookingId,
+      locationId,
+      bayId,
+      timestamp: new Date().toISOString()
+    };
+
+    // Send unlock command to all kiosks in the room (usually just one)
+    this.io.to(room).emit('unlock', unlockPayload);
+    
+    console.log(`Sent unlock command to room ${room} for booking ${bookingId}. Duration: ${duration} seconds. Connected kiosks: ${socketsInRoom.length}`);
+    
+    return true;
+  }
 } 
