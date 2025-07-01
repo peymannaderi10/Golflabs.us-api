@@ -22,10 +22,123 @@ export class EmailTemplates {
         <head>
           <meta charset="UTF-8">
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <meta name="color-scheme" content="light dark">
+          <meta name="supported-color-schemes" content="light dark">
           <title>Booking Confirmation - Golf Labs US</title>
+          <style>
+            /* Light and Dark Mode Support */
+            :root {
+              color-scheme: light dark;
+              supported-color-schemes: light dark;
+            }
+            
+            /* Light Mode (Default) */
+            .email-body {
+              background-color: #f5f7fa !important;
+            }
+            .email-container {
+              background-color: #ffffff !important;
+            }
+            .text-primary {
+              color: #2c5530 !important;
+            }
+            .text-secondary {
+              color: #666 !important;
+            }
+            .text-tertiary {
+              color: #333 !important;
+            }
+            .text-muted {
+              color: #666 !important;
+            }
+            .border-light {
+              border-color: #e0e0e0 !important;
+            }
+            .bg-card {
+              background: linear-gradient(135deg, #f8fffe 0%, #e8f5e8 100%) !important;
+              border: 2px solid #4a7c59 !important;
+            }
+            .bg-notice {
+              background-color: #fff3cd !important;
+              border-color: #ffeaa7 !important;
+            }
+            .text-notice {
+              color: #8a6d3b !important;
+            }
+            
+            /* Dark Mode Overrides */
+            @media (prefers-color-scheme: dark) {
+              .email-body {
+                background-color: #1a1a1a !important;
+              }
+              .email-container {
+                background-color: #2d2d2d !important;
+              }
+              .text-primary {
+                color: #6bb96e !important;
+              }
+              .text-secondary {
+                color: #b0b0b0 !important;
+              }
+              .text-tertiary {
+                color: #e0e0e0 !important;
+              }
+              .text-muted {
+                color: #a0a0a0 !important;
+              }
+              .border-light {
+                border-color: #4a4a4a !important;
+              }
+              .bg-card {
+                background: linear-gradient(135deg, #3a4a3d 0%, #2d3a2f 100%) !important;
+                border: 2px solid #6bb96e !important;
+              }
+              .bg-notice {
+                background-color: #4a3c1a !important;
+                border-color: #6b5b2a !important;
+              }
+              .text-notice {
+                color: #d4b85a !important;
+              }
+            }
+            
+            /* Force dark mode for specific email clients */
+            [data-ogsc] .email-body {
+              background-color: #1a1a1a !important;
+            }
+            [data-ogsc] .email-container {
+              background-color: #2d2d2d !important;
+            }
+            [data-ogsc] .text-primary {
+              color: #6bb96e !important;
+            }
+            [data-ogsc] .text-secondary {
+              color: #b0b0b0 !important;
+            }
+            [data-ogsc] .text-tertiary {
+              color: #e0e0e0 !important;
+            }
+            [data-ogsc] .text-muted {
+              color: #a0a0a0 !important;
+            }
+            [data-ogsc] .border-light {
+              border-color: #4a4a4a !important;
+            }
+            [data-ogsc] .bg-card {
+              background: linear-gradient(135deg, #3a4a3d 0%, #2d3a2f 100%) !important;
+              border: 2px solid #6bb96e !important;
+            }
+            [data-ogsc] .bg-notice {
+              background-color: #4a3c1a !important;
+              border-color: #6b5b2a !important;
+            }
+            [data-ogsc] .text-notice {
+              color: #d4b85a !important;
+            }
+          </style>
         </head>
-        <body style="margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f5f7fa;">
-          <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff;">
+        <body class="email-body" style="margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+          <div class="email-container" style="max-width: 600px; margin: 0 auto;">
             
             <!-- Header -->
             <div style="background: linear-gradient(135deg, #2c5530 0%, #4a7c59 100%); padding: 40px 30px; text-align: center;">
@@ -37,67 +150,67 @@ export class EmailTemplates {
             <!-- Main Content -->
             <div style="padding: 40px 30px;">
               <div style="text-align: center; margin-bottom: 30px;">
-                <h2 style="color: #2c5530; margin: 0 0 10px 0; font-size: 24px; font-weight: 600;">
+                <h2 class="text-primary" style="margin: 0 0 10px 0; font-size: 24px; font-weight: 600;">
                   🎉 Booking Confirmed!
                 </h2>
-                <p style="color: #666; margin: 0; font-size: 16px;">
+                <p class="text-secondary" style="margin: 0; font-size: 16px;">
                   Thank you for choosing Golf Labs US, ${data.userFullName}!
                 </p>
               </div>
               
               <!-- Booking Details Card -->
-              <div style="background: linear-gradient(135deg, #f8fffe 0%, #e8f5e8 100%); border: 2px solid #4a7c59; border-radius: 12px; padding: 30px; margin: 30px 0;">
-                <h3 style="color: #2c5530; margin: 0 0 20px 0; font-size: 20px; font-weight: 600; text-align: center;">
+              <div class="bg-card" style="border-radius: 12px; padding: 30px; margin: 30px 0;">
+                <h3 class="text-primary" style="margin: 0 0 20px 0; font-size: 20px; font-weight: 600; text-align: center;">
                   📋 Your Booking Details
                 </h3>
                 
                 <div style="display: grid; gap: 15px;">
-                  <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid #e0e0e0;">
+                  <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid;" class="border-light">
                     <span style="color: #4a7c59; font-weight: 600; width: 120px; display: inline-block;">📍 Location:</span>
-                    <span style="color: #333; font-weight: 500;">${data.locationName}</span>
+                    <span class="text-tertiary" style="font-weight: 500;">${data.locationName}</span>
                   </div>
                   
-                  <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid #e0e0e0;">
+                  <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid;" class="border-light">
                     <span style="color: #4a7c59; font-weight: 600; width: 120px; display: inline-block;">🏌️ Bay:</span>
-                    <span style="color: #333; font-weight: 500;">${data.bayName}</span>
+                    <span class="text-tertiary" style="font-weight: 500;">${data.bayName}</span>
                   </div>
                   
-                  <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid #e0e0e0;">
+                  <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid;" class="border-light">
                     <span style="color: #4a7c59; font-weight: 600; width: 120px; display: inline-block;">📅 Date:</span>
-                    <span style="color: #333; font-weight: 500;">${startDate}</span>
+                    <span class="text-tertiary" style="font-weight: 500;">${startDate}</span>
                   </div>
                   
-                  <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid #e0e0e0;">
+                  <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid;" class="border-light">
                     <span style="color: #4a7c59; font-weight: 600; width: 120px; display: inline-block;">⏰ Time:</span>
-                    <span style="color: #333; font-weight: 500;">${startTime} - ${endTime}</span>
+                    <span class="text-tertiary" style="font-weight: 500;">${startTime} - ${endTime}</span>
                   </div>
                   
-                  <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid #e0e0e0;">
+                  <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid;" class="border-light">
                     <span style="color: #4a7c59; font-weight: 600; width: 120px; display: inline-block;">💰 Total:</span>
-                    <span style="color: #2c5530; font-weight: 700; font-size: 18px;">$${formattedAmount}</span>
+                    <span class="text-primary" style="font-weight: 700; font-size: 18px;">$${formattedAmount}</span>
                   </div>
                   
                   <div style="display: flex; align-items: center; padding: 10px 0;">
                     <span style="color: #4a7c59; font-weight: 600; width: 120px; display: inline-block;">🎫 Booking ID:</span>
-                    <span style="color: #666; font-family: monospace; font-size: 14px;">${data.bookingId}</span>
+                    <span class="text-muted" style="font-family: monospace; font-size: 14px;">${data.bookingId}</span>
                   </div>
                 </div>
               </div>
               
               <!-- Reminder Notice -->
-              <div style="background-color: #fff3cd; border: 1px solid #ffeaa7; border-radius: 8px; padding: 20px; margin: 30px 0; text-align: center;">
-                <h4 style="color: #8a6d3b; margin: 0 0 10px 0; font-size: 16px;">
+              <div class="bg-notice" style="border: 1px solid; border-radius: 8px; padding: 20px; margin: 30px 0; text-align: center;">
+                <h4 class="text-notice" style="margin: 0 0 10px 0; font-size: 16px;">
                   📱 Reminder Coming Soon
                 </h4>
-                <p style="color: #8a6d3b; margin: 0; font-size: 14px; line-height: 1.5;">
+                <p class="text-notice" style="margin: 0; font-size: 14px; line-height: 1.5;">
                   You'll receive an email reminder 15 minutes before your session with your bay unlock link.
                 </p>
               </div>
               
               <!-- What's Next -->
               <div style="text-align: center; margin-top: 40px;">
-                <h3 style="color: #2c5530; margin-bottom: 15px; font-size: 18px;">What's Next?</h3>
-                <p style="color: #666; margin: 0 0 20px 0; line-height: 1.6;">
+                <h3 class="text-primary" style="margin-bottom: 15px; font-size: 18px;">What's Next?</h3>
+                <p class="text-secondary" style="margin: 0 0 20px 0; line-height: 1.6;">
                   Just show up and we'll take care of the rest! You'll get your unlock link right before your session starts.
                 </p>
               </div>
@@ -157,10 +270,159 @@ export class EmailTemplates {
         <head>
           <meta charset="UTF-8">
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <meta name="color-scheme" content="light dark">
+          <meta name="supported-color-schemes" content="light dark">
           <title>Session Starting Soon - Golf Labs US</title>
+          <style>
+            /* Light and Dark Mode Support */
+            :root {
+              color-scheme: light dark;
+              supported-color-schemes: light dark;
+            }
+            
+            /* Light Mode (Default) */
+            .email-body {
+              background-color: #f5f7fa !important;
+            }
+            .email-container {
+              background-color: #ffffff !important;
+            }
+            .text-primary {
+              color: #2c5530 !important;
+            }
+            .text-secondary {
+              color: #666 !important;
+            }
+            .text-tertiary {
+              color: #333 !important;
+            }
+            .text-muted {
+              color: #666 !important;
+            }
+            .border-light {
+              border-color: #e0e0e0 !important;
+            }
+            .bg-card {
+              background: linear-gradient(135deg, #f8fffe 0%, #e8f5e8 100%) !important;
+              border: 2px solid #4a7c59 !important;
+            }
+            .bg-notice {
+              background-color: #fff3cd !important;
+              border-color: #ffeaa7 !important;
+            }
+            .text-notice {
+              color: #8a6d3b !important;
+            }
+            .bg-info {
+              background-color: #e8f4f8 !important;
+              border-color: #17a2b8 !important;
+            }
+            .text-info {
+              color: #0c5460 !important;
+            }
+            .unlock-button {
+              background: linear-gradient(135deg, #4a7c59 0%, #2c5530 100%) !important;
+              color: #ffffff !important;
+              box-shadow: 0 4px 15px rgba(76, 124, 89, 0.3) !important;
+            }
+            
+            /* Dark Mode Overrides */
+            @media (prefers-color-scheme: dark) {
+              .email-body {
+                background-color: #1a1a1a !important;
+              }
+              .email-container {
+                background-color: #2d2d2d !important;
+              }
+              .text-primary {
+                color: #6bb96e !important;
+              }
+              .text-secondary {
+                color: #b0b0b0 !important;
+              }
+              .text-tertiary {
+                color: #e0e0e0 !important;
+              }
+              .text-muted {
+                color: #a0a0a0 !important;
+              }
+              .border-light {
+                border-color: #4a4a4a !important;
+              }
+              .bg-card {
+                background: linear-gradient(135deg, #3a4a3d 0%, #2d3a2f 100%) !important;
+                border: 2px solid #6bb96e !important;
+              }
+              .bg-notice {
+                background-color: #4a3c1a !important;
+                border-color: #6b5b2a !important;
+              }
+              .text-notice {
+                color: #d4b85a !important;
+              }
+              .bg-info {
+                background-color: #1a3c4a !important;
+                border-color: #2a6b85 !important;
+              }
+              .text-info {
+                color: #6bb9d4 !important;
+              }
+              .unlock-button {
+                background: linear-gradient(135deg, #6bb96e 0%, #4a7c59 100%) !important;
+                color: #ffffff !important;
+                box-shadow: 0 4px 15px rgba(107, 185, 110, 0.4) !important;
+              }
+            }
+            
+            /* Force dark mode for specific email clients */
+            [data-ogsc] .email-body {
+              background-color: #1a1a1a !important;
+            }
+            [data-ogsc] .email-container {
+              background-color: #2d2d2d !important;
+            }
+            [data-ogsc] .text-primary {
+              color: #6bb96e !important;
+            }
+            [data-ogsc] .text-secondary {
+              color: #b0b0b0 !important;
+            }
+            [data-ogsc] .text-tertiary {
+              color: #e0e0e0 !important;
+            }
+            [data-ogsc] .text-muted {
+              color: #a0a0a0 !important;
+            }
+            [data-ogsc] .border-light {
+              border-color: #4a4a4a !important;
+            }
+            [data-ogsc] .bg-card {
+              background: linear-gradient(135deg, #3a4a3d 0%, #2d3a2f 100%) !important;
+              border: 2px solid #6bb96e !important;
+            }
+            [data-ogsc] .bg-notice {
+              background-color: #4a3c1a !important;
+              border-color: #6b5b2a !important;
+            }
+            [data-ogsc] .text-notice {
+              color: #d4b85a !important;
+            }
+            [data-ogsc] .bg-info {
+              background-color: #1a3c4a !important;
+              border-color: #2a6b85 !important;
+            }
+            [data-ogsc] .text-info {
+              color: #6bb9d4 !important;
+            }
+            [data-ogsc] .unlock-button {
+              background: linear-gradient(135deg, #6bb96e 0%, #4a7c59 100%) !important;
+              color: #ffffff !important;
+              box-shadow: 0 4px 15px rgba(107, 185, 110, 0.4) !important;
+            }
+          </style>
         </head>
-        <body style="margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f5f7fa;">
-          <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff;">
+        <body class="email-body" style="margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+          <div class="email-container" style="max-width: 600px; margin: 0 auto;">
             
             <!-- Header -->
             <div style="background: linear-gradient(135deg, #2c5530 0%, #4a7c59 100%); padding: 40px 30px; text-align: center;">
@@ -172,39 +434,39 @@ export class EmailTemplates {
             <!-- Main Content -->
             <div style="padding: 40px 30px;">
               <div style="text-align: center; margin-bottom: 30px;">
-                <h2 style="color: #2c5530; margin: 0 0 10px 0; font-size: 26px; font-weight: 600;">
+                <h2 class="text-primary" style="margin: 0 0 10px 0; font-size: 26px; font-weight: 600;">
                   🚀 Session Starting Soon!
                 </h2>
-                <p style="color: #666; margin: 0; font-size: 18px; font-weight: 500;">
+                <p class="text-secondary" style="margin: 0; font-size: 18px; font-weight: 500;">
                   Hi ${data.userFullName}, your session starts in 15 minutes!
                 </p>
               </div>
               
               <!-- Session Details Card -->
-              <div style="background: linear-gradient(135deg, #f8fffe 0%, #e8f5e8 100%); border: 2px solid #4a7c59; border-radius: 12px; padding: 30px; margin: 30px 0;">
-                <h3 style="color: #2c5530; margin: 0 0 20px 0; font-size: 20px; font-weight: 600; text-align: center;">
+              <div class="bg-card" style="border-radius: 12px; padding: 30px; margin: 30px 0;">
+                <h3 class="text-primary" style="margin: 0 0 20px 0; font-size: 20px; font-weight: 600; text-align: center;">
                   🏌️ Your Session Details
                 </h3>
                 
                 <div style="display: grid; gap: 15px;">
-                  <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid #e0e0e0;">
+                  <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid;" class="border-light">
                     <span style="color: #4a7c59; font-weight: 600; width: 120px; display: inline-block;">📍 Location:</span>
-                    <span style="color: #333; font-weight: 500;">${data.locationName}</span>
+                    <span class="text-tertiary" style="font-weight: 500;">${data.locationName}</span>
                   </div>
                   
-                  <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid #e0e0e0;">
+                  <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid;" class="border-light">
                     <span style="color: #4a7c59; font-weight: 600; width: 120px; display: inline-block;">🏌️ Bay:</span>
-                    <span style="color: #333; font-weight: 500;">${data.bayName}</span>
+                    <span class="text-tertiary" style="font-weight: 500;">${data.bayName}</span>
                   </div>
                   
-                  <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid #e0e0e0;">
+                  <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid;" class="border-light">
                     <span style="color: #4a7c59; font-weight: 600; width: 120px; display: inline-block;">📅 Date:</span>
-                    <span style="color: #333; font-weight: 500;">${startDate}</span>
+                    <span class="text-tertiary" style="font-weight: 500;">${startDate}</span>
                   </div>
                   
                   <div style="display: flex; align-items: center; padding: 10px 0;">
                     <span style="color: #4a7c59; font-weight: 600; width: 120px; display: inline-block;">⏰ Time:</span>
-                    <span style="color: #333; font-weight: 500;">${startTime} - ${endTime}</span>
+                    <span class="text-tertiary" style="font-weight: 500;">${startTime} - ${endTime}</span>
                   </div>
                 </div>
               </div>
@@ -212,47 +474,45 @@ export class EmailTemplates {
               ${data.unlockLink ? `
               <!-- Unlock Button -->
               <div style="text-align: center; margin: 40px 0;">
-                <h3 style="color: #2c5530; margin-bottom: 20px; font-size: 18px;">Ready to unlock your bay?</h3>
+                <h3 class="text-primary" style="margin-bottom: 20px; font-size: 18px;">Ready to unlock your bay?</h3>
                 <a href="${data.unlockLink}" 
-                   style="background: linear-gradient(135deg, #4a7c59 0%, #2c5530 100%); 
-                          color: #ffffff; 
-                          padding: 18px 40px; 
+                   class="unlock-button"
+                   style="padding: 18px 40px; 
                           text-decoration: none; 
                           border-radius: 50px; 
                           font-weight: 600; 
                           font-size: 16px;
                           display: inline-block;
-                          box-shadow: 0 4px 15px rgba(76, 124, 89, 0.3);
                           transition: all 0.3s ease;
                           letter-spacing: 0.5px;">
                   🔓 UNLOCK MY BAY
                 </a>
               </div>
               
-              <div style="background-color: #e8f4f8; border-left: 4px solid #17a2b8; padding: 20px; margin: 30px 0; border-radius: 0 8px 8px 0;">
-                <h4 style="color: #0c5460; margin: 0 0 10px 0; font-size: 16px;">
+              <div class="bg-info" style="border-left: 4px solid; padding: 20px; margin: 30px 0; border-radius: 0 8px 8px 0;">
+                <h4 class="text-info" style="margin: 0 0 10px 0; font-size: 16px;">
                   📱 How to Use Your Unlock Link
                 </h4>
-                <p style="color: #0c5460; margin: 0; font-size: 14px; line-height: 1.5;">
+                <p class="text-info" style="margin: 0; font-size: 14px; line-height: 1.5;">
                   Click the "Unlock My Bay" button when you arrive at the facility. This link will automatically expire when your session ends for security.
                 </p>
               </div>
               ` : ''}
               
               <!-- Arrival Instructions -->
-              <div style="background-color: #fff3cd; border: 1px solid #ffeaa7; border-radius: 8px; padding: 20px; margin: 30px 0;">
-                <h4 style="color: #8a6d3b; margin: 0 0 10px 0; font-size: 16px;">
+              <div class="bg-notice" style="border: 1px solid; border-radius: 8px; padding: 20px; margin: 30px 0;">
+                <h4 class="text-notice" style="margin: 0 0 10px 0; font-size: 16px;">
                   🎯 Arrival Instructions
                 </h4>
-                <p style="color: #8a6d3b; margin: 0; font-size: 14px; line-height: 1.5;">
+                <p class="text-notice" style="margin: 0; font-size: 14px; line-height: 1.5;">
                   Please arrive 5 minutes early to get settled. If you need any assistance, our staff will be happy to help!
                 </p>
               </div>
               
               <!-- Motivational Message -->
               <div style="text-align: center; margin-top: 40px;">
-                <h3 style="color: #2c5530; margin-bottom: 15px; font-size: 18px;">Time to Perfect Your Swing! 🎯</h3>
-                <p style="color: #666; margin: 0; line-height: 1.6;">
+                <h3 class="text-primary" style="margin-bottom: 15px; font-size: 18px;">Time to Perfect Your Swing! 🎯</h3>
+                <p class="text-secondary" style="margin: 0; line-height: 1.6;">
                   Make every shot count and enjoy your session at Golf Labs US!
                 </p>
               </div>
