@@ -85,6 +85,7 @@ export async function enqueueReminders(): Promise<void> {
       const token = generateUnlockToken(booking.id, booking.start_time, booking.end_time);
       return {
         id: booking.id,
+        location_id: booking.location_id,
         unlock_token: token,
         unlock_token_expires_at: booking.end_time
       };
