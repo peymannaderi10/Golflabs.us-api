@@ -194,27 +194,17 @@ class SocketService {
         });
     }
     /**
-     * Sends an unlock command to a specific kiosk via websocket
-     * @param locationId The ID of the location
-     * @param bayId The ID of the bay/kiosk to unlock
-     * @param duration Duration in seconds to unlock the door
-     * @param bookingId The booking ID for logging purposes
-     * @returns Promise<boolean> indicating success
+     * Sends an unlock command to the specified kiosk and waits for a response.
+     * @param locationId The ID of the location.
+     * @param bayId The ID of the bay.
+     * @param duration The duration in seconds for the door to remain unlocked.
+     * @param bookingId The ID of the booking triggering the unlock.
+     * @returns A promise that resolves to true if the unlock was successful, otherwise false.
      */
     sendUnlockCommand(locationId, bayId, duration, bookingId) {
-        return __awaiter(this, void 0, void 0, function* () {
-            if (!locationId || !bayId) {
-                console.error('sendUnlockCommand: Missing locationId or bayId');
-                return false;
-            }
+        return new Promise((resolve) => __awaiter(this, void 0, void 0, function* () {
             const room = `location-${locationId}-bay-${bayId}`;
-            // Check if any kiosks are connected to this room
-            const socketsInRoom = yield this.io.in(room).fetchSockets();
-            if (socketsInRoom.length === 0) {
-                console.warn(`No kiosks connected for room ${room}. Cannot send unlock command.`);
-                return false;
-            }
-            const unlockPayload = {
+            const payload = {
                 type: 'door_unlock',
                 duration,
                 bookingId,
@@ -222,11 +212,32 @@ class SocketService {
                 bayId,
                 timestamp: new Date().toISOString()
             };
-            // Send unlock command to all kiosks in the room (usually just one)
-            this.io.to(room).emit('unlock', unlockPayload);
-            console.log(`Sent unlock command to room ${room} for booking ${bookingId}. Duration: ${duration} seconds. Connected kiosks: ${socketsInRoom.length}`);
-            return true;
-        });
+            try {
+                // Find sockets for the target kiosk
+                const sockets = yield this.io.in(room).fetchSockets();
+                if (sockets.length === 0) {
+                    console.error(`No kiosk connected in room: ${room}`);
+                    return resolve(false);
+                }
+                const kioskSocket = sockets[0]; // Assuming one kiosk per room
+                console.log(`Sending unlock command to kiosk ${kioskSocket.id} in room ${room}`);
+                // Emit with a timeout and acknowledgment callback
+                const response = yield kioskSocket.timeout(10000).emitWithAck('unlock', payload);
+                if (response.success) {
+                    console.log(`Kiosk ${kioskSocket.id} confirmed unlock success.`);
+                    resolve(true);
+                }
+                else {
+                    console.error(`Kiosk ${kioskSocket.id} reported unlock failure: ${response.error}`);
+                    resolve(false);
+                }
+            }
+            catch (e) {
+                // This catch block handles timeout errors or other socket errors
+                console.error(`Did not receive unlock confirmation from room ${room}. Error: ${e.message}`);
+                resolve(false);
+            }
+        }));
     }
 }
 exports.SocketService = SocketService;

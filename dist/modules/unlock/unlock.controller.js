@@ -95,33 +95,33 @@ class UnlockController {
                     // Don't fail the request, just log the error
                 }
                 // Send unlock command to kiosk via websocket
-                const unlockSuccess = yield this.socketService.sendUnlockCommand(booking.location_id, booking.bay_id, 5, // 5 seconds unlock duration
+                const unlockSuccessful = yield this.socketService.sendUnlockCommand(booking.location_id, booking.bay_id, 5, // 5 seconds unlock duration
                 bookingId);
-                if (!unlockSuccess) {
+                if (!unlockSuccessful) {
+                    console.error(`Unlock failed for booking ${bookingId}: Kiosk did not confirm.`);
                     // Log the failure
-                    yield database_1.supabase
-                        .from('access_logs')
-                        .insert({
+                    yield database_1.supabase.from('access_logs').insert({
                         location_id: booking.location_id,
                         bay_id: booking.bay_id,
                         booking_id: bookingId,
                         user_id: booking.user_id,
-                        action: 'door_unlock_button_pressed',
+                        action: 'door_unlock_failure',
                         success: false,
-                        error_message: 'Kiosk not online or failed to respond',
+                        error_message: 'Kiosk did not respond or reported failure',
                         ip_address: ipAddress,
                         user_agent: userAgent,
                         unlock_method: 'email_link',
                         unlock_token_used: token.slice(-8)
                     });
                     return res.status(503).json({
-                        error: 'Door unlock system is currently offline. Please try again or contact support.'
+                        success: false,
+                        error: 'The door unlock system is currently offline or the lock is unreachable. Please try again in a moment. If the problem persists, please contact support.'
                     });
                 }
-                console.log(`Door unlock command sent successfully for booking ${bookingId}`);
+                console.log(`Door unlock command acknowledged as successful for booking ${bookingId}`);
                 res.json({
                     success: true,
-                    message: 'Door unlock command sent successfully!',
+                    message: 'Access granted! The door is now unlocked.',
                     bookingId,
                     unlockDuration: 5
                 });
