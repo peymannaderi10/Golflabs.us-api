@@ -210,15 +210,15 @@ export class SocketService {
    */
   public sendUnlockCommand(locationId: string, bayId: string, duration: number, bookingId: string): Promise<boolean> {
     return new Promise(async (resolve) => {
-      const room = `location-${locationId}-bay-${bayId}`;
+    const room = `location-${locationId}-bay-${bayId}`;
       const payload = {
-        type: 'door_unlock',
-        duration,
-        bookingId,
-        locationId,
-        bayId,
-        timestamp: new Date().toISOString()
-      };
+      type: 'door_unlock',
+      duration,
+      bookingId,
+      locationId,
+      bayId,
+      timestamp: new Date().toISOString()
+    };
 
       try {
         // Find sockets for the target kiosk
