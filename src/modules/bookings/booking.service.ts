@@ -518,7 +518,7 @@ export class BookingService {
       throw new Error('Booking ID and Employee ID are required');
     }
 
-    // Call the database function for atomic cancellation
+    // 1. Call the database function for atomic cancellation
     const { error: rpcError } = await supabase.rpc('cancel_booking_by_employee', {
       p_booking_id: bookingId,
       p_employee_user_id: employeeId,
@@ -530,25 +530,25 @@ export class BookingService {
       throw new Error('Database cancellation failed: ' + rpcError.message);
     }
 
-    // Get booking details for Stripe refund
-    const { data: booking, error: bookingError } = await supabase
-      .from('bookings')
-      .select('total_amount, location_id, bay_id, payment_intent_id')
-      .eq('id', bookingId)
-      .single();
+    // 2. Get the successful payment record to process the refund
+    const { data: payment, error: paymentError } = await supabase
+      .from('payments')
+      .select('stripe_payment_intent_id, amount')
+      .eq('booking_id', bookingId)
+      .eq('status', 'succeeded')
+      .maybeSingle();
 
-    if (bookingError) {
-      console.error('Error fetching booking for refund:', bookingError);
-      throw new Error('Failed to fetch booking details');
+    if (paymentError) {
+        console.warn(`Could not query payment for booking ${bookingId}. Cancelling without refund.`, paymentError);
     }
 
-    // Process Stripe refund if payment exists
+    // 3. Process Stripe refund if a valid payment intent exists
     let refundId = null;
-    if (booking.payment_intent_id) {
+    if (payment && payment.stripe_payment_intent_id && !payment.stripe_payment_intent_id.startsWith('temp_')) {
       try {
         const refund = await stripe.refunds.create({
-          payment_intent: booking.payment_intent_id,
-          reason: 'requested_by_customer',
+          payment_intent: payment.stripe_payment_intent_id,
+          amount: Math.round(payment.amount * 100), // Use amount from payment table and convert to cents
           metadata: {
             booking_id: bookingId,
             cancelled_by_employee: employeeId,
@@ -557,30 +557,39 @@ export class BookingService {
         });
         refundId = refund.id;
         
-        // Update payment record
+        // 4. Update our payment record to show the refund
         await supabase
           .from('payments')
           .update({ 
             status: 'refunded', 
             refunded_at: new Date().toISOString(),
-            refund_amount: booking.total_amount
+            refund_amount: payment.amount
           })
-          .eq('stripe_payment_intent_id', booking.payment_intent_id);
+          .eq('stripe_payment_intent_id', payment.stripe_payment_intent_id);
 
         console.log(`Employee refund processed for booking ${bookingId}: ${refund.id}`);
       } catch (stripeError: any) {
         console.error(`Error processing employee refund for booking ${bookingId}:`, stripeError);
-        // Don't fail the cancellation since booking is already cancelled in DB
+        // Don't fail the entire request since the booking is already cancelled in DB.
       }
+    } else if (payment) {
+        console.warn(`Skipping refund for booking ${bookingId} because a valid payment_intent_id was not found.`);
     }
+
+    // 5. Get booking details needed for the socket update
+    const { data: bookingDetails } = await supabase
+      .from('bookings')
+      .select('location_id, bay_id')
+      .eq('id', bookingId)
+      .single();
 
     return {
       success: true,
       bookingId,
       refundId,
-      locationId: booking.location_id,
-      bayId: booking.bay_id,
-      message: refundId ? 'Booking cancelled and refund processed by staff' : 'Booking cancelled by staff'
+      locationId: bookingDetails?.location_id,
+      bayId: bookingDetails?.bay_id,
+      message: refundId ? 'Booking cancelled and refund processed by staff' : 'Booking cancelled by staff (no refund processed)'
     };
   }
 } 
