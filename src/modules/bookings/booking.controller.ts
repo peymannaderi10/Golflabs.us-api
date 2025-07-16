@@ -86,4 +86,65 @@ export class BookingController {
       res.status(500).json({ error: 'Failed to cancel booking', details: error.message });
     }
   };
+
+  // Employee-specific endpoints
+  getEmployeeBookings = async (req: Request, res: Response) => {
+    try {
+      const { locationId, date, bayId, customerEmail } = req.query;
+
+      if (!locationId) {
+        return res.status(400).json({ error: 'locationId is required' });
+      }
+
+      const bookings = await this.bookingService.getAllBookingsForEmployee(
+        locationId as string, 
+        date as string, 
+        bayId as string, 
+        customerEmail as string
+      );
+      res.json(bookings);
+    } catch (error: any) {
+      console.error('Error in employee bookings endpoint:', error);
+      res.status(500).json({ error: error.message });
+    }
+  };
+
+  searchCustomers = async (req: Request, res: Response) => {
+    try {
+      const { email, locationId } = req.query;
+
+      if (!email || !locationId) {
+        return res.status(400).json({ error: 'email and locationId are required' });
+      }
+
+      const customers = await this.bookingService.searchCustomersByEmail(email as string, locationId as string);
+      res.json(customers);
+    } catch (error: any) {
+      console.error('Error in customer search endpoint:', error);
+      res.status(500).json({ error: error.message });
+    }
+  };
+
+  employeeCancelBooking = async (req: Request, res: Response) => {
+    try {
+      const { bookingId } = req.params;
+      const { reason } = req.body;
+      const employeeProfile = (req as any).employeeProfile;
+
+      if (!employeeProfile) {
+        return res.status(403).json({ error: 'Employee authentication required' });
+      }
+
+      const result = await this.bookingService.employeeCancelBooking(bookingId, employeeProfile.id, reason);
+      res.json(result);
+
+      // Trigger socket update for real-time booking changes
+      if (result.locationId && result.bayId) {
+        this.socketService.triggerBookingUpdate(result.locationId, result.bayId, bookingId);
+      }
+    } catch (error: any) {
+      console.error(`Error in employee cancel booking ${req.params.bookingId}:`, error);
+      res.status(500).json({ error: 'Failed to cancel booking', details: error.message });
+    }
+  };
 } 

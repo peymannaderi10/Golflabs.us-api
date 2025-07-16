@@ -86,6 +86,55 @@ class BookingController {
                 res.status(500).json({ error: 'Failed to cancel booking', details: error.message });
             }
         });
+        // Employee-specific endpoints
+        this.getEmployeeBookings = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            try {
+                const { locationId, date, bayId, customerEmail } = req.query;
+                if (!locationId) {
+                    return res.status(400).json({ error: 'locationId is required' });
+                }
+                const bookings = yield this.bookingService.getAllBookingsForEmployee(locationId, date, bayId, customerEmail);
+                res.json(bookings);
+            }
+            catch (error) {
+                console.error('Error in employee bookings endpoint:', error);
+                res.status(500).json({ error: error.message });
+            }
+        });
+        this.searchCustomers = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            try {
+                const { email, locationId } = req.query;
+                if (!email || !locationId) {
+                    return res.status(400).json({ error: 'email and locationId are required' });
+                }
+                const customers = yield this.bookingService.searchCustomersByEmail(email, locationId);
+                res.json(customers);
+            }
+            catch (error) {
+                console.error('Error in customer search endpoint:', error);
+                res.status(500).json({ error: error.message });
+            }
+        });
+        this.employeeCancelBooking = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            try {
+                const { bookingId } = req.params;
+                const { reason } = req.body;
+                const employeeProfile = req.employeeProfile;
+                if (!employeeProfile) {
+                    return res.status(403).json({ error: 'Employee authentication required' });
+                }
+                const result = yield this.bookingService.employeeCancelBooking(bookingId, employeeProfile.id, reason);
+                res.json(result);
+                // Trigger socket update for real-time booking changes
+                if (result.locationId && result.bayId) {
+                    this.socketService.triggerBookingUpdate(result.locationId, result.bayId, bookingId);
+                }
+            }
+            catch (error) {
+                console.error(`Error in employee cancel booking ${req.params.bookingId}:`, error);
+                res.status(500).json({ error: 'Failed to cancel booking', details: error.message });
+            }
+        });
         this.bookingService = new booking_service_1.BookingService();
         this.socketService = socketService;
     }

@@ -385,5 +385,136 @@ class BookingService {
             };
         });
     }
+    // Employee-specific methods
+    getAllBookingsForEmployee(locationId, date, bayId, customerEmail) {
+        return __awaiter(this, void 0, void 0, function* () {
+            let query = database_1.supabase
+                .from('bookings')
+                .select(`
+        *,
+        user_profiles(id, email, full_name, phone),
+        bays(id, name, bay_number),
+        payments(id, amount, status, stripe_payment_intent_id, refund_amount, refunded_at),
+        booking_cancellations(cancelled_by, cancellation_reason, refund_amount, cancelled_at)
+      `)
+                .eq('location_id', locationId);
+            if (date) {
+                // Get the location's timezone first
+                const { data: location } = yield database_1.supabase
+                    .from('locations')
+                    .select('timezone')
+                    .eq('id', locationId)
+                    .single();
+                const timezone = (location === null || location === void 0 ? void 0 : location.timezone) || 'America/New_York';
+                // Use the same createISOTimestamp logic from existing methods
+                const startOfDay = (0, date_utils_1.createISOTimestamp)(date, '12:00 AM', timezone);
+                const endOfDay = (0, date_utils_1.createISOTimestamp)(date, '11:59 PM', timezone);
+                const endOfDayPlusOneMinute = new Date(new Date(endOfDay).getTime() + 60000).toISOString();
+                query = query
+                    .gte('start_time', startOfDay)
+                    .lt('start_time', endOfDayPlusOneMinute);
+            }
+            if (bayId) {
+                query = query.eq('bay_id', bayId);
+            }
+            const { data, error } = yield query.order('start_time', { ascending: true });
+            if (error) {
+                console.error('Error fetching bookings for employee:', error);
+                throw error;
+            }
+            // Filter by customer email if provided (done in memory since we need to join)
+            let filteredData = data || [];
+            if (customerEmail) {
+                filteredData = filteredData.filter(booking => { var _a, _b; return (_b = (_a = booking.user_profiles) === null || _a === void 0 ? void 0 : _a.email) === null || _b === void 0 ? void 0 : _b.toLowerCase().includes(customerEmail.toLowerCase()); });
+            }
+            return filteredData;
+        });
+    }
+    searchCustomersByEmail(email, locationId) {
+        return __awaiter(this, void 0, void 0, function* () {
+            if (!email || email.length < 3) {
+                throw new Error('Email search requires at least 3 characters');
+            }
+            const { data, error } = yield database_1.supabase
+                .from('user_profiles')
+                .select(`
+        id, email, full_name, phone,
+        bookings!inner(id, location_id, start_time, end_time, status, total_amount)
+      `)
+                .ilike('email', `%${email}%`)
+                .eq('bookings.location_id', locationId)
+                .order('email');
+            if (error) {
+                console.error('Error searching customers:', error);
+                throw error;
+            }
+            return data;
+        });
+    }
+    employeeCancelBooking(bookingId, employeeId, reason) {
+        return __awaiter(this, void 0, void 0, function* () {
+            if (!bookingId || !employeeId) {
+                throw new Error('Booking ID and Employee ID are required');
+            }
+            // Call the database function for atomic cancellation
+            const { error: rpcError } = yield database_1.supabase.rpc('cancel_booking_by_employee', {
+                p_booking_id: bookingId,
+                p_employee_user_id: employeeId,
+                p_cancellation_reason: reason || 'Cancelled by staff'
+            });
+            if (rpcError) {
+                console.error('Error cancelling booking in database:', rpcError);
+                throw new Error('Database cancellation failed: ' + rpcError.message);
+            }
+            // Get booking details for Stripe refund
+            const { data: booking, error: bookingError } = yield database_1.supabase
+                .from('bookings')
+                .select('total_amount, location_id, bay_id, payment_intent_id')
+                .eq('id', bookingId)
+                .single();
+            if (bookingError) {
+                console.error('Error fetching booking for refund:', bookingError);
+                throw new Error('Failed to fetch booking details');
+            }
+            // Process Stripe refund if payment exists
+            let refundId = null;
+            if (booking.payment_intent_id) {
+                try {
+                    const refund = yield stripe_1.stripe.refunds.create({
+                        payment_intent: booking.payment_intent_id,
+                        reason: 'requested_by_customer',
+                        metadata: {
+                            booking_id: bookingId,
+                            cancelled_by_employee: employeeId,
+                            cancelled_at: new Date().toISOString()
+                        }
+                    });
+                    refundId = refund.id;
+                    // Update payment record
+                    yield database_1.supabase
+                        .from('payments')
+                        .update({
+                        status: 'refunded',
+                        refunded_at: new Date().toISOString(),
+                        refund_amount: booking.total_amount
+                    })
+                        .eq('stripe_payment_intent_id', booking.payment_intent_id);
+                    console.log(`Employee refund processed for booking ${bookingId}: ${refund.id}`);
+                }
+                catch (stripeError) {
+                    console.error(`Error processing employee refund for booking ${bookingId}:`, stripeError);
+                    // Don't fail the cancellation since booking is already cancelled in DB
+                }
+            }
+            return {
+                success: true,
+                bookingId,
+                refundId,
+                locationId: booking.location_id,
+                bayId: booking.bay_id,
+                message: refundId ? 'Booking cancelled and refund processed by staff' : 'Booking cancelled by staff'
+            };
+        });
+    }
 }
 exports.BookingService = BookingService;
