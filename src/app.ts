@@ -1,5 +1,7 @@
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import { handleStripeWebhook } from './modules/payments/stripe.webhooks';
@@ -34,11 +36,39 @@ socketService.init();
 // MIDDLEWARE
 // =====================================================
 
+// Security headers and HTTPS enforcement
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "https://js.stripe.com"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:", "https:"],
+      connectSrc: ["'self'", "https://api.stripe.com"],
+      frameSrc: ["'self'", "https://js.stripe.com", "https://hooks.stripe.com"],
+    },
+  },
+  hsts: {
+    maxAge: 31536000,
+    includeSubDomains: true,
+    preload: true
+  }
+}));
+
 // Use cors before the webhook route
 app.use(cors());
 
+// Webhook rate limiting - separate from payment endpoints
+const webhookRateLimit = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: 100, // 100 requests per minute (Stripe can send many webhooks)
+  message: { error: 'Too many webhook requests' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // Webhook endpoints need raw body - must be before express.json()
-app.post('/stripe-webhook', express.raw({ type: 'application/json' }), (req, res) => handleStripeWebhook(req, res, socketService));
+app.post('/stripe-webhook', webhookRateLimit, express.raw({ type: 'application/json' }), (req, res) => handleStripeWebhook(req, res, socketService));
 app.post('/resend-webhook', express.raw({ type: 'application/json' }), handleResendWebhook);
 
 // Use json parser for all other routes

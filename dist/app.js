@@ -6,6 +6,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.httpServer = exports.app = void 0;
 const express_1 = __importDefault(require("express"));
 const cors_1 = __importDefault(require("cors"));
+const helmet_1 = __importDefault(require("helmet"));
+const express_rate_limit_1 = __importDefault(require("express-rate-limit"));
 const http_1 = require("http");
 const socket_io_1 = require("socket.io");
 const stripe_webhooks_1 = require("./modules/payments/stripe.webhooks");
@@ -35,10 +37,36 @@ socketService.init();
 // =====================================================
 // MIDDLEWARE
 // =====================================================
+// Security headers and HTTPS enforcement
+exports.app.use((0, helmet_1.default)({
+    contentSecurityPolicy: {
+        directives: {
+            defaultSrc: ["'self'"],
+            scriptSrc: ["'self'", "'unsafe-inline'", "https://js.stripe.com"],
+            styleSrc: ["'self'", "'unsafe-inline'"],
+            imgSrc: ["'self'", "data:", "https:"],
+            connectSrc: ["'self'", "https://api.stripe.com"],
+            frameSrc: ["'self'", "https://js.stripe.com", "https://hooks.stripe.com"],
+        },
+    },
+    hsts: {
+        maxAge: 31536000,
+        includeSubDomains: true,
+        preload: true
+    }
+}));
 // Use cors before the webhook route
 exports.app.use((0, cors_1.default)());
+// Webhook rate limiting - separate from payment endpoints
+const webhookRateLimit = (0, express_rate_limit_1.default)({
+    windowMs: 1 * 60 * 1000, // 1 minute
+    max: 100, // 100 requests per minute (Stripe can send many webhooks)
+    message: { error: 'Too many webhook requests' },
+    standardHeaders: true,
+    legacyHeaders: false,
+});
 // Webhook endpoints need raw body - must be before express.json()
-exports.app.post('/stripe-webhook', express_1.default.raw({ type: 'application/json' }), (req, res) => (0, stripe_webhooks_1.handleStripeWebhook)(req, res, socketService));
+exports.app.post('/stripe-webhook', webhookRateLimit, express_1.default.raw({ type: 'application/json' }), (req, res) => (0, stripe_webhooks_1.handleStripeWebhook)(req, res, socketService));
 exports.app.post('/resend-webhook', express_1.default.raw({ type: 'application/json' }), email_webhooks_1.handleResendWebhook);
 // Use json parser for all other routes
 exports.app.use(express_1.default.json());
