@@ -92,6 +92,54 @@ class EmailService {
         });
     }
     /**
+     * Send a cancellation email
+     */
+    static sendCancellationEmail(bookingId_1, cancellationReason_1) {
+        return __awaiter(this, arguments, void 0, function* (bookingId, cancellationReason, cancelledBy = 'customer', refundAmount, refundProcessed = false) {
+            try {
+                // Check if cancellation email already sent
+                const exists = yield notification_service_1.NotificationService.notificationExists(bookingId, 'cancellation');
+                if (exists) {
+                    console.log(`Cancellation email already exists for booking ${bookingId}`);
+                    return;
+                }
+                // Get booking data
+                const bookingData = yield notification_service_1.NotificationService.getBookingEmailData(bookingId);
+                if (!bookingData) {
+                    console.error(`Could not get booking data for cancellation email: ${bookingId}`);
+                    return;
+                }
+                // Add cancellation-specific data
+                const emailData = Object.assign(Object.assign({}, bookingData), { cancellationReason,
+                    cancelledBy,
+                    refundAmount,
+                    refundProcessed });
+                // Generate email template
+                const template = email_templates_1.EmailTemplates.cancellation(emailData);
+                // Create notification record
+                const notificationId = yield notification_service_1.NotificationService.createNotification({
+                    locationId: bookingData.locationId,
+                    userId: bookingData.userId,
+                    bookingId: bookingId,
+                    type: 'cancellation',
+                    recipient: bookingData.userEmail,
+                    subject: template.subject,
+                    content: template.html,
+                    metadata: {
+                        cancellationReason,
+                        cancelledBy,
+                        refundAmount,
+                        refundProcessed
+                    }
+                });
+                console.log(`Created cancellation notification ${notificationId} for booking ${bookingId}`);
+            }
+            catch (error) {
+                console.error(`Error sending cancellation email for booking ${bookingId}:`, error);
+            }
+        });
+    }
+    /**
      * Send an email using Resend
      */
     static sendEmail(to, subject, html) {

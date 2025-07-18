@@ -2,6 +2,7 @@ import { supabase } from '../../config/database';
 import { stripe } from '../../config/stripe';
 import { parseTimeString, createISOTimestamp } from '../../shared/utils/date.utils';
 import { BookingDetails } from './booking.types';
+import { EmailService } from '../email/email.service';
 
 export class BookingService {
   async reserveBooking(bookingData: BookingDetails) {
@@ -425,6 +426,20 @@ export class BookingService {
       console.error(`Error creating cancellation record for booking ${bookingId}:`, cancellationError);
     }
 
+    // 9. Send cancellation email notification
+    try {
+      await EmailService.sendCancellationEmail(
+        bookingId,
+        'Customer requested cancellation',
+        'customer',
+        payment ? payment.amount : undefined,
+        !!refundId
+      );
+    } catch (emailError) {
+      console.error(`Error sending cancellation email for booking ${bookingId}:`, emailError);
+      // Don't fail the request since booking was already cancelled successfully
+    }
+
     return {
       success: true,
       bookingId,
@@ -582,6 +597,20 @@ export class BookingService {
       .select('location_id, bay_id')
       .eq('id', bookingId)
       .single();
+
+    // 6. Send cancellation email notification
+    try {
+      await EmailService.sendCancellationEmail(
+        bookingId,
+        reason || 'Cancelled by staff',
+        'employee',
+        payment ? payment.amount : undefined,
+        !!refundId
+      );
+    } catch (emailError) {
+      console.error(`Error sending cancellation email for booking ${bookingId}:`, emailError);
+      // Don't fail the request since booking was already cancelled successfully
+    }
 
     return {
       success: true,

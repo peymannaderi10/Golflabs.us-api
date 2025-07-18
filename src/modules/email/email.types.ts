@@ -16,6 +16,11 @@ export interface BookingEmailData {
   totalAmount: number;
   unlockToken?: string;
   unlockLink?: string;
+  // Cancellation-specific data
+  cancellationReason?: string;
+  cancelledBy?: 'customer' | 'employee';
+  refundAmount?: number;
+  refundProcessed?: boolean;
 }
 
 export interface NotificationRecord {

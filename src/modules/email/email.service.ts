@@ -94,6 +94,66 @@ export class EmailService {
   }
 
   /**
+   * Send a cancellation email
+   */
+  static async sendCancellationEmail(
+    bookingId: string,
+    cancellationReason?: string,
+    cancelledBy: 'customer' | 'employee' = 'customer',
+    refundAmount?: number,
+    refundProcessed: boolean = false
+  ): Promise<void> {
+    try {
+      // Check if cancellation email already sent
+      const exists = await NotificationService.notificationExists(bookingId, 'cancellation');
+      if (exists) {
+        console.log(`Cancellation email already exists for booking ${bookingId}`);
+        return;
+      }
+
+      // Get booking data
+      const bookingData = await NotificationService.getBookingEmailData(bookingId);
+      if (!bookingData) {
+        console.error(`Could not get booking data for cancellation email: ${bookingId}`);
+        return;
+      }
+
+      // Add cancellation-specific data
+      const emailData: BookingEmailData = {
+        ...bookingData,
+        cancellationReason,
+        cancelledBy,
+        refundAmount,
+        refundProcessed
+      };
+
+      // Generate email template
+      const template = EmailTemplates.cancellation(emailData);
+
+      // Create notification record
+      const notificationId = await NotificationService.createNotification({
+        locationId: bookingData.locationId,
+        userId: bookingData.userId,
+        bookingId: bookingId,
+        type: 'cancellation',
+        recipient: bookingData.userEmail,
+        subject: template.subject,
+        content: template.html,
+        metadata: {
+          cancellationReason,
+          cancelledBy,
+          refundAmount,
+          refundProcessed
+        }
+      });
+
+      console.log(`Created cancellation notification ${notificationId} for booking ${bookingId}`);
+    } catch (error) {
+      console.error(`Error sending cancellation email for booking ${bookingId}:`, error);
+    }
+  }
+
+  /**
    * Send an email using Resend
    */
   static async sendEmail(to: string, subject: string, html: string): Promise<string> {

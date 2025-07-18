@@ -13,6 +13,7 @@ exports.BookingService = void 0;
 const database_1 = require("../../config/database");
 const stripe_1 = require("../../config/stripe");
 const date_utils_1 = require("../../shared/utils/date.utils");
+const email_service_1 = require("../email/email.service");
 class BookingService {
     reserveBooking(bookingData) {
         return __awaiter(this, void 0, void 0, function* () {
@@ -375,6 +376,14 @@ class BookingService {
             if (cancellationError) {
                 console.error(`Error creating cancellation record for booking ${bookingId}:`, cancellationError);
             }
+            // 9. Send cancellation email notification
+            try {
+                yield email_service_1.EmailService.sendCancellationEmail(bookingId, 'Customer requested cancellation', 'customer', payment ? payment.amount : undefined, !!refundId);
+            }
+            catch (emailError) {
+                console.error(`Error sending cancellation email for booking ${bookingId}:`, emailError);
+                // Don't fail the request since booking was already cancelled successfully
+            }
             return {
                 success: true,
                 bookingId,
@@ -515,6 +524,14 @@ class BookingService {
                 .select('location_id, bay_id')
                 .eq('id', bookingId)
                 .single();
+            // 6. Send cancellation email notification
+            try {
+                yield email_service_1.EmailService.sendCancellationEmail(bookingId, reason || 'Cancelled by staff', 'employee', payment ? payment.amount : undefined, !!refundId);
+            }
+            catch (emailError) {
+                console.error(`Error sending cancellation email for booking ${bookingId}:`, emailError);
+                // Don't fail the request since booking was already cancelled successfully
+            }
             return {
                 success: true,
                 bookingId,

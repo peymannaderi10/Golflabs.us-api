@@ -559,4 +559,287 @@ export class EmailTemplates {
       `
     };
   }
+
+  static cancellation(data: BookingEmailData): EmailTemplate {
+    const formattedAmount = (data.totalAmount / 100).toFixed(2);
+    const refundAmount = data.refundAmount ? data.refundAmount.toFixed(2) : formattedAmount;
+    
+    // Convert UTC times to location timezone
+    const timezone = data.locationTimezone || 'America/New_York';
+    const localStartTime = toZonedTime(new Date(data.startTime), timezone);
+    const localEndTime = toZonedTime(new Date(data.endTime), timezone);
+    
+    const startDate = format(localStartTime, 'EEEE, MMMM d, yyyy', { timeZone: timezone });
+    const startTime = format(localStartTime, 'h:mm a', { timeZone: timezone });
+    const endTime = format(localEndTime, 'h:mm a', { timeZone: timezone });
+
+    const isCancelledByEmployee = data.cancelledBy === 'employee';
+    const reasonText = data.cancellationReason ? ` Reason: ${data.cancellationReason}` : '';
+
+    return {
+      subject: '❌ Your Golf Labs US booking has been cancelled',
+      html: `
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <meta name="color-scheme" content="light dark">
+          <meta name="supported-color-schemes" content="light dark">
+          <title>Booking Cancelled - Golf Labs US</title>
+          <style>
+            /* Light and Dark Mode Support */
+            :root {
+              color-scheme: light dark;
+              supported-color-schemes: light dark;
+            }
+            
+            /* Light Mode (Default) */
+            .email-body {
+              background-color: #f5f7fa !important;
+            }
+            .email-container {
+              background-color: #ffffff !important;
+            }
+            .text-primary {
+              color: #2c5530 !important;
+            }
+            .text-secondary {
+              color: #666 !important;
+            }
+            .text-tertiary {
+              color: #333 !important;
+            }
+            .text-muted {
+              color: #666 !important;
+            }
+            .text-danger {
+              color: #dc3545 !important;
+            }
+            .border-light {
+              border-color: #e0e0e0 !important;
+            }
+            .bg-card {
+              background: linear-gradient(135deg, #fff8f8 0%, #ffe8e8 100%) !important;
+              border: 2px solid #dc3545 !important;
+            }
+            .bg-notice {
+              background-color: #d1ecf1 !important;
+              border-color: #bee5eb !important;
+            }
+            .text-notice {
+              color: #0c5460 !important;
+            }
+            .bg-refund {
+              background-color: #d4edda !important;
+              border-color: #c3e6cb !important;
+            }
+            .text-refund {
+              color: #155724 !important;
+            }
+            
+            /* Dark Mode Overrides */
+            @media (prefers-color-scheme: dark) {
+              .email-body {
+                background-color: #1a1a1a !important;
+              }
+              .email-container {
+                background-color: #2d2d2d !important;
+              }
+              .text-primary {
+                color: #6bb96e !important;
+              }
+              .text-secondary {
+                color: #b0b0b0 !important;
+              }
+              .text-tertiary {
+                color: #e0e0e0 !important;
+              }
+              .text-muted {
+                color: #a0a0a0 !important;
+              }
+              .text-danger {
+                color: #f56565 !important;
+              }
+              .border-light {
+                border-color: #4a4a4a !important;
+              }
+              .bg-card {
+                background: linear-gradient(135deg, #4a3d3d 0%, #3d2f2f 100%) !important;
+                border: 2px solid #f56565 !important;
+              }
+              .bg-notice {
+                background-color: #1a4a5c !important;
+                border-color: #2a6b85 !important;
+              }
+              .text-notice {
+                color: #6bb9d4 !important;
+              }
+              .bg-refund {
+                background-color: #1a4a2f !important;
+                border-color: #2a6b45 !important;
+              }
+              .text-refund {
+                color: #6bb96e !important;
+              }
+            }
+          </style>
+        </head>
+        <body class="email-body" style="margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+          <div class="email-container" style="max-width: 600px; margin: 0 auto;">
+            
+            <!-- Header -->
+            <div style="background: linear-gradient(135deg, #2c5530 0%, #4a7c59 100%); padding: 40px 30px; text-align: center;">
+              <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: 600; letter-spacing: 1px;">
+                ⛳ GOLF LABS US
+              </h1>
+            </div>
+            
+            <!-- Main Content -->
+            <div style="padding: 40px 30px;">
+              <div style="text-align: center; margin-bottom: 30px;">
+                <h2 class="text-danger" style="margin: 0 0 10px 0; font-size: 24px; font-weight: 600;">
+                  ❌ Booking Cancelled
+                </h2>
+                <p class="text-secondary" style="margin: 0; font-size: 16px;">
+                  ${isCancelledByEmployee ? 
+                    `We're sorry, but your booking has been cancelled by our staff.${reasonText}` : 
+                    `Your booking cancellation has been processed successfully, ${data.userFullName}.`
+                  }
+                </p>
+              </div>
+              
+              <!-- Cancelled Booking Details Card -->
+              <div class="bg-card" style="border-radius: 12px; padding: 30px; margin: 30px 0;">
+                <h3 class="text-danger" style="margin: 0 0 20px 0; font-size: 20px; font-weight: 600; text-align: center;">
+                  📋 Cancelled Booking Details
+                </h3>
+                
+                <div style="display: grid; gap: 15px;">
+                  <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid;" class="border-light">
+                    <span style="color: #dc3545; font-weight: 600; width: 120px; display: inline-block;">📍 Location:</span>
+                    <span class="text-tertiary" style="font-weight: 500;">${data.locationName}</span>
+                  </div>
+                  
+                  <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid;" class="border-light">
+                    <span style="color: #dc3545; font-weight: 600; width: 120px; display: inline-block;">🏌️ Bay:</span>
+                    <span class="text-tertiary" style="font-weight: 500;">${data.bayName}</span>
+                  </div>
+                  
+                  <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid;" class="border-light">
+                    <span style="color: #dc3545; font-weight: 600; width: 120px; display: inline-block;">📅 Date:</span>
+                    <span class="text-tertiary" style="font-weight: 500;">${startDate}</span>
+                  </div>
+                  
+                  <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid;" class="border-light">
+                    <span style="color: #dc3545; font-weight: 600; width: 120px; display: inline-block;">⏰ Time:</span>
+                    <span class="text-tertiary" style="font-weight: 500;">${startTime} - ${endTime}</span>
+                  </div>
+                  
+                  <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid;" class="border-light">
+                    <span style="color: #dc3545; font-weight: 600; width: 120px; display: inline-block;">💰 Amount:</span>
+                    <span class="text-tertiary" style="font-weight: 500;">$${formattedAmount}</span>
+                  </div>
+                  
+                  <div style="display: flex; align-items: center; padding: 10px 0;">
+                    <span style="color: #dc3545; font-weight: 600; width: 120px; display: inline-block;">🎫 Booking ID:</span>
+                    <span class="text-muted" style="font-family: monospace; font-size: 14px;">${data.bookingId}</span>
+                  </div>
+                </div>
+              </div>
+              
+              ${data.refundProcessed ? `
+              <!-- Refund Information -->
+              <div class="bg-refund" style="border: 1px solid; border-radius: 8px; padding: 20px; margin: 30px 0;">
+                <h4 class="text-refund" style="margin: 0 0 10px 0; font-size: 16px;">
+                  💳 Refund Information
+                </h4>
+                <p class="text-refund" style="margin: 0 0 10px 0; font-size: 14px; line-height: 1.5;">
+                  A full refund of <strong>$${refundAmount}</strong> has been processed to your original payment method.
+                </p>
+                <p class="text-refund" style="margin: 0; font-size: 14px; line-height: 1.5;">
+                  Please allow 3-5 business days for the refund to appear on your statement.
+                </p>
+              </div>
+              ` : ''}
+              
+              ${isCancelledByEmployee ? `
+              <!-- Apology Message -->
+              <div class="bg-notice" style="border: 1px solid; border-radius: 8px; padding: 20px; margin: 30px 0; text-align: center;">
+                <h4 class="text-notice" style="margin: 0 0 10px 0; font-size: 16px;">
+                  🙏 We Apologize for the Inconvenience
+                </h4>
+                <p class="text-notice" style="margin: 0; font-size: 14px; line-height: 1.5;">
+                  We sincerely apologize for any inconvenience caused. If you have any questions or would like to reschedule, please don't hesitate to contact us.
+                </p>
+              </div>
+              ` : `
+              <!-- Thank You Message -->
+              <div class="bg-notice" style="border: 1px solid; border-radius: 8px; padding: 20px; margin: 30px 0; text-align: center;">
+                <h4 class="text-notice" style="margin: 0 0 10px 0; font-size: 16px;">
+                  🙏 Thank You for Understanding
+                </h4>
+                <p class="text-notice" style="margin: 0; font-size: 14px; line-height: 1.5;">
+                  We understand that plans can change. We hope to welcome you back to Golf Labs US soon!
+                </p>
+              </div>
+              `}
+              
+              <!-- Next Steps -->
+              <div style="text-align: center; margin-top: 40px;">
+                <h3 class="text-primary" style="margin-bottom: 15px; font-size: 18px;">Ready to Book Again? 🏌️‍♂️</h3>
+                <p class="text-secondary" style="margin: 0 0 20px 0; line-height: 1.6;">
+                  We'd love to have you back! Visit our website to book your next session.
+                </p>
+              </div>
+            </div>
+            
+            <!-- Footer -->
+            <div style="background-color: #2c5530; padding: 30px; text-align: center;">
+              <p style="color: #ffffff; margin: 0 0 10px 0; font-size: 16px; font-weight: 600;">
+                We hope to see you again soon! 🏌️‍♂️
+              </p>
+              <p style="color: #a8d5aa; margin: 0; font-size: 14px;">
+                Golf Labs US - Where Technology Meets Golf
+              </p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `,
+      text: `
+        ❌ GOLF LABS US - Booking Cancelled
+        
+        ${isCancelledByEmployee ? 
+          `We're sorry, but your booking has been cancelled by our staff.${reasonText}` : 
+          `Your booking cancellation has been processed successfully, ${data.userFullName}.`
+        }
+        
+        📋 CANCELLED BOOKING DETAILS:
+        📍 Location: ${data.locationName}
+        🏌️ Bay: ${data.bayName}
+        📅 Date: ${startDate}
+        ⏰ Time: ${startTime} - ${endTime}
+        💰 Amount: $${formattedAmount}
+        🎫 Booking ID: ${data.bookingId}
+        
+        ${data.refundProcessed ? `
+        💳 REFUND INFORMATION:
+        A full refund of $${refundAmount} has been processed to your original payment method.
+        Please allow 3-5 business days for the refund to appear on your statement.
+        ` : ''}
+        
+        ${isCancelledByEmployee ? `
+        🙏 We sincerely apologize for any inconvenience caused. If you have any questions or would like to reschedule, please don't hesitate to contact us.
+        ` : `
+        🙏 We understand that plans can change. We hope to welcome you back to Golf Labs US soon!
+        `}
+        
+        Ready to book again? 🏌️‍♂️
+        We'd love to have you back! Visit our website to book your next session.
+        
+        Golf Labs US - Where Technology Meets Golf
+      `
+    };
+  }
 } 
