@@ -52,5 +52,33 @@ class BayService {
             return data;
         });
     }
+    // Add: Update bay status
+    updateBayStatus(bayId, status) {
+        return __awaiter(this, void 0, void 0, function* () {
+            if (!bayId) {
+                throw new Error('Bay ID is required');
+            }
+            if (!['available', 'closed'].includes(status)) {
+                throw new Error('Invalid status. Must be "available" or "closed".');
+            }
+            const { data, error } = yield database_1.supabase
+                .from('bays')
+                .update({
+                status,
+                updated_at: new Date().toISOString()
+            })
+                .eq('id', bayId)
+                .select('id, status, bay_number, name, location_id')
+                .single();
+            if (error) {
+                console.error('Error updating bay status:', error);
+                throw new Error('Failed to update bay status');
+            }
+            if (!data) {
+                throw new Error(`Bay with ID ${bayId} not found.`);
+            }
+            return data;
+        });
+    }
 }
 exports.BayService = BayService;

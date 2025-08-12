@@ -30,4 +30,21 @@ export class BayController {
       res.status(500).json({ message: error.message });
     }
   };
+
+  // Add: Update bay status
+  updateBayStatus = async (req: Request, res: Response) => {
+    try {
+      const { bayId } = req.params;
+      const { status } = req.body as { status: 'available' | 'closed' };
+
+      if (!status) {
+        return res.status(400).json({ message: 'Status is required' });
+      }
+
+      const updatedBay = await this.bayService.updateBayStatus(bayId, status);
+      res.status(200).json(updatedBay);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  };
 } 

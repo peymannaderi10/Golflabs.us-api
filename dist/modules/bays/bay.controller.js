@@ -34,6 +34,21 @@ class BayController {
                 res.status(500).json({ message: error.message });
             }
         });
+        // Add: Update bay status
+        this.updateBayStatus = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            try {
+                const { bayId } = req.params;
+                const { status } = req.body;
+                if (!status) {
+                    return res.status(400).json({ message: 'Status is required' });
+                }
+                const updatedBay = yield this.bayService.updateBayStatus(bayId, status);
+                res.status(200).json(updatedBay);
+            }
+            catch (error) {
+                res.status(500).json({ message: error.message });
+            }
+        });
         this.bayService = new bay_service_1.BayService();
     }
 }
