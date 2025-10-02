@@ -10,7 +10,7 @@ const controller = new PaymentController();
 // Rate limiting for payment endpoints - more restrictive than general API
 const paymentRateLimit = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10, // 10 requests per 15 minutes per IP
+  max: 20, // 20 requests per 15 minutes per IP
   message: {
     error: 'Too many payment requests from this IP, please try again later.'
   },
@@ -60,7 +60,7 @@ paymentRoutes.get('/payment-intent-status',
 paymentRoutes.post('/calculate-price', 
   rateLimit({
     windowMs: 5 * 60 * 1000, // 5 minutes
-    max: 30, // 30 requests per 5 minutes (less restrictive as this is used more frequently)
+    max: 200, // 200 requests per 5 minutes (less restrictive as this is used more frequently)
     message: { error: 'Too many price calculation requests, please try again later.' }
   }),
   body('locationId').isUUID().withMessage('Location ID must be a valid UUID'),

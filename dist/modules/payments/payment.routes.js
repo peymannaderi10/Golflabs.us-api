@@ -13,7 +13,7 @@ const controller = new payment_controller_1.PaymentController();
 // Rate limiting for payment endpoints - more restrictive than general API
 const paymentRateLimit = (0, express_rate_limit_1.default)({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 10, // 10 requests per 15 minutes per IP
+    max: 20, // 20 requests per 15 minutes per IP
     message: {
         error: 'Too many payment requests from this IP, please try again later.'
     },
@@ -37,6 +37,6 @@ exports.paymentRoutes.post('/update-payment-intent', paymentRateLimit, (0, expre
 exports.paymentRoutes.get('/payment-intent-status', paymentRateLimit, (0, express_validator_1.query)('payment_intent').matches(/^pi_[a-zA-Z0-9_]+$/).withMessage('Invalid payment intent ID format'), handleValidationErrors, controller.getPaymentIntentStatus);
 exports.paymentRoutes.post('/calculate-price', (0, express_rate_limit_1.default)({
     windowMs: 5 * 60 * 1000, // 5 minutes
-    max: 30, // 30 requests per 5 minutes (less restrictive as this is used more frequently)
+    max: 200, // 200 requests per 5 minutes (less restrictive as this is used more frequently)
     message: { error: 'Too many price calculation requests, please try again later.' }
 }), (0, express_validator_1.body)('locationId').isUUID().withMessage('Location ID must be a valid UUID'), (0, express_validator_1.body)('startTime').isISO8601().withMessage('Start time must be a valid ISO 8601 date'), (0, express_validator_1.body)('endTime').isISO8601().withMessage('End time must be a valid ISO 8601 date'), handleValidationErrors, controller.calculatePrice);
