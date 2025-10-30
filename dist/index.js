@@ -601,7 +601,7 @@ app.get('/bookings', (req, res) => __awaiter(void 0, void 0, void 0, function* (
             .gte('start_time', startOfDayUTC)
             .lt('start_time', endOfDayUTC) // Only get bookings that start within the day
             .neq('status', 'cancelled')
-            .neq('status', 'no_show')
+            .neq('status', 'abandoned')
             .neq('status', 'expired');
         if (error) {
             console.error('Error fetching bookings:', error);
