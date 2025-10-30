@@ -87,6 +87,7 @@ app.get('/users/:userId/bookings/reserved', bookingController.getUserReservedBoo
 app.get('/users/:userId/bookings/future', bookingController.getUserFutureBookings);
 app.get('/users/:userId/bookings/past', bookingController.getUserPastBookings);
 app.post('/bookings/:bookingId/cancel', bookingController.cancelBooking);
+app.post('/bookings/:bookingId/cancel-reservation', bookingController.cancelReservedBooking);
 
 // Module routes
 app.use('/bookings', createBookingRoutes(socketService));

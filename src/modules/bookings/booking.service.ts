@@ -621,4 +621,68 @@ export class BookingService {
       message: refundId ? 'Booking cancelled and refund processed by staff' : 'Booking cancelled by staff (no refund processed)'
     };
   }
+
+  async cancelReservedBooking(bookingId: string, userId: string) {
+    if (!bookingId || !userId) {
+      throw new Error('Booking ID and User ID are required');
+    }
+
+    // 1. Get the booking details
+    const { data: booking, error: fetchError } = await supabase
+      .from('bookings')
+      .select('id, user_id, start_time, status, location_id, bay_id')
+      .eq('id', bookingId)
+      .eq('user_id', userId)
+      .single();
+
+    if (fetchError || !booking) {
+      throw new Error('Reserved booking not found or access denied');
+    }
+
+    // 2. Check if booking can be cancelled (must be reserved status)
+    if (booking.status !== 'reserved') {
+      throw new Error('Only reserved bookings can be cancelled through this endpoint');
+    }
+
+    // 3. Update booking status to abandoned (reservation cancelled) and immediately expire it
+    const { error: updateBookingError } = await supabase
+      .from('bookings')
+      .update({ 
+        status: 'abandoned',
+        expires_at: new Date().toISOString()
+      })
+      .eq('id', bookingId);
+
+    if (updateBookingError) {
+      console.error(`Error updating reserved booking ${bookingId} to cancelled:`, updateBookingError);
+      throw updateBookingError;
+    }
+
+    console.log(`Reserved booking ${bookingId} abandoned and time slot freed for new reservations`);
+
+    // 4. Create cancellation record (no refund needed since no payment was made)
+    const { error: cancellationError } = await supabase
+      .from('booking_cancellations')
+      .insert({
+        booking_id: bookingId,
+        cancelled_by: userId,
+        cancellation_reason: 'Reservation abandoned by customer',
+        cancellation_fee: 0,
+        refund_amount: 0,
+        cancelled_at: new Date().toISOString()
+      });
+
+    if (cancellationError) {
+      console.error(`Error creating cancellation record for reserved booking ${bookingId}:`, cancellationError);
+      // Don't fail the request since booking was already cancelled successfully
+    }
+
+    return {
+      success: true,
+      bookingId,
+      locationId: booking.location_id,
+      bayId: booking.bay_id,
+      message: 'Reservation abandoned successfully'
+    };
+  }
 } 
