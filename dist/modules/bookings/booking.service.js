@@ -135,8 +135,8 @@ class BookingService {
                 .gte('start_time', startOfDayUTC)
                 .lt('start_time', endOfDayPlusOneMinute) // Exclude bookings that start on the next day
                 .neq('status', 'cancelled')
-                .neq('status', 'no_show')
-                .neq('status', 'expired');
+                .neq('status', 'expired')
+                .neq('status', 'abandoned');
             if (error) {
                 console.error('Error fetching bookings:', error);
                 throw new Error('Failed to fetch bookings');
@@ -221,7 +221,7 @@ class BookingService {
                 .select('id, start_time, end_time, total_amount, status, bays (name, bay_number)')
                 .eq('user_id', userId)
                 .gte('end_time', now) // Use end_time to ensure booking hasn't finished yet
-                .not('status', 'in', '("reserved","expired")')
+                .not('status', 'in', '("reserved","expired","abandoned")')
                 .order('start_time', { ascending: true });
             if (error) {
                 console.error('Error fetching future user bookings:', error);
@@ -254,6 +254,7 @@ class BookingService {
                 .select('id, start_time, end_time, total_amount, status, bays (name, bay_number)')
                 .eq('user_id', userId)
                 .lt('end_time', now) // Use end_time to find bookings that have finished
+                .not('status', 'in', '("abandoned")')
                 .order('start_time', { ascending: false });
             if (error) {
                 console.error('Error fetching past user bookings:', error);
