@@ -135,6 +135,22 @@ class BookingController {
                 res.status(500).json({ error: 'Failed to cancel booking', details: error.message });
             }
         });
+        this.cancelReservedBooking = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            try {
+                const { bookingId } = req.params;
+                const { userId } = req.body;
+                const result = yield this.bookingService.cancelReservedBooking(bookingId, userId);
+                res.json(result);
+                // After successfully cancelling, trigger a real-time update
+                if (result.locationId && result.bayId) {
+                    this.socketService.triggerBookingUpdate(result.locationId, result.bayId, bookingId);
+                }
+            }
+            catch (error) {
+                console.error(`Error cancelling reserved booking ${req.params.bookingId}:`, error);
+                res.status(500).json({ error: 'Failed to cancel reservation', details: error.message });
+            }
+        });
         this.bookingService = new booking_service_1.BookingService();
         this.socketService = socketService;
     }

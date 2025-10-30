@@ -81,6 +81,7 @@ exports.app.get('/users/:userId/bookings/reserved', bookingController.getUserRes
 exports.app.get('/users/:userId/bookings/future', bookingController.getUserFutureBookings);
 exports.app.get('/users/:userId/bookings/past', bookingController.getUserPastBookings);
 exports.app.post('/bookings/:bookingId/cancel', bookingController.cancelBooking);
+exports.app.post('/bookings/:bookingId/cancel-reservation', bookingController.cancelReservedBooking);
 // Module routes
 exports.app.use('/bookings', (0, booking_routes_1.createBookingRoutes)(socketService));
 exports.app.use('/', payment_routes_1.paymentRoutes); // Payment routes are at root level for backwards compatibility
