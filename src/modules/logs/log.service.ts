@@ -22,10 +22,34 @@ export class LogService {
       throw new Error('Bay ID and action are required for access logs');
     }
 
+    // If booking_id is provided but user_id is not, look up the user_id from the booking
+    let enrichedLogData = { ...logData };
+    
+    if (logData.booking_id && !logData.user_id) {
+      try {
+        const { data: booking } = await supabase
+          .from('bookings')
+          .select('user_id, location_id')
+          .eq('id', logData.booking_id)
+          .single();
+
+        if (booking) {
+          enrichedLogData.user_id = booking.user_id;
+          // Also fill in location_id if not provided
+          if (!enrichedLogData.location_id) {
+            enrichedLogData.location_id = booking.location_id;
+          }
+        }
+      } catch (lookupError) {
+        console.warn('Could not look up user_id from booking:', lookupError);
+        // Continue without the user_id - don't fail the log creation
+      }
+    }
+
     const { data, error } = await supabase
       .from('access_logs')
       .insert({
-        ...logData,
+        ...enrichedLogData,
         timestamp: new Date().toISOString(), // Ensure timestamp is set
       })
       .select()

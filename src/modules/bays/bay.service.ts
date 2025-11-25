@@ -8,7 +8,7 @@ export class BayService {
 
     const { data, error } = await supabase
       .from('bays')
-      .select('id, status, location_id, bay_number, name')
+      .select('id, status, location_id, bay_number, name, last_seen, kiosk_ip')
       .eq('location_id', locationId);
 
     if (error) {

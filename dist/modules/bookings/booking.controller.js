@@ -89,11 +89,11 @@ class BookingController {
         // Employee-specific endpoints
         this.getEmployeeBookings = (req, res) => __awaiter(this, void 0, void 0, function* () {
             try {
-                const { locationId, date, bayId, customerEmail } = req.query;
+                const { locationId, startDate, endDate, bayId, customerEmail } = req.query;
                 if (!locationId) {
                     return res.status(400).json({ error: 'locationId is required' });
                 }
-                const bookings = yield this.bookingService.getAllBookingsForEmployee(locationId, date, bayId, customerEmail);
+                const bookings = yield this.bookingService.getAllBookingsForEmployee(locationId, startDate, endDate, bayId, customerEmail);
                 res.json(bookings);
             }
             catch (error) {

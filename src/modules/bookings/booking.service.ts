@@ -452,7 +452,7 @@ export class BookingService {
   }
 
   // Employee-specific methods
-  async getAllBookingsForEmployee(locationId: string, date?: string, bayId?: string, customerEmail?: string) {
+  async getAllBookingsForEmployee(locationId: string, startDate?: string, endDate?: string, bayId?: string, customerEmail?: string) {
     let query = supabase
       .from('bookings')
       .select(`
@@ -464,7 +464,7 @@ export class BookingService {
       `)
       .eq('location_id', locationId);
 
-    if (date) {
+    if (startDate || endDate) {
       // Get the location's timezone first
       const { data: location } = await supabase
         .from('locations')
@@ -474,14 +474,17 @@ export class BookingService {
 
       const timezone = location?.timezone || 'America/New_York';
       
-      // Use the same createISOTimestamp logic from existing methods
-      const startOfDay = createISOTimestamp(date, '12:00 AM', timezone);
-      const endOfDay = createISOTimestamp(date, '11:59 PM', timezone);
-      const endOfDayPlusOneMinute = new Date(new Date(endOfDay).getTime() + 60000).toISOString();
+      // Use date range filtering
+      if (startDate) {
+        const startOfRange = createISOTimestamp(startDate, '12:00 AM', timezone);
+        query = query.gte('start_time', startOfRange);
+      }
       
-      query = query
-        .gte('start_time', startOfDay)
-        .lt('start_time', endOfDayPlusOneMinute);
+      if (endDate) {
+        const endOfRange = createISOTimestamp(endDate, '11:59 PM', timezone);
+        const endOfRangePlusOneMinute = new Date(new Date(endOfRange).getTime() + 60000).toISOString();
+        query = query.lt('start_time', endOfRangePlusOneMinute);
+      }
     }
 
     if (bayId) {

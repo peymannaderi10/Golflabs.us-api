@@ -396,7 +396,7 @@ class BookingService {
         });
     }
     // Employee-specific methods
-    getAllBookingsForEmployee(locationId, date, bayId, customerEmail) {
+    getAllBookingsForEmployee(locationId, startDate, endDate, bayId, customerEmail) {
         return __awaiter(this, void 0, void 0, function* () {
             let query = database_1.supabase
                 .from('bookings')
@@ -408,7 +408,7 @@ class BookingService {
         booking_cancellations(cancelled_by, cancellation_reason, refund_amount, cancelled_at)
       `)
                 .eq('location_id', locationId);
-            if (date) {
+            if (startDate || endDate) {
                 // Get the location's timezone first
                 const { data: location } = yield database_1.supabase
                     .from('locations')
@@ -416,13 +416,16 @@ class BookingService {
                     .eq('id', locationId)
                     .single();
                 const timezone = (location === null || location === void 0 ? void 0 : location.timezone) || 'America/New_York';
-                // Use the same createISOTimestamp logic from existing methods
-                const startOfDay = (0, date_utils_1.createISOTimestamp)(date, '12:00 AM', timezone);
-                const endOfDay = (0, date_utils_1.createISOTimestamp)(date, '11:59 PM', timezone);
-                const endOfDayPlusOneMinute = new Date(new Date(endOfDay).getTime() + 60000).toISOString();
-                query = query
-                    .gte('start_time', startOfDay)
-                    .lt('start_time', endOfDayPlusOneMinute);
+                // Use date range filtering
+                if (startDate) {
+                    const startOfRange = (0, date_utils_1.createISOTimestamp)(startDate, '12:00 AM', timezone);
+                    query = query.gte('start_time', startOfRange);
+                }
+                if (endDate) {
+                    const endOfRange = (0, date_utils_1.createISOTimestamp)(endDate, '11:59 PM', timezone);
+                    const endOfRangePlusOneMinute = new Date(new Date(endOfRange).getTime() + 60000).toISOString();
+                    query = query.lt('start_time', endOfRangePlusOneMinute);
+                }
             }
             if (bayId) {
                 query = query.eq('bay_id', bayId);

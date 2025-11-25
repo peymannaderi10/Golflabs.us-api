@@ -90,7 +90,7 @@ export class BookingController {
   // Employee-specific endpoints
   getEmployeeBookings = async (req: Request, res: Response) => {
     try {
-      const { locationId, date, bayId, customerEmail } = req.query;
+      const { locationId, startDate, endDate, bayId, customerEmail } = req.query;
 
       if (!locationId) {
         return res.status(400).json({ error: 'locationId is required' });
@@ -98,7 +98,8 @@ export class BookingController {
 
       const bookings = await this.bookingService.getAllBookingsForEmployee(
         locationId as string, 
-        date as string, 
+        startDate as string,
+        endDate as string,
         bayId as string, 
         customerEmail as string
       );
