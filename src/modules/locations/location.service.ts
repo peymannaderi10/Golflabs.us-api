@@ -4,7 +4,7 @@ export class LocationService {
   async getAllLocations() {
     const { data, error } = await supabase
       .from('locations')
-      .select('id, name, slug, address, city, state, zip_code, phone, timezone, status')
+      .select('id, name, slug, address, city, state, zip_code, phone, timezone, status, sales_tax_rate')
       .eq('status', 'active')
       .is('deleted_at', null)
       .order('name', { ascending: true });
@@ -24,7 +24,8 @@ export class LocationService {
       zipCode: location.zip_code,
       phone: location.phone,
       timezone: location.timezone,
-      status: location.status
+      status: location.status,
+      salesTaxRate: parseFloat(location.sales_tax_rate) || 0
     }));
 
     return formattedLocations;
@@ -37,7 +38,7 @@ export class LocationService {
 
     const { data, error } = await supabase
       .from('locations')
-      .select('id, name, slug, address, city, state, zip_code, phone, timezone, status, settings')
+      .select('id, name, slug, address, city, state, zip_code, phone, timezone, status, settings, sales_tax_rate')
       .eq('id', locationId)
       .eq('status', 'active')
       .is('deleted_at', null)
@@ -59,7 +60,8 @@ export class LocationService {
       phone: data.phone,
       timezone: data.timezone,
       status: data.status,
-      settings: data.settings
+      settings: data.settings,
+      salesTaxRate: parseFloat(data.sales_tax_rate) || 0
     };
 
     return formattedLocation;
