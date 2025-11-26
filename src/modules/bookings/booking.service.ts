@@ -3,6 +3,7 @@ import { stripe } from '../../config/stripe';
 import { parseTimeString, createISOTimestamp } from '../../shared/utils/date.utils';
 import { BookingDetails } from './booking.types';
 import { EmailService } from '../email/email.service';
+import { promotionService } from '../promotions/promotion.service';
 
 export class BookingService {
   async reserveBooking(bookingData: BookingDetails) {
@@ -150,9 +151,10 @@ export class BookingService {
     });
 
     // Query bookings that START within this specific date
+    // Include expires_at to filter out expired reserved bookings
     const { data, error } = await supabase
       .from('bookings')
-      .select('id, bay_id, start_time, end_time, status')
+      .select('id, bay_id, start_time, end_time, status, expires_at')
       .eq('location_id', locationId)
       .gte('start_time', startOfDayUTC)
       .lt('start_time', endOfDayPlusOneMinute) // Exclude bookings that start on the next day
@@ -165,8 +167,18 @@ export class BookingService {
       throw new Error('Failed to fetch bookings');
     }
 
+    // Filter out 'reserved' bookings that have expired (expires_at < now)
+    // This ensures the UI shows the slot as available when the reservation has timed out
+    const now = new Date().toISOString();
+    const activeBookings = data.filter(booking => {
+      if (booking.status === 'reserved' && booking.expires_at && booking.expires_at < now) {
+        return false;
+      }
+      return true;
+    });
+
     // Convert UTC timestamps back to local time for display
-    const formattedBookings = data.map(booking => {
+    const formattedBookings = activeBookings.map(booking => {
       const startTimeUTC = new Date(booking.start_time);
       const endTimeUTC = new Date(booking.end_time);
       
@@ -688,5 +700,53 @@ export class BookingService {
       bayId: booking.bay_id,
       message: 'Reservation abandoned successfully'
     };
+  }
+
+  /**
+   * Apply a promotion discount to a booking after payment confirmation
+   */
+  async applyPromotionToBooking(
+    bookingId: string,
+    userId: string,
+    promotionId: string,
+    discountAmount: number,
+    freeMinutes?: number
+  ) {
+    try {
+      const success = await promotionService.applyPromotion({
+        userId,
+        bookingId,
+        promotionId,
+        discountAmount,
+        freeMinutes
+      });
+
+      if (success) {
+        console.log(`Successfully applied promotion ${promotionId} to booking ${bookingId}`);
+      }
+
+      return success;
+    } catch (error) {
+      console.error(`Error applying promotion to booking ${bookingId}:`, error);
+      // Don't throw - the booking is already confirmed, just log the error
+      return false;
+    }
+  }
+
+  /**
+   * Get the discount info for a user's booking
+   */
+  async getBookingDiscountInfo(
+    userId: string,
+    bookingMinutes: number,
+    originalAmount: number,
+    hourlyRate?: number
+  ) {
+    return promotionService.calculateDiscountSimple(
+      userId,
+      bookingMinutes,
+      originalAmount,
+      hourlyRate
+    );
   }
 } 

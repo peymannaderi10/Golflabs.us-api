@@ -16,8 +16,15 @@ class PaymentController {
         this.createPaymentIntent = (req, res) => __awaiter(this, void 0, void 0, function* () {
             try {
                 const { bookingId } = req.params;
-                const { amount } = req.body;
-                const result = yield this.paymentService.createPaymentIntent(bookingId, amount);
+                const { amount, promotionId, discountAmount, freeMinutes, originalAmount } = req.body;
+                // Build promotion info if a promotion is being applied
+                const promotionInfo = promotionId ? {
+                    promotionId,
+                    discountAmount: discountAmount || 0,
+                    freeMinutes: freeMinutes || 0,
+                    originalAmount: originalAmount || (amount / 100)
+                } : undefined;
+                const result = yield this.paymentService.createPaymentIntent(bookingId, amount, promotionInfo);
                 res.json(result);
             }
             catch (error) {

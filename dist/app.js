@@ -20,6 +20,7 @@ const bay_routes_1 = require("./modules/bays/bay.routes");
 const log_routes_1 = require("./modules/logs/log.routes");
 const unlock_routes_1 = require("./modules/unlock/unlock.routes");
 const user_routes_1 = require("./modules/user/user.routes");
+const promotion_routes_1 = __importDefault(require("./modules/promotions/promotion.routes"));
 const booking_controller_1 = require("./modules/bookings/booking.controller");
 const socket_service_1 = require("./modules/sockets/socket.service");
 exports.app = (0, express_1.default)();
@@ -91,6 +92,7 @@ exports.app.use('/bays', bay_routes_1.bayRoutes);
 exports.app.use('/logs', log_routes_1.logRoutes);
 exports.app.use('/', (0, unlock_routes_1.unlockRoutes)(socketService)); // Unlock routes at root level
 exports.app.use('/', user_routes_1.userRoutes); // User routes at root level
+exports.app.use('/promotions', promotion_routes_1.default); // Promotions routes
 // Health check endpoint
 exports.app.get('/health', (req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });

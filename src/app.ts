@@ -14,6 +14,7 @@ import { bayRoutes } from './modules/bays/bay.routes';
 import { logRoutes } from './modules/logs/log.routes';
 import { unlockRoutes } from './modules/unlock/unlock.routes';
 import { userRoutes } from './modules/user/user.routes';
+import promotionRoutes from './modules/promotions/promotion.routes';
 import { BookingController } from './modules/bookings/booking.controller';
 import { SocketService } from './modules/sockets/socket.service';
 
@@ -98,6 +99,7 @@ app.use('/bays', bayRoutes);
 app.use('/logs', logRoutes);
 app.use('/', unlockRoutes(socketService)); // Unlock routes at root level
 app.use('/', userRoutes); // User routes at root level
+app.use('/promotions', promotionRoutes); // Promotions routes
 
 // Health check endpoint
 app.get('/health', (req, res) => {

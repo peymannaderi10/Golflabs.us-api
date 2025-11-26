@@ -4,6 +4,7 @@ import { stripe, webhookSecret } from '../../config/stripe';
 import { supabase } from '../../config/database';
 import { EmailService } from '../email/email.service';
 import { SocketService } from '../sockets/socket.service';
+import { promotionService } from '../promotions/promotion.service';
 
 export async function handleStripeWebhook(req: Request, res: Response, socketService: SocketService) {
   const sig = req.headers['stripe-signature'] as string;
@@ -54,6 +55,27 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
           console.error(`Error updating database after payment for booking ${bookingId}:`, bookingError || paymentError);
         } else {
           console.log(`Successfully updated booking ${bookingId} to confirmed.`);
+          
+          // Apply promotion if one was used
+          const promotionId = paymentIntent.metadata.promotion_id;
+          const discountAmount = parseFloat(paymentIntent.metadata.discount_amount || '0');
+          const freeMinutes = parseInt(paymentIntent.metadata.free_minutes || '0', 10);
+          
+          if (promotionId && discountAmount > 0) {
+            try {
+              await promotionService.applyPromotion({
+                userId: paymentIntent.metadata.user_id,
+                bookingId: bookingId,
+                promotionId: promotionId,
+                discountAmount: discountAmount,
+                freeMinutes: freeMinutes || undefined
+              });
+              console.log(`Applied promotion ${promotionId} to booking ${bookingId} (discount: $${discountAmount})`);
+            } catch (promoError) {
+              console.error(`Error applying promotion to booking ${bookingId}:`, promoError);
+              // Don't fail the webhook if promotion application fails - booking is still confirmed
+            }
+          }
           
           // Send thank you email notification
           try {

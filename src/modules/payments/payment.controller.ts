@@ -11,8 +11,17 @@ export class PaymentController {
   createPaymentIntent = async (req: Request, res: Response) => {
     try {
       const { bookingId } = req.params;
-      const { amount } = req.body;
-      const result = await this.paymentService.createPaymentIntent(bookingId, amount);
+      const { amount, promotionId, discountAmount, freeMinutes, originalAmount } = req.body;
+      
+      // Build promotion info if a promotion is being applied
+      const promotionInfo = promotionId ? {
+        promotionId,
+        discountAmount: discountAmount || 0,
+        freeMinutes: freeMinutes || 0,
+        originalAmount: originalAmount || (amount / 100)
+      } : undefined;
+      
+      const result = await this.paymentService.createPaymentIntent(bookingId, amount, promotionInfo);
       res.json(result);
     } catch (error: any) {
       console.error(`Error in /bookings/${req.params.bookingId}/create-payment-intent:`, error);

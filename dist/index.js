@@ -594,9 +594,10 @@ app.get('/bookings', (req, res) => __awaiter(void 0, void 0, void 0, function* (
         });
         // Query the bookings for the specified date and location
         // Get bookings that overlap with the requested day
+        // Include expires_at to filter out expired reserved bookings
         const { data, error } = yield supabase
             .from('bookings')
-            .select('id, bay_id, start_time, end_time, status')
+            .select('id, bay_id, start_time, end_time, status, expires_at')
             .eq('location_id', locationId)
             .gte('start_time', startOfDayUTC)
             .lt('start_time', endOfDayUTC) // Only get bookings that start within the day
@@ -607,9 +608,19 @@ app.get('/bookings', (req, res) => __awaiter(void 0, void 0, void 0, function* (
             console.error('Error fetching bookings:', error);
             return res.status(500).json({ error: 'Failed to fetch bookings' });
         }
+        // Filter out 'reserved' bookings that have expired (expires_at < now)
+        // This ensures the UI shows the slot as available when the reservation has timed out
+        const now = new Date().toISOString();
+        const activeBookings = data.filter(booking => {
+            // If it's a reserved booking with an expired expires_at, filter it out
+            if (booking.status === 'reserved' && booking.expires_at && booking.expires_at < now) {
+                return false;
+            }
+            return true;
+        });
         // Convert UTC timestamps back to local time for display
         // But we need to do this conversion properly using the location's timezone
-        const formattedBookings = data.map(booking => {
+        const formattedBookings = activeBookings.map(booking => {
             const startTimeUTC = new Date(booking.start_time);
             const endTimeUTC = new Date(booking.end_time);
             // Convert to location timezone for display

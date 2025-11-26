@@ -14,6 +14,7 @@ const database_1 = require("../../config/database");
 const stripe_1 = require("../../config/stripe");
 const date_utils_1 = require("../../shared/utils/date.utils");
 const email_service_1 = require("../email/email.service");
+const promotion_service_1 = require("../promotions/promotion.service");
 class BookingService {
     reserveBooking(bookingData) {
         return __awaiter(this, void 0, void 0, function* () {
@@ -128,9 +129,10 @@ class BookingService {
                 note: 'Only bookings that START on this date will be included'
             });
             // Query bookings that START within this specific date
+            // Include expires_at to filter out expired reserved bookings
             const { data, error } = yield database_1.supabase
                 .from('bookings')
-                .select('id, bay_id, start_time, end_time, status')
+                .select('id, bay_id, start_time, end_time, status, expires_at')
                 .eq('location_id', locationId)
                 .gte('start_time', startOfDayUTC)
                 .lt('start_time', endOfDayPlusOneMinute) // Exclude bookings that start on the next day
@@ -141,8 +143,17 @@ class BookingService {
                 console.error('Error fetching bookings:', error);
                 throw new Error('Failed to fetch bookings');
             }
+            // Filter out 'reserved' bookings that have expired (expires_at < now)
+            // This ensures the UI shows the slot as available when the reservation has timed out
+            const now = new Date().toISOString();
+            const activeBookings = data.filter(booking => {
+                if (booking.status === 'reserved' && booking.expires_at && booking.expires_at < now) {
+                    return false;
+                }
+                return true;
+            });
             // Convert UTC timestamps back to local time for display
-            const formattedBookings = data.map(booking => {
+            const formattedBookings = activeBookings.map(booking => {
                 const startTimeUTC = new Date(booking.start_time);
                 const endTimeUTC = new Date(booking.end_time);
                 // Convert to location timezone for display
@@ -600,6 +611,39 @@ class BookingService {
                 bayId: booking.bay_id,
                 message: 'Reservation abandoned successfully'
             };
+        });
+    }
+    /**
+     * Apply a promotion discount to a booking after payment confirmation
+     */
+    applyPromotionToBooking(bookingId, userId, promotionId, discountAmount, freeMinutes) {
+        return __awaiter(this, void 0, void 0, function* () {
+            try {
+                const success = yield promotion_service_1.promotionService.applyPromotion({
+                    userId,
+                    bookingId,
+                    promotionId,
+                    discountAmount,
+                    freeMinutes
+                });
+                if (success) {
+                    console.log(`Successfully applied promotion ${promotionId} to booking ${bookingId}`);
+                }
+                return success;
+            }
+            catch (error) {
+                console.error(`Error applying promotion to booking ${bookingId}:`, error);
+                // Don't throw - the booking is already confirmed, just log the error
+                return false;
+            }
+        });
+    }
+    /**
+     * Get the discount info for a user's booking
+     */
+    getBookingDiscountInfo(userId, bookingMinutes, originalAmount, hourlyRate) {
+        return __awaiter(this, void 0, void 0, function* () {
+            return promotion_service_1.promotionService.calculateDiscountSimple(userId, bookingMinutes, originalAmount, hourlyRate);
         });
     }
 }

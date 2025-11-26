@@ -1,10 +1,20 @@
 import { stripe } from '../../config/stripe';
 import { supabase } from '../../config/database';
 import { CreatePaymentForBookingBody, UpdatePaymentIntentRequest } from './payment.types';
+import { promotionService } from '../promotions/promotion.service';
 
 export class PaymentService {
-  async createPaymentIntent(bookingId: string, amount: number) {
-    if (!amount) {
+  async createPaymentIntent(
+    bookingId: string, 
+    amount: number, 
+    promotionInfo?: {
+      promotionId: string;
+      discountAmount: number;
+      freeMinutes?: number;
+      originalAmount: number;
+    }
+  ) {
+    if (amount === undefined) {
       throw new Error('Amount is required');
     }
     if (!bookingId) {
@@ -14,7 +24,7 @@ export class PaymentService {
     // 1. Verify the booking is valid for payment
     const { data: booking, error: fetchError } = await supabase
       .from('bookings')
-      .select('id, status, expires_at, user_id, bay_id, location_id, created_at')
+      .select('id, status, expires_at, user_id, bay_id, location_id, created_at, total_amount')
       .eq('id', bookingId)
       .single();
 
@@ -83,7 +93,27 @@ export class PaymentService {
       }
     }
 
-    // 3. Create new Stripe Payment Intent
+    // 3. If promotion info is provided, update the booking with discount info
+    if (promotionInfo && promotionInfo.promotionId) {
+      const { error: updateBookingError } = await supabase
+        .from('bookings')
+        .update({
+          original_amount: promotionInfo.originalAmount,
+          discount_amount: promotionInfo.discountAmount,
+          promotion_id: promotionInfo.promotionId,
+          total_amount: amount / 100 // Update total to discounted amount in dollars
+        })
+        .eq('id', bookingId);
+
+      if (updateBookingError) {
+        console.error('Error updating booking with promotion info:', updateBookingError);
+        // Continue anyway, the booking can still be paid
+      } else {
+        console.log(`Updated booking ${bookingId} with promotion discount: $${promotionInfo.discountAmount}`);
+      }
+    }
+
+    // 4. Create new Stripe Payment Intent
     const paymentIntent = await stripe.paymentIntents.create({
       amount,
       currency: 'usd',
@@ -92,16 +122,21 @@ export class PaymentService {
         booking_id: booking.id,
         user_id: booking.user_id,
         bay_id: booking.bay_id,
-        location_id: booking.location_id
+        location_id: booking.location_id,
+        // Include promotion info in metadata for webhook processing
+        promotion_id: promotionInfo?.promotionId || '',
+        discount_amount: promotionInfo?.discountAmount?.toString() || '0',
+        free_minutes: promotionInfo?.freeMinutes?.toString() || '0',
+        original_amount: promotionInfo?.originalAmount?.toString() || (amount / 100).toString()
       }
     });
 
-    // 4. Create a corresponding payment record
+    // 5. Create a corresponding payment record
     const { error: paymentError } = await supabase
       .from('payments')
       .insert({
         booking_id: booking.id,
-        amount: amount / 100, // convert cents to dollars
+        amount: amount / 100, // convert cents to dollars (this is the discounted amount)
         status: 'pending',
         stripe_payment_intent_id: paymentIntent.id,
         currency: 'usd',
@@ -115,9 +150,9 @@ export class PaymentService {
       throw paymentError;
     }
 
-    console.log(`Created new payment intent ${paymentIntent.id} for booking ${bookingId}`);
+    console.log(`Created new payment intent ${paymentIntent.id} for booking ${bookingId} (amount: $${amount / 100}, discount: $${promotionInfo?.discountAmount || 0})`);
 
-    // 5. Send the client secret back to the frontend
+    // 6. Send the client secret back to the frontend
     return {
       clientSecret: paymentIntent.client_secret,
       bookingId: booking.id

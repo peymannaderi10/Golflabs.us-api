@@ -13,6 +13,7 @@ exports.handleStripeWebhook = handleStripeWebhook;
 const stripe_1 = require("../../config/stripe");
 const database_1 = require("../../config/database");
 const email_service_1 = require("../email/email.service");
+const promotion_service_1 = require("../promotions/promotion.service");
 function handleStripeWebhook(req, res, socketService) {
     return __awaiter(this, void 0, void 0, function* () {
         var _a;
@@ -57,6 +58,26 @@ function handleStripeWebhook(req, res, socketService) {
                     }
                     else {
                         console.log(`Successfully updated booking ${bookingId} to confirmed.`);
+                        // Apply promotion if one was used
+                        const promotionId = paymentIntent.metadata.promotion_id;
+                        const discountAmount = parseFloat(paymentIntent.metadata.discount_amount || '0');
+                        const freeMinutes = parseInt(paymentIntent.metadata.free_minutes || '0', 10);
+                        if (promotionId && discountAmount > 0) {
+                            try {
+                                yield promotion_service_1.promotionService.applyPromotion({
+                                    userId: paymentIntent.metadata.user_id,
+                                    bookingId: bookingId,
+                                    promotionId: promotionId,
+                                    discountAmount: discountAmount,
+                                    freeMinutes: freeMinutes || undefined
+                                });
+                                console.log(`Applied promotion ${promotionId} to booking ${bookingId} (discount: $${discountAmount})`);
+                            }
+                            catch (promoError) {
+                                console.error(`Error applying promotion to booking ${bookingId}:`, promoError);
+                                // Don't fail the webhook if promotion application fails - booking is still confirmed
+                            }
+                        }
                         // Send thank you email notification
                         try {
                             yield email_service_1.EmailService.sendThankYouEmail(bookingId);
