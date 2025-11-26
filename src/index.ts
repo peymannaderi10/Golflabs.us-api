@@ -1082,6 +1082,58 @@ app.post('/bookings/:bookingId/cancel', async (req: Request, res: Response) => {
     }
 });
 
+// Endpoint to validate phone number using NumVerify API
+app.post('/validate-phone', async (req: Request, res: Response) => {
+    const { phone } = req.body;
+
+    if (!phone) {
+        return res.status(400).json({ error: 'Phone number is required' });
+    }
+
+    const numverifyApiKey = process.env.NUMVERIFY_API_KEY;
+    if (!numverifyApiKey) {
+        console.error('NumVerify API key not found in environment variables');
+        // If API key is not configured, allow the signup to proceed
+        // This prevents blocking signups if the validation service is not set up
+        return res.json({ valid: true, skipped: true, message: 'Phone validation skipped - API not configured' });
+    }
+
+    try {
+        // Strip any non-numeric characters from the phone number
+        const cleanedPhone = phone.replace(/\D/g, '');
+        
+        // Add US country code (1) if not already present
+        const phoneWithCountryCode = cleanedPhone.startsWith('1') ? cleanedPhone : `1${cleanedPhone}`;
+
+        // Call NumVerify API
+        const numverifyUrl = `http://apilayer.net/api/validate?access_key=${numverifyApiKey}&number=${phoneWithCountryCode}&country_code=&format=1`;
+        
+        const response = await fetch(numverifyUrl);
+        const data = await response.json();
+
+        console.log('NumVerify response for phone validation:', { phone: phoneWithCountryCode, valid: data.valid, line_type: data.line_type });
+
+        if (data.valid === false) {
+            return res.json({ 
+                valid: false, 
+                message: 'Please enter a valid phone number'
+            });
+        }
+
+        return res.json({ 
+            valid: true,
+            carrier: data.carrier,
+            line_type: data.line_type,
+            location: data.location
+        });
+
+    } catch (error: any) {
+        console.error('Error validating phone number:', error);
+        // On error, allow signup to proceed but log the issue
+        return res.json({ valid: true, skipped: true, message: 'Phone validation skipped due to error' });
+    }
+});
+
 // Endpoint to get all locations
 app.get('/locations', async (req: Request, res: Response) => {
     try {
