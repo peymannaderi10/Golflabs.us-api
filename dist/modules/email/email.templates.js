@@ -63,6 +63,9 @@ class EmailTemplates {
             .text-notice {
               color: #8a6d3b !important;
             }
+            .brand-heading {
+              color: #000000 !important;
+            }
             
             /* Dark Mode Overrides */
             @media (prefers-color-scheme: dark) {
@@ -97,6 +100,9 @@ class EmailTemplates {
               }
               .text-notice {
                 color: #d4b85a !important;
+              }
+              .brand-heading {
+                color: #ffffff !important;
               }
             }
             
@@ -133,6 +139,9 @@ class EmailTemplates {
             [data-ogsc] .text-notice {
               color: #d4b85a !important;
             }
+            [data-ogsc] .brand-heading {
+              color: #ffffff !important;
+            }
           </style>
         </head>
         <body class="email-body" style="margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
@@ -140,7 +149,7 @@ class EmailTemplates {
             
             <!-- Header -->
             <div style="background: linear-gradient(135deg, #2c5530 0%, #4a7c59 100%); padding: 40px 30px; text-align: center;">
-              <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: 600; letter-spacing: 1px;">
+              <h1 class="brand-heading" style="margin: 0; font-size: 28px; font-weight: 600; letter-spacing: 1px;">
                 ⛳ GOLF LABS US
               </h1>
             </div>
@@ -317,8 +326,11 @@ class EmailTemplates {
             }
             .unlock-button {
               background: linear-gradient(135deg, #4a7c59 0%, #2c5530 100%) !important;
-              color: #ffffff !important;
+              color: #000000 !important;
               box-shadow: 0 4px 15px rgba(76, 124, 89, 0.3) !important;
+            }
+            .brand-heading {
+              color: #000000 !important;
             }
             
             /* Dark Mode Overrides */
@@ -367,6 +379,9 @@ class EmailTemplates {
                 color: #ffffff !important;
                 box-shadow: 0 4px 15px rgba(107, 185, 110, 0.4) !important;
               }
+              .brand-heading {
+                color: #ffffff !important;
+              }
             }
             
             /* Force dark mode for specific email clients */
@@ -414,6 +429,9 @@ class EmailTemplates {
               color: #ffffff !important;
               box-shadow: 0 4px 15px rgba(107, 185, 110, 0.4) !important;
             }
+            [data-ogsc] .brand-heading {
+              color: #ffffff !important;
+            }
           </style>
         </head>
         <body class="email-body" style="margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
@@ -421,7 +439,7 @@ class EmailTemplates {
             
             <!-- Header -->
             <div style="background: linear-gradient(135deg, #2c5530 0%, #4a7c59 100%); padding: 40px 30px; text-align: center;">
-              <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: 600; letter-spacing: 1px;">
+              <h1 class="brand-heading" style="margin: 0; font-size: 28px; font-weight: 600; letter-spacing: 1px;">
                 ⛳ GOLF LABS US
               </h1>
             </div>
@@ -627,6 +645,9 @@ class EmailTemplates {
             .text-refund {
               color: #155724 !important;
             }
+            .brand-heading {
+              color: #000000 !important;
+            }
             
             /* Dark Mode Overrides */
             @media (prefers-color-scheme: dark) {
@@ -672,6 +693,9 @@ class EmailTemplates {
               .text-refund {
                 color: #6bb96e !important;
               }
+              .brand-heading {
+                color: #ffffff !important;
+              }
             }
           </style>
         </head>
@@ -680,7 +704,7 @@ class EmailTemplates {
             
             <!-- Header -->
             <div style="background: linear-gradient(135deg, #2c5530 0%, #4a7c59 100%); padding: 40px 30px; text-align: center;">
-              <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: 600; letter-spacing: 1px;">
+              <h1 class="brand-heading" style="margin: 0; font-size: 28px; font-weight: 600; letter-spacing: 1px;">
                 ⛳ GOLF LABS US
               </h1>
             </div>
