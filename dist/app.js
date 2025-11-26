@@ -1,4 +1,13 @@
 "use strict";
+var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+};
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -72,6 +81,77 @@ exports.app.post('/stripe-webhook', webhookRateLimit, express_1.default.raw({ ty
 exports.app.post('/resend-webhook', express_1.default.raw({ type: 'application/json' }), email_webhooks_1.handleResendWebhook);
 // Use json parser for all other routes
 exports.app.use(express_1.default.json());
+// =====================================================
+// PHONE VALIDATION
+// =====================================================
+// Endpoint to validate phone number using NumVerify API
+exports.app.post('/validate-phone', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    const { phone } = req.body;
+    if (!phone) {
+        return res.status(400).json({ valid: false, message: 'Phone number is required' });
+    }
+    const numverifyApiKey = process.env.NUMVERIFY_API_KEY;
+    if (!numverifyApiKey) {
+        // If API key is not configured, skip validation and allow signup
+        console.warn('NumVerify API key not found - skipping phone validation');
+        return res.json({ valid: true, skipped: true, message: 'Phone validation skipped - not configured' });
+    }
+    try {
+        // Strip any non-numeric characters from the phone number
+        const cleanedPhone = phone.replace(/\D/g, '');
+        // Basic validation: US phone numbers should be 10 digits (without country code) or 11 digits (with country code)
+        if (cleanedPhone.length < 10 || cleanedPhone.length > 11) {
+            return res.json({
+                valid: false,
+                message: 'Please enter a valid 10-digit US phone number'
+            });
+        }
+        // Add US country code (1) if not already present
+        const phoneWithCountryCode = cleanedPhone.startsWith('1') ? cleanedPhone : `1${cleanedPhone}`;
+        // Call NumVerify API
+        const numverifyUrl = `http://apilayer.net/api/validate?access_key=${numverifyApiKey}&number=${phoneWithCountryCode}`;
+        const response = yield fetch(numverifyUrl);
+        const data = yield response.json();
+        console.log('NumVerify response for phone validation:', {
+            phone: phoneWithCountryCode,
+            valid: data.valid,
+            line_type: data.line_type,
+            carrier: data.carrier
+        });
+        // Check for API errors - skip validation and allow signup if there's any API error
+        // (rate limits, usage limits, inactive account, etc.)
+        if (data.error) {
+            console.warn('NumVerify API error - skipping phone validation:', data.error);
+            return res.json({
+                valid: true,
+                skipped: true,
+                message: 'Phone validation skipped due to service unavailability'
+            });
+        }
+        // Only block if API explicitly returns valid: false (truly invalid phone number)
+        if (data.valid === false) {
+            return res.json({
+                valid: false,
+                message: 'Please enter a valid US phone number'
+            });
+        }
+        return res.json({
+            valid: true,
+            carrier: data.carrier,
+            line_type: data.line_type,
+            location: data.location
+        });
+    }
+    catch (error) {
+        // On any unexpected error (network issues, etc.), skip validation and allow signup
+        console.warn('Error validating phone number - skipping validation:', error.message || error);
+        return res.json({
+            valid: true,
+            skipped: true,
+            message: 'Phone validation skipped due to service unavailability'
+        });
+    }
+}));
 // =====================================================
 // ROUTES
 // =====================================================

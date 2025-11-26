@@ -925,29 +925,48 @@ app.post('/bookings/:bookingId/cancel', (req, res) => __awaiter(void 0, void 0, 
 app.post('/validate-phone', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const { phone } = req.body;
     if (!phone) {
-        return res.status(400).json({ error: 'Phone number is required' });
+        return res.status(400).json({ valid: false, message: 'Phone number is required' });
     }
     const numverifyApiKey = process.env.NUMVERIFY_API_KEY;
     if (!numverifyApiKey) {
         console.error('NumVerify API key not found in environment variables');
-        // If API key is not configured, allow the signup to proceed
-        // This prevents blocking signups if the validation service is not set up
-        return res.json({ valid: true, skipped: true, message: 'Phone validation skipped - API not configured' });
+        // If API key is not configured, reject the request - we require phone validation
+        return res.status(500).json({ valid: false, message: 'Phone validation service is unavailable. Please try again later.' });
     }
     try {
         // Strip any non-numeric characters from the phone number
         const cleanedPhone = phone.replace(/\D/g, '');
+        // Basic validation: US phone numbers should be 10 digits (without country code) or 11 digits (with country code)
+        if (cleanedPhone.length < 10 || cleanedPhone.length > 11) {
+            return res.json({
+                valid: false,
+                message: 'Please enter a valid 10-digit US phone number'
+            });
+        }
         // Add US country code (1) if not already present
         const phoneWithCountryCode = cleanedPhone.startsWith('1') ? cleanedPhone : `1${cleanedPhone}`;
-        // Call NumVerify API
-        const numverifyUrl = `http://apilayer.net/api/validate?access_key=${numverifyApiKey}&number=${phoneWithCountryCode}&country_code=&format=1`;
+        // Call NumVerify API (simplified - no country_code or format params needed)
+        const numverifyUrl = `http://apilayer.net/api/validate?access_key=${numverifyApiKey}&number=${phoneWithCountryCode}`;
         const response = yield fetch(numverifyUrl);
         const data = yield response.json();
-        console.log('NumVerify response for phone validation:', { phone: phoneWithCountryCode, valid: data.valid, line_type: data.line_type });
+        console.log('NumVerify response for phone validation:', {
+            phone: phoneWithCountryCode,
+            valid: data.valid,
+            line_type: data.line_type,
+            carrier: data.carrier
+        });
+        // Check for API errors
+        if (data.error) {
+            console.error('NumVerify API error:', data.error);
+            return res.status(500).json({
+                valid: false,
+                message: 'Phone validation service error. Please try again later.'
+            });
+        }
         if (data.valid === false) {
             return res.json({
                 valid: false,
-                message: 'Please enter a valid phone number'
+                message: 'Please enter a valid US phone number'
             });
         }
         return res.json({
@@ -959,8 +978,10 @@ app.post('/validate-phone', (req, res) => __awaiter(void 0, void 0, void 0, func
     }
     catch (error) {
         console.error('Error validating phone number:', error);
-        // On error, allow signup to proceed but log the issue
-        return res.json({ valid: true, skipped: true, message: 'Phone validation skipped due to error' });
+        return res.status(500).json({
+            valid: false,
+            message: 'Unable to validate phone number. Please try again later.'
+        });
     }
 }));
 // Endpoint to get all locations
