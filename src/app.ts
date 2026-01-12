@@ -21,6 +21,10 @@ import { SocketService } from './modules/sockets/socket.service';
 export const app = express();
 export const httpServer = createServer(app);
 
+// Trust proxy - required for Render, Heroku, and other PaaS providers
+// This allows express-rate-limit to correctly identify users behind reverse proxies
+app.set('trust proxy', 1);
+
 const io = new Server(httpServer, {
   cors: {
     origin: "*", 

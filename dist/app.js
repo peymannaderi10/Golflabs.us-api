@@ -34,6 +34,9 @@ const booking_controller_1 = require("./modules/bookings/booking.controller");
 const socket_service_1 = require("./modules/sockets/socket.service");
 exports.app = (0, express_1.default)();
 exports.httpServer = (0, http_1.createServer)(exports.app);
+// Trust proxy - required for Render, Heroku, and other PaaS providers
+// This allows express-rate-limit to correctly identify users behind reverse proxies
+exports.app.set('trust proxy', 1);
 const io = new socket_io_1.Server(exports.httpServer, {
     cors: {
         origin: "*",
