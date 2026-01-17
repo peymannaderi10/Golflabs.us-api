@@ -13,6 +13,78 @@ exports.UnlockController = void 0;
 const database_1 = require("../../config/database");
 class UnlockController {
     constructor(socketService) {
+        /**
+         * Employee unlock - tries each bay at a location until one responds successfully
+         */
+        this.employeeUnlock = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            var _a;
+            try {
+                const { locationId } = req.body;
+                if (!locationId) {
+                    return res.status(400).json({ error: 'locationId is required' });
+                }
+                // Get all available bays for the location
+                const { data: bays, error: baysError } = yield database_1.supabase
+                    .from('bays')
+                    .select('id, name, bay_number, status')
+                    .eq('location_id', locationId)
+                    .eq('status', 'available')
+                    .order('bay_number', { ascending: true });
+                if (baysError) {
+                    console.error('Error fetching bays:', baysError);
+                    return res.status(500).json({ error: 'Failed to fetch bays' });
+                }
+                if (!bays || bays.length === 0) {
+                    return res.status(404).json({ error: 'No available bays found for this location' });
+                }
+                // Extract IP address and user agent for logging
+                const ipAddress = req.ip || req.connection.remoteAddress || '0.0.0.0';
+                const userAgent = req.get('User-Agent') || 'Unknown';
+                const employeeId = ((_a = req.user) === null || _a === void 0 ? void 0 : _a.id) || 'unknown';
+                // Try each bay until one successfully responds
+                for (const bay of bays) {
+                    console.log(`Attempting employee unlock on bay ${bay.name} (${bay.id})`);
+                    const unlockSuccessful = yield this.socketService.sendUnlockCommand(locationId, bay.id, 5, // 5 seconds unlock duration
+                    `employee-unlock-${Date.now()}` // Pseudo booking ID for logging
+                    );
+                    if (unlockSuccessful) {
+                        // Log the successful unlock
+                        yield database_1.supabase.from('access_logs').insert({
+                            location_id: locationId,
+                            bay_id: bay.id,
+                            booking_id: null,
+                            user_id: employeeId,
+                            action: 'employee_door_unlock',
+                            success: true,
+                            ip_address: ipAddress,
+                            user_agent: userAgent,
+                            unlock_method: 'employee_dashboard',
+                            metadata: {
+                                bay_name: bay.name,
+                                bay_number: bay.bay_number
+                            }
+                        });
+                        console.log(`Employee unlock successful on bay ${bay.name}`);
+                        return res.json({
+                            success: true,
+                            message: `Door unlocked successfully via ${bay.name}`,
+                            bayId: bay.id,
+                            bayName: bay.name
+                        });
+                    }
+                }
+                // If no bay responded successfully
+                console.error(`Employee unlock failed: No kiosk responded for location ${locationId}`);
+                return res.status(503).json({
+                    success: false,
+                    error: 'No kiosk responded to the unlock command. Please ensure at least one kiosk is online.'
+                });
+            }
+            catch (error) {
+                console.error('Error in employee unlock:', error);
+                res.status(500).json({ error: 'Internal server error', details: error.message });
+            }
+        });
         this.unlockDoor = (req, res) => __awaiter(this, void 0, void 0, function* () {
             try {
                 const { token } = req.query;

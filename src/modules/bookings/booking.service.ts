@@ -474,7 +474,8 @@ export class BookingService {
         payments(id, amount, status, stripe_payment_intent_id, refund_amount, refunded_at),
         booking_cancellations(cancelled_by, cancellation_reason, refund_amount, cancelled_at)
       `)
-      .eq('location_id', locationId);
+      .eq('location_id', locationId)
+      .neq('status', 'abandoned'); // Exclude abandoned bookings - they are incomplete/expired reservations
 
     if (startDate || endDate) {
       // Get the location's timezone first
