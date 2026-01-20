@@ -151,6 +151,25 @@ class BookingController {
                 res.status(500).json({ error: 'Failed to cancel reservation', details: error.message });
             }
         });
+        // Employee create booking - bypasses Stripe payment
+        this.employeeCreateBooking = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            try {
+                const employeeProfile = req.employeeProfile;
+                if (!employeeProfile) {
+                    return res.status(403).json({ error: 'Employee authentication required' });
+                }
+                const result = yield this.bookingService.createEmployeeBooking(req.body, employeeProfile.id);
+                res.status(201).json(result);
+                // Trigger socket update for real-time booking changes
+                if (result.locationId && result.bayId) {
+                    this.socketService.triggerBookingUpdate(result.locationId, result.bayId, result.bookingId);
+                }
+            }
+            catch (error) {
+                console.error('Error in employee create booking:', error);
+                res.status(400).json({ error: error.message || 'Failed to create booking' });
+            }
+        });
         this.bookingService = new booking_service_1.BookingService();
         this.socketService = socketService;
     }

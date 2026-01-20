@@ -4,6 +4,7 @@ import { parseTimeString, createISOTimestamp } from '../../shared/utils/date.uti
 import { BookingDetails } from './booking.types';
 import { EmailService } from '../email/email.service';
 import { promotionService } from '../promotions/promotion.service';
+import { resendConfig } from '../../config/resend';
 
 export class BookingService {
   async reserveBooking(bookingData: BookingDetails) {
@@ -749,5 +750,272 @@ export class BookingService {
       originalAmount,
       hourlyRate
     );
+  }
+
+  /**
+   * Create a booking directly by an employee (bypasses Stripe payment)
+   * This is for rebooking customers (e.g., when something goes wrong) or walk-in bookings
+   * No payment record is created - payment is handled separately or not applicable
+   */
+  async createEmployeeBooking(
+    bookingData: {
+      locationId: string;
+      bayId: string;
+      date: string;
+      startTime: string;
+      endTime: string;
+      partySize: number;
+      totalAmount: number;
+      notes?: string;
+      userId?: string;
+      newCustomer?: {
+        email: string;
+        fullName: string;
+        phone?: string;
+      };
+    },
+    employeeId: string
+  ) {
+    const { locationId, bayId, date, startTime, endTime, partySize, totalAmount, notes, userId, newCustomer } = bookingData;
+
+    // Validation
+    if (!locationId || !bayId || !date || !startTime || !endTime) {
+      throw new Error('Missing required booking details');
+    }
+
+    if (!userId && !newCustomer) {
+      throw new Error('Either userId or newCustomer details must be provided');
+    }
+
+    if (newCustomer && (!newCustomer.email || !newCustomer.fullName)) {
+      throw new Error('New customer must have email and fullName');
+    }
+
+    // Get location timezone
+    const { data: location, error: locationError } = await supabase
+      .from('locations')
+      .select('timezone')
+      .eq('id', locationId)
+      .single();
+
+    if (locationError || !location) {
+      console.error('Error fetching location timezone:', locationError);
+      throw new Error('Invalid location ID');
+    }
+
+    const timezone = location.timezone || 'America/New_York';
+
+    // Create timestamps
+    const p_start_time = createISOTimestamp(date, startTime, timezone);
+    const p_end_time = createISOTimestamp(date, endTime, timezone);
+
+    console.log(`Employee creating booking with timezone ${timezone}:`, {
+      input: { date, startTime, endTime },
+      output: { p_start_time, p_end_time },
+      employeeId
+    });
+
+    // Determine the customer user ID
+    let customerUserId = userId;
+
+    // If new customer, create the user profile first
+    if (newCustomer && !userId) {
+      // Check if email already exists
+      const { data: existingUser } = await supabase
+        .from('user_profiles')
+        .select('id')
+        .eq('email', newCustomer.email.toLowerCase())
+        .single();
+
+      if (existingUser) {
+        // Use existing user
+        customerUserId = existingUser.id;
+        console.log(`Found existing user for email ${newCustomer.email}: ${customerUserId}`);
+      } else {
+        // Create a new user profile without auth (walk-in customer)
+        // Generate a random UUID for the user
+        const newUserId = crypto.randomUUID();
+        
+        const { data: createdUser, error: createUserError } = await supabase
+          .from('user_profiles')
+          .insert({
+            id: newUserId,
+            email: newCustomer.email.toLowerCase(),
+            full_name: newCustomer.fullName,
+            phone: newCustomer.phone || null,
+            role: 'customer'
+          })
+          .select('id')
+          .single();
+
+        if (createUserError) {
+          console.error('Error creating new customer:', createUserError);
+          throw new Error('Failed to create customer profile');
+        }
+
+        customerUserId = createdUser.id;
+        console.log(`Created new customer profile: ${customerUserId}`);
+      }
+    }
+
+    if (!customerUserId) {
+      throw new Error('Failed to determine customer ID');
+    }
+
+    // Check for conflicting bookings
+    const { data: conflictingBookings, error: conflictError } = await supabase
+      .from('bookings')
+      .select('id')
+      .eq('bay_id', bayId)
+      .not('status', 'in', '("cancelled","expired","abandoned")')
+      .or(`and(start_time.lt.${p_end_time},end_time.gt.${p_start_time})`);
+
+    if (conflictError) {
+      console.error('Error checking for conflicts:', conflictError);
+      throw new Error('Failed to check booking availability');
+    }
+
+    if (conflictingBookings && conflictingBookings.length > 0) {
+      throw new Error('This time slot is no longer available');
+    }
+
+    // Create the booking with 'confirmed' status (no payment record created)
+    const { data: booking, error: bookingError } = await supabase
+      .from('bookings')
+      .insert({
+        location_id: locationId,
+        user_id: customerUserId,
+        bay_id: bayId,
+        start_time: p_start_time,
+        end_time: p_end_time,
+        party_size: partySize,
+        total_amount: totalAmount,
+        status: 'confirmed', // Directly confirmed - no payment record created
+        notes: notes || null,
+        payment_intent_id: null // No payment intent for employee-created bookings
+      })
+      .select('id')
+      .single();
+
+    if (bookingError) {
+      console.error('Error creating booking:', bookingError);
+      if (bookingError.message?.includes('duplicate') || bookingError.message?.includes('already exists')) {
+        throw new Error('This time slot is no longer available');
+      }
+      throw new Error('Failed to create booking');
+    }
+
+    const bookingId = booking.id;
+    console.log(`Employee ${employeeId} created booking ${bookingId} (no payment record created)`);
+
+    // Send thank you email notification (always sent immediately, same as normal booking flow)
+    try {
+      await EmailService.sendThankYouEmail(bookingId);
+      console.log(`Queued thank you email for employee-created booking ${bookingId}`);
+    } catch (emailError) {
+      console.error(`Error queuing thank you email for booking ${bookingId}:`, emailError);
+      // Don't fail the booking creation if email fails
+    }
+
+    // Check if booking starts within 15 minutes - if so, send reminder immediately (same as normal booking flow)
+    try {
+      const now = new Date();
+      const bookingStart = new Date(p_start_time);
+      const minutesUntilStart = (bookingStart.getTime() - now.getTime()) / (1000 * 60);
+
+      console.log(`Employee-created booking ${bookingId} starts in ${minutesUntilStart.toFixed(1)} minutes`);
+
+      // If booking starts within 15 minutes, send reminder email immediately with unlock token
+      if (minutesUntilStart <= 15) {
+        console.log(`Employee-created booking ${bookingId} starts soon (${minutesUntilStart.toFixed(1)} min), sending immediate reminder`);
+        
+        // Generate unlock token and link (same as normal booking flow)
+        const tokenData = {
+          bookingId,
+          startTime: p_start_time,
+          endTime: p_end_time,
+          expires: new Date(p_end_time).getTime()
+        };
+        const unlockToken = Buffer.from(JSON.stringify(tokenData)).toString('base64');
+        const unlockLink = `${resendConfig.frontendUrl}/unlock?token=${unlockToken}`;
+
+        // Update booking with unlock token
+        const { error: tokenUpdateError } = await supabase
+          .from('bookings')
+          .update({
+            unlock_token: unlockToken,
+            unlock_token_expires_at: p_end_time
+          })
+          .eq('id', bookingId);
+
+        if (tokenUpdateError) {
+          console.error(`Error updating unlock token for booking ${bookingId}:`, tokenUpdateError);
+          // Don't fail the booking creation if token update fails
+        }
+
+        // Send reminder email immediately
+        await EmailService.sendReminderEmail(bookingId, unlockToken, unlockLink);
+        console.log(`Sent immediate reminder email for employee-created booking ${bookingId}`);
+      } else {
+        // Booking starts later - unlock token and reminder email will be sent by the reminder job
+        console.log(`Employee-created booking ${bookingId} starts later - reminder will be sent by reminder job`);
+      }
+    } catch (reminderError) {
+      console.error(`Error handling reminder for employee-created booking ${bookingId}:`, reminderError);
+      // Don't fail the booking creation if reminder handling fails
+    }
+
+    // Create audit log entry
+    const { error: auditError } = await supabase
+      .from('audit_logs')
+      .insert({
+        location_id: locationId,
+        table_name: 'bookings',
+        record_id: bookingId,
+        action: 'employee_created_booking',
+        old_values: null,
+        new_values: {
+          booking_id: bookingId,
+          bay_id: bayId,
+          customer_id: customerUserId,
+          start_time: p_start_time,
+          end_time: p_end_time,
+          total_amount: totalAmount,
+          party_size: partySize,
+          notes: notes || null,
+          new_customer_created: !userId && !!newCustomer
+        },
+        user_id: employeeId,
+        timestamp: new Date().toISOString()
+      });
+
+    if (auditError) {
+      console.error('Error creating audit log:', auditError);
+      // Don't fail the booking, just log the error
+    }
+
+    // Get the created booking with full details
+    const { data: fullBooking, error: fetchError } = await supabase
+      .from('bookings')
+      .select(`
+        *,
+        user_profiles(id, email, full_name, phone),
+        bays(id, name, bay_number)
+      `)
+      .eq('id', bookingId)
+      .single();
+
+    if (fetchError) {
+      console.error('Error fetching created booking:', fetchError);
+    }
+
+    return {
+      success: true,
+      bookingId,
+      locationId,
+      bayId,
+      booking: fullBooking || { id: bookingId },
+      message: 'Booking created successfully by employee'
+    };
   }
 } 
