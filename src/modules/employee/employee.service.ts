@@ -9,6 +9,9 @@ import {
     ReportOverview,
     DailyRevenue,
     HourlyBookingCount,
+    Customer,
+    CustomerSearchParams,
+    CustomerDetails,
 } from './employee.types';
 
 export class EmployeeService {
@@ -425,6 +428,156 @@ export class EmployeeService {
             return header + rows;
         }
         return '';
+    }
+
+    /**
+     * Get customers list with pagination and search
+     */
+    async getCustomers(locationId: string, params: CustomerSearchParams): Promise<{ customers: Customer[]; total: number }> {
+        const { page = 1, pageSize = 10, search, sortBy = 'createdAt', sortOrder = 'desc' } = params;
+
+        let query = supabase.from('user_profiles').select('*', { count: 'exact' });
+
+        if (search) {
+            query = query.or(`email.ilike.%${search}%,full_name.ilike.%${search}%`);
+        }
+
+        // Pagination
+        const from = (page - 1) * pageSize;
+        const to = from + pageSize - 1;
+        query = query.range(from, to);
+
+        // Sorting
+        // Note: Sorting by computed fields (totalSpend, etc.) is not supported in this simple query
+        // We fallback to createdAt or simple fields
+        const sortColumn = sortBy === 'createdAt' ? 'created_at' : 'created_at';
+        query = query.order(sortColumn, { ascending: sortOrder === 'asc' });
+
+        const { data: profiles, count, error } = await query;
+
+        if (error) {
+            console.error('Error fetching customers:', error);
+            throw error;
+        }
+
+        // Fetch stats for these users at this location
+        const customers: Customer[] = await Promise.all((profiles || []).map(async (profile) => {
+            const { data: bookings } = await supabase
+                .from('bookings')
+                .select('total_amount, start_time')
+                .eq('user_id', profile.id)
+                .eq('location_id', locationId)
+                .eq('status', 'confirmed');
+
+            const totalBookings = bookings?.length || 0;
+            const totalSpend = bookings?.reduce((sum, b) => sum + (b.total_amount || 0), 0) || 0;
+
+            // Find last visit
+            let lastVisit = null;
+            if (bookings && bookings.length > 0) {
+                // simple sort to find latest
+                const times = bookings.map(b => b.start_time).sort();
+                lastVisit = times[times.length - 1];
+            }
+
+            return {
+                id: profile.id,
+                email: profile.email,
+                fullName: profile.full_name,
+                phone: profile.phone,
+                createdAt: profile.created_at,
+                totalBookings,
+                totalSpend,
+                lastVisit,
+            };
+        }));
+
+        return { customers, total: count || 0 };
+    }
+
+    /**
+     * Get detailed customer profile
+     */
+    async getCustomerDetails(locationId: string, customerId: string): Promise<CustomerDetails> {
+        // Fetch profile
+        const { data: profile, error: profileError } = await supabase
+            .from('user_profiles')
+            .select('*')
+            .eq('id', customerId)
+            .single();
+
+        if (profileError) throw profileError;
+
+        // Fetch bookings for this location
+        const { data: bookings, error: bookingsError } = await supabase
+            .from('bookings')
+            .select(`
+                id, 
+                start_time, 
+                total_amount, 
+                status, 
+                bays (name)
+            `)
+            .eq('user_id', customerId)
+            .eq('location_id', locationId)
+            .order('start_time', { ascending: false });
+
+        if (bookingsError) throw bookingsError;
+
+        const allBookings = bookings || [];
+        const confirmedBookings = allBookings.filter(b => b.status === 'confirmed');
+
+        // Stats
+        const totalBookings = confirmedBookings.length;
+        const totalSpend = confirmedBookings.reduce((sum, b) => sum + (b.total_amount || 0), 0);
+        const lifetimeValue = totalSpend;
+        const averageOrderValue = totalBookings > 0 ? totalSpend / totalBookings : 0;
+
+        const cancelledCount = allBookings.filter(b => b.status === 'cancelled').length;
+        const cancellationRate = allBookings.length > 0 ? (cancelledCount / allBookings.length) * 100 : 0;
+
+        let lastVisit = null;
+        if (confirmedBookings.length > 0) {
+            lastVisit = confirmedBookings[0].start_time; // Already sorted desc
+        }
+
+        const recentBookings = allBookings.map((b: any) => ({
+            id: b.id,
+            date: b.start_time,
+            bayName: b.bays?.name || 'Unknown Bay',
+            status: b.status,
+            amount: b.total_amount || 0,
+        }));
+
+        return {
+            id: profile.id,
+            email: profile.email,
+            fullName: profile.full_name,
+            phone: profile.phone,
+            createdAt: profile.created_at,
+            totalBookings,
+            totalSpend,
+            lastVisit,
+            recentBookings,
+            stats: {
+                lifetimeValue,
+                averageOrderValue,
+                cancellationRate,
+                memberSince: profile.created_at,
+            }
+        };
+    }
+    async updateCustomer(id: string, updates: { fullName?: string; phone?: string; email?: string }): Promise<void> {
+        const { error } = await supabase
+            .from('user_profiles')
+            .update({
+                full_name: updates.fullName,
+                phone: updates.phone,
+                email: updates.email
+            })
+            .eq('id', id);
+
+        if (error) throw error;
     }
 }
 

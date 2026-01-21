@@ -178,6 +178,77 @@ export class EmployeeController {
             return res.status(500).json({ success: false, error: error.message || 'Internal server error' });
         }
     }
+
+    /**
+     * GET /employee/customers
+     * Get paginated customer list
+     */
+    async getCustomers(req: Request, res: Response) {
+        try {
+            const { locationId, page, pageSize, search, sortBy, sortOrder } = req.query as any;
+
+            if (!locationId) {
+                return res.status(400).json({ success: false, error: 'locationId is required' });
+            }
+
+            const data = await employeeService.getCustomers(locationId, {
+                page: page ? parseInt(page as string) : 1,
+                pageSize: pageSize ? parseInt(pageSize as string) : 10,
+                search: search as string,
+                sortBy: sortBy as any,
+                sortOrder: sortOrder as any,
+            });
+
+            return res.json({
+                success: true,
+                data: data.customers,
+                total: data.total,
+                page: page ? parseInt(page as string) : 1,
+                pageSize: pageSize ? parseInt(pageSize as string) : 10,
+            });
+        } catch (error: any) {
+            console.error('Error in getCustomers:', error);
+            return res.status(500).json({ success: false, error: error.message || 'Internal server error' });
+        }
+    }
+
+    /**
+     * GET /employee/customers/:id
+     * Get detailed customer profile and history
+     */
+    async getCustomerDetails(req: Request, res: Response) {
+        try {
+            const { locationId } = req.query as any;
+            const { id } = req.params;
+
+            if (!locationId) {
+                return res.status(400).json({ success: false, error: 'locationId is required' });
+            }
+
+            const data = await employeeService.getCustomerDetails(locationId, id);
+            return res.json({ success: true, data });
+        } catch (error: any) {
+            return res.status(500).json({ success: false, error: error.message || 'Internal server error' });
+        }
+    }
+
+    /**
+     * PUT /employee/customers/:id
+     * Update customer details
+     */
+    async updateCustomer(req: Request, res: Response) {
+        try {
+            const { id } = req.params;
+            const { fullName, phone, email } = req.body;
+
+            await employeeService.updateCustomer(id, { fullName, phone, email });
+
+            return res.json({ success: true });
+        } catch (error: any) {
+            console.error('Error in updateCustomer:', error);
+            return res.status(500).json({ success: false, error: error.message || 'Internal server error' });
+        }
+    }
 }
 
 export const employeeController = new EmployeeController();

@@ -36,4 +36,19 @@ router.get('/reports/access-logs', (req, res) => employee_controller_1.employeeC
  * Export reports as CSV
  */
 router.get('/reports/export', (req, res) => employee_controller_1.employeeController.exportReport(req, res));
+/**
+ * GET /employee/customers
+ * List customers (paginated)
+ */
+router.get('/customers', (req, res) => employee_controller_1.employeeController.getCustomers(req, res));
+/**
+ * GET /employee/customers/:id
+ * Get customer details
+ */
+router.get('/customers/:id', (req, res) => employee_controller_1.employeeController.getCustomerDetails(req, res));
+/**
+ * PUT /employee/customers/:id
+ * Update customer details
+ */
+router.put('/customers/:id', (req, res) => employee_controller_1.employeeController.updateCustomer(req, res));
 exports.employeeRoutes = router;

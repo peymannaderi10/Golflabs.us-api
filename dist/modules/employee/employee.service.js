@@ -388,6 +388,145 @@ class EmployeeService {
             return '';
         });
     }
+    /**
+     * Get customers list with pagination and search
+     */
+    getCustomers(locationId, params) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const { page = 1, pageSize = 10, search, sortBy = 'createdAt', sortOrder = 'desc' } = params;
+            let query = database_1.supabase.from('user_profiles').select('*', { count: 'exact' });
+            if (search) {
+                query = query.or(`email.ilike.%${search}%,full_name.ilike.%${search}%`);
+            }
+            // Pagination
+            const from = (page - 1) * pageSize;
+            const to = from + pageSize - 1;
+            query = query.range(from, to);
+            // Sorting
+            // Note: Sorting by computed fields (totalSpend, etc.) is not supported in this simple query
+            // We fallback to createdAt or simple fields
+            const sortColumn = sortBy === 'createdAt' ? 'created_at' : 'created_at';
+            query = query.order(sortColumn, { ascending: sortOrder === 'asc' });
+            const { data: profiles, count, error } = yield query;
+            if (error) {
+                console.error('Error fetching customers:', error);
+                throw error;
+            }
+            // Fetch stats for these users at this location
+            const customers = yield Promise.all((profiles || []).map((profile) => __awaiter(this, void 0, void 0, function* () {
+                const { data: bookings } = yield database_1.supabase
+                    .from('bookings')
+                    .select('total_amount, start_time')
+                    .eq('user_id', profile.id)
+                    .eq('location_id', locationId)
+                    .eq('status', 'confirmed');
+                const totalBookings = (bookings === null || bookings === void 0 ? void 0 : bookings.length) || 0;
+                const totalSpend = (bookings === null || bookings === void 0 ? void 0 : bookings.reduce((sum, b) => sum + (b.total_amount || 0), 0)) || 0;
+                // Find last visit
+                let lastVisit = null;
+                if (bookings && bookings.length > 0) {
+                    // simple sort to find latest
+                    const times = bookings.map(b => b.start_time).sort();
+                    lastVisit = times[times.length - 1];
+                }
+                return {
+                    id: profile.id,
+                    email: profile.email,
+                    fullName: profile.full_name,
+                    phone: profile.phone,
+                    createdAt: profile.created_at,
+                    totalBookings,
+                    totalSpend,
+                    lastVisit,
+                };
+            })));
+            return { customers, total: count || 0 };
+        });
+    }
+    /**
+     * Get detailed customer profile
+     */
+    getCustomerDetails(locationId, customerId) {
+        return __awaiter(this, void 0, void 0, function* () {
+            // Fetch profile
+            const { data: profile, error: profileError } = yield database_1.supabase
+                .from('user_profiles')
+                .select('*')
+                .eq('id', customerId)
+                .single();
+            if (profileError)
+                throw profileError;
+            // Fetch bookings for this location
+            const { data: bookings, error: bookingsError } = yield database_1.supabase
+                .from('bookings')
+                .select(`
+                id, 
+                start_time, 
+                total_amount, 
+                status, 
+                bays (name)
+            `)
+                .eq('user_id', customerId)
+                .eq('location_id', locationId)
+                .order('start_time', { ascending: false });
+            if (bookingsError)
+                throw bookingsError;
+            const allBookings = bookings || [];
+            const confirmedBookings = allBookings.filter(b => b.status === 'confirmed');
+            // Stats
+            const totalBookings = confirmedBookings.length;
+            const totalSpend = confirmedBookings.reduce((sum, b) => sum + (b.total_amount || 0), 0);
+            const lifetimeValue = totalSpend;
+            const averageOrderValue = totalBookings > 0 ? totalSpend / totalBookings : 0;
+            const cancelledCount = allBookings.filter(b => b.status === 'cancelled').length;
+            const cancellationRate = allBookings.length > 0 ? (cancelledCount / allBookings.length) * 100 : 0;
+            let lastVisit = null;
+            if (confirmedBookings.length > 0) {
+                lastVisit = confirmedBookings[0].start_time; // Already sorted desc
+            }
+            const recentBookings = allBookings.map((b) => {
+                var _a;
+                return ({
+                    id: b.id,
+                    date: b.start_time,
+                    bayName: ((_a = b.bays) === null || _a === void 0 ? void 0 : _a.name) || 'Unknown Bay',
+                    status: b.status,
+                    amount: b.total_amount || 0,
+                });
+            });
+            return {
+                id: profile.id,
+                email: profile.email,
+                fullName: profile.full_name,
+                phone: profile.phone,
+                createdAt: profile.created_at,
+                totalBookings,
+                totalSpend,
+                lastVisit,
+                recentBookings,
+                stats: {
+                    lifetimeValue,
+                    averageOrderValue,
+                    cancellationRate,
+                    memberSince: profile.created_at,
+                }
+            };
+        });
+    }
+    updateCustomer(id, updates) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const { error } = yield database_1.supabase
+                .from('user_profiles')
+                .update({
+                full_name: updates.fullName,
+                phone: updates.phone,
+                email: updates.email
+            })
+                .eq('id', id);
+            if (error)
+                throw error;
+        });
+    }
 }
 exports.EmployeeService = EmployeeService;
 exports.employeeService = new EmployeeService();

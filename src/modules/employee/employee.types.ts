@@ -122,3 +122,40 @@ export interface ReportResponse<T> {
     locationId: string;
     generatedAt: string;
 }
+
+// Customer Management Types
+
+export interface Customer {
+    id: string;
+    email: string;
+    fullName: string;
+    phone?: string;
+    createdAt: string;
+    totalBookings: number;
+    totalSpend: number;
+    lastVisit: string | null;
+}
+
+export interface CustomerSearchParams {
+    page?: number;
+    pageSize?: number;
+    search?: string; // name or email
+    sortBy?: 'totalSpend' | 'totalBookings' | 'lastVisit' | 'createdAt';
+    sortOrder?: 'asc' | 'desc';
+}
+
+export interface CustomerDetails extends Customer {
+    recentBookings: {
+        id: string;
+        date: string;
+        bayName: string;
+        status: string;
+        amount: number;
+    }[];
+    stats: {
+        lifetimeValue: number;
+        averageOrderValue: number;
+        cancellationRate: number;
+        memberSince: string;
+    };
+}

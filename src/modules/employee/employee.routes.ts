@@ -42,4 +42,22 @@ router.get('/reports/access-logs', (req, res) => employeeController.getAccessLog
  */
 router.get('/reports/export', (req, res) => employeeController.exportReport(req, res));
 
+/**
+ * GET /employee/customers
+ * List customers (paginated)
+ */
+router.get('/customers', (req, res) => employeeController.getCustomers(req, res));
+
+/**
+ * GET /employee/customers/:id
+ * Get customer details
+ */
+router.get('/customers/:id', (req, res) => employeeController.getCustomerDetails(req, res));
+
+/**
+ * PUT /employee/customers/:id
+ * Update customer details
+ */
+router.put('/customers/:id', (req, res) => employeeController.updateCustomer(req, res));
+
 export const employeeRoutes = router;
