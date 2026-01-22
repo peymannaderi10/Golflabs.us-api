@@ -24,6 +24,33 @@ class LogController {
                 res.status(500).json({ message: 'Failed to log access event', error: error.message });
             }
         });
+        this.getAccessLogs = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            try {
+                const { locationId } = req.query;
+                const page = parseInt(req.query.page) || 1;
+                const pageSize = parseInt(req.query.pageSize) || 50;
+                const startDate = req.query.startDate;
+                const endDate = req.query.endDate;
+                const action = req.query.action;
+                const success = req.query.success !== undefined ? req.query.success === 'true' : undefined;
+                if (!locationId) {
+                    return res.status(400).json({ error: 'Location ID is required' });
+                }
+                const result = yield this.logService.getAccessLogs(locationId, {
+                    page,
+                    pageSize,
+                    startDate,
+                    endDate,
+                    action,
+                    success
+                });
+                res.json(result);
+            }
+            catch (error) {
+                console.error('Error in getAccessLogs controller:', error);
+                res.status(500).json({ error: error.message || 'Failed to fetch access logs' });
+            }
+        });
         this.logService = new log_service_1.LogService();
     }
 }

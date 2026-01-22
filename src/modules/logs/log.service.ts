@@ -62,4 +62,92 @@ export class LogService {
 
     return data;
   }
+
+  async getAccessLogs(locationId: string, options: {
+    page?: number;
+    pageSize?: number;
+    startDate?: string;
+    endDate?: string;
+    action?: string;
+    success?: boolean;
+  } = {}) {
+    if (!locationId) {
+      throw new Error('Location ID is required');
+    }
+
+    const page = options.page || 1;
+    const pageSize = options.pageSize || 50;
+    const offset = (page - 1) * pageSize;
+
+    let query = supabase
+      .from('access_logs')
+      .select(`
+        id,
+        location_id,
+        booking_id,
+        bay_id,
+        user_id,
+        action,
+        success,
+        error_message,
+        timestamp,
+        ip_address,
+        user_agent,
+        metadata,
+        unlock_method,
+        response_time_ms,
+        unlock_token_used,
+        bookings:booking_id (
+          id,
+          start_time,
+          end_time,
+          user_profiles:user_id (
+            id,
+            email,
+            full_name
+          )
+        ),
+        bays:bay_id (
+          id,
+          bay_number,
+          name
+        ),
+        user_profiles:user_id (
+          id,
+          email,
+          full_name
+        )
+      `, { count: 'exact' })
+      .eq('location_id', locationId)
+      .order('timestamp', { ascending: false });
+
+    if (options.startDate) {
+      query = query.gte('timestamp', options.startDate);
+    }
+    if (options.endDate) {
+      query = query.lte('timestamp', options.endDate);
+    }
+    if (options.action) {
+      query = query.eq('action', options.action);
+    }
+    if (options.success !== undefined) {
+      query = query.eq('success', options.success);
+    }
+
+    const { data, error, count } = await query
+      .range(offset, offset + pageSize - 1);
+
+    if (error) {
+      console.error('Error fetching access logs:', error);
+      throw new Error('Failed to fetch access logs');
+    }
+
+    return {
+      logs: data || [],
+      total: count || 0,
+      page,
+      pageSize,
+      totalPages: Math.ceil((count || 0) / pageSize)
+    };
+  }
 } 

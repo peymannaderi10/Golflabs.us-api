@@ -40,6 +40,33 @@ class LocationController {
                 res.status(500).json({ error: 'An unexpected error occurred' });
             }
         });
+        this.updateLocation = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            try {
+                const { locationId } = req.params;
+                const { salesTaxRate, timezone, status, phone } = req.body;
+                const updates = {};
+                if (salesTaxRate !== undefined)
+                    updates.sales_tax_rate = salesTaxRate;
+                if (timezone !== undefined)
+                    updates.timezone = timezone;
+                if (status !== undefined)
+                    updates.status = status;
+                if (phone !== undefined)
+                    updates.phone = phone;
+                const location = yield this.locationService.updateLocation(locationId, updates);
+                res.json(location);
+            }
+            catch (error) {
+                console.error(`Error updating location ${req.params.locationId}:`, error);
+                if (error.message === 'Location ID is required') {
+                    return res.status(400).json({ error: error.message });
+                }
+                if (error.message === 'Location not found' || error.message === 'Failed to update location') {
+                    return res.status(400).json({ error: error.message });
+                }
+                res.status(500).json({ error: 'An unexpected error occurred' });
+            }
+        });
         this.locationService = new location_service_1.LocationService();
     }
 }

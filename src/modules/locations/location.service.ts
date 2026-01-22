@@ -66,4 +66,59 @@ export class LocationService {
 
     return formattedLocation;
   }
+
+  async updateLocation(locationId: string, updates: {
+    sales_tax_rate?: number;
+    timezone?: string;
+    status?: string;
+    phone?: string;
+  }) {
+    if (!locationId) {
+      throw new Error('Location ID is required');
+    }
+
+    const updateData: any = {
+      updated_at: new Date().toISOString()
+    };
+
+    if (updates.sales_tax_rate !== undefined) {
+      updateData.sales_tax_rate = updates.sales_tax_rate;
+    }
+    if (updates.timezone !== undefined) {
+      updateData.timezone = updates.timezone;
+    }
+    if (updates.status !== undefined) {
+      updateData.status = updates.status;
+    }
+    if (updates.phone !== undefined) {
+      updateData.phone = updates.phone;
+    }
+
+    const { data, error } = await supabase
+      .from('locations')
+      .update(updateData)
+      .eq('id', locationId)
+      .select('id, name, slug, address, city, state, zip_code, phone, timezone, status, settings, sales_tax_rate')
+      .single();
+
+    if (error || !data) {
+      console.error(`Error updating location ${locationId}:`, error);
+      throw new Error('Failed to update location');
+    }
+
+    return {
+      id: data.id,
+      name: data.name,
+      slug: data.slug,
+      address: data.address,
+      city: data.city,
+      state: data.state,
+      zipCode: data.zip_code,
+      phone: data.phone,
+      timezone: data.timezone,
+      status: data.status,
+      settings: data.settings,
+      salesTaxRate: parseFloat(data.sales_tax_rate) || 0
+    };
+  }
 } 

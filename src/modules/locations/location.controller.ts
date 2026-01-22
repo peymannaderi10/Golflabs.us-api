@@ -34,4 +34,29 @@ export class LocationController {
       res.status(500).json({ error: 'An unexpected error occurred' });
     }
   };
+
+  updateLocation = async (req: Request, res: Response) => {
+    try {
+      const { locationId } = req.params;
+      const { salesTaxRate, timezone, status, phone } = req.body;
+
+      const updates: any = {};
+      if (salesTaxRate !== undefined) updates.sales_tax_rate = salesTaxRate;
+      if (timezone !== undefined) updates.timezone = timezone;
+      if (status !== undefined) updates.status = status;
+      if (phone !== undefined) updates.phone = phone;
+
+      const location = await this.locationService.updateLocation(locationId, updates);
+      res.json(location);
+    } catch (error: any) {
+      console.error(`Error updating location ${req.params.locationId}:`, error);
+      if (error.message === 'Location ID is required') {
+        return res.status(400).json({ error: error.message });
+      }
+      if (error.message === 'Location not found' || error.message === 'Failed to update location') {
+        return res.status(400).json({ error: error.message });
+      }
+      res.status(500).json({ error: 'An unexpected error occurred' });
+    }
+  };
 } 
