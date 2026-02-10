@@ -920,13 +920,14 @@ class BookingService {
             }
             const timezone = location.timezone || 'America/New_York';
             // 3. Find the next booking on this bay to determine max extension
+            // Use gte to catch back-to-back bookings (next starts exactly when current ends)
             const { data: nextBookings, error: nextError } = yield database_1.supabase
                 .from('bookings')
                 .select('start_time')
                 .eq('bay_id', booking.bay_id)
                 .neq('id', bookingId)
                 .not('status', 'in', '("cancelled","expired","abandoned")')
-                .gt('start_time', booking.end_time)
+                .gte('start_time', booking.end_time)
                 .order('start_time', { ascending: true })
                 .limit(1);
             if (nextError) {
