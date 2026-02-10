@@ -48,10 +48,30 @@ function handleStripeWebhook(req, res, socketService) {
                         .from('bookings')
                         .update({ status: 'confirmed', expires_at: null })
                         .eq('id', bookingId);
-                    // Update payment status to 'succeeded'
+                    // Update payment status to 'succeeded' and extract card details
+                    const paymentUpdate = { status: 'succeeded', processed_at: new Date().toISOString() };
+                    // Extract card details from the payment method for display (e.g., extension upsell confirmation)
+                    try {
+                        if (paymentIntent.payment_method) {
+                            const pmId = typeof paymentIntent.payment_method === 'string'
+                                ? paymentIntent.payment_method
+                                : paymentIntent.payment_method.id;
+                            const pm = yield stripe_1.stripe.paymentMethods.retrieve(pmId);
+                            if (pm.card) {
+                                paymentUpdate.card_last_four = pm.card.last4;
+                                paymentUpdate.card_brand = pm.card.brand;
+                                paymentUpdate.payment_method = 'card';
+                                console.log(`Extracted card details for booking ${bookingId}: ${pm.card.brand} ending in ${pm.card.last4}`);
+                            }
+                        }
+                    }
+                    catch (pmError) {
+                        console.error(`Error retrieving payment method details for booking ${bookingId}:`, pmError.message);
+                        // Non-fatal - continue with payment processing
+                    }
                     const { error: paymentError } = yield database_1.supabase
                         .from('payments')
-                        .update({ status: 'succeeded', processed_at: new Date().toISOString() })
+                        .update(paymentUpdate)
                         .eq('stripe_payment_intent_id', paymentIntent.id);
                     if (bookingError || paymentError) {
                         console.error(`Error updating database after payment for booking ${bookingId}:`, bookingError || paymentError);

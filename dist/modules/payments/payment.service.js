@@ -87,7 +87,40 @@ class PaymentService {
                     // Continue to create a new payment intent if we can't retrieve the existing one
                 }
             }
-            // 3. If promotion info is provided, update the booking with discount info
+            // 3. Ensure user has a Stripe Customer (for saving cards for future off-session charges)
+            let stripeCustomerId = null;
+            try {
+                const { data: userProfile, error: userError } = yield database_1.supabase
+                    .from('user_profiles')
+                    .select('stripe_customer_id, email')
+                    .eq('id', booking.user_id)
+                    .single();
+                if (!userError && userProfile) {
+                    if (userProfile.stripe_customer_id) {
+                        stripeCustomerId = userProfile.stripe_customer_id;
+                        console.log(`Using existing Stripe customer ${stripeCustomerId} for user ${booking.user_id}`);
+                    }
+                    else if (userProfile.email) {
+                        // Create a new Stripe Customer
+                        const customer = yield stripe_1.stripe.customers.create({
+                            email: userProfile.email,
+                            metadata: { user_id: booking.user_id }
+                        });
+                        stripeCustomerId = customer.id;
+                        // Save the Stripe Customer ID to user_profiles
+                        yield database_1.supabase
+                            .from('user_profiles')
+                            .update({ stripe_customer_id: customer.id })
+                            .eq('id', booking.user_id);
+                        console.log(`Created new Stripe customer ${customer.id} for user ${booking.user_id}`);
+                    }
+                }
+            }
+            catch (customerError) {
+                console.error(`Error setting up Stripe customer for user ${booking.user_id}:`, customerError.message);
+                // Continue without customer - payment will still work, just won't save card
+            }
+            // 4. If promotion info is provided, update the booking with discount info
             if (promotionInfo && promotionInfo.promotionId) {
                 const { error: updateBookingError } = yield database_1.supabase
                     .from('bookings')
@@ -106,8 +139,8 @@ class PaymentService {
                     console.log(`Updated booking ${bookingId} with promotion discount: $${promotionInfo.discountAmount}`);
                 }
             }
-            // 4. Create new Stripe Payment Intent
-            const paymentIntent = yield stripe_1.stripe.paymentIntents.create({
+            // 5. Create new Stripe Payment Intent (with customer + save card for future use)
+            const paymentIntentParams = {
                 amount,
                 currency: 'usd',
                 automatic_payment_methods: { enabled: true },
@@ -122,8 +155,14 @@ class PaymentService {
                     free_minutes: ((_b = promotionInfo === null || promotionInfo === void 0 ? void 0 : promotionInfo.freeMinutes) === null || _b === void 0 ? void 0 : _b.toString()) || '0',
                     original_amount: ((_c = promotionInfo === null || promotionInfo === void 0 ? void 0 : promotionInfo.originalAmount) === null || _c === void 0 ? void 0 : _c.toString()) || (amount / 100).toString()
                 }
-            });
-            // 5. Create a corresponding payment record
+            };
+            // Attach Stripe Customer and save card for future off-session charges (extensions)
+            if (stripeCustomerId) {
+                paymentIntentParams.customer = stripeCustomerId;
+                paymentIntentParams.setup_future_usage = 'off_session';
+            }
+            const paymentIntent = yield stripe_1.stripe.paymentIntents.create(paymentIntentParams);
+            // 6. Create a corresponding payment record
             const { error: paymentError } = yield database_1.supabase
                 .from('payments')
                 .insert({
@@ -141,7 +180,7 @@ class PaymentService {
                 throw paymentError;
             }
             console.log(`Created new payment intent ${paymentIntent.id} for booking ${bookingId} (amount: $${amount / 100}, discount: $${(promotionInfo === null || promotionInfo === void 0 ? void 0 : promotionInfo.discountAmount) || 0})`);
-            // 6. Send the client secret back to the frontend
+            // 7. Send the client secret back to the frontend
             return {
                 clientSecret: paymentIntent.client_secret,
                 bookingId: booking.id

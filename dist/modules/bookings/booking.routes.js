@@ -10,6 +10,9 @@ const createBookingRoutes = (socketService) => {
     // Booking management routes
     bookingRoutes.post('/reserve', controller.reserveBooking);
     bookingRoutes.get('/', controller.getBookings);
+    // Session extension routes (called by kiosk - no auth required)
+    bookingRoutes.get('/:bookingId/extension-options', controller.getExtensionOptions);
+    bookingRoutes.post('/:bookingId/extend', controller.extendBooking);
     // Employee-only routes
     bookingRoutes.get('/employee', employee_middleware_1.authenticateEmployee, controller.getEmployeeBookings);
     bookingRoutes.get('/employee/customers/search', employee_middleware_1.authenticateEmployee, controller.searchCustomers);

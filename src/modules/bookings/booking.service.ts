@@ -1,5 +1,6 @@
 import { supabase } from '../../config/database';
 import { stripe } from '../../config/stripe';
+import Stripe from 'stripe';
 import { parseTimeString, createISOTimestamp } from '../../shared/utils/date.utils';
 import { BookingDetails } from './booking.types';
 import { EmailService } from '../email/email.service';
@@ -1016,6 +1017,407 @@ export class BookingService {
       bayId,
       booking: fullBooking || { id: bookingId },
       message: 'Booking created successfully by employee'
+    };
+  }
+
+  // =====================================================
+  // SESSION EXTENSION METHODS
+  // =====================================================
+
+  /**
+   * Get available extension options for an active booking.
+   * Returns available durations with prices and card-on-file info.
+   * Called by the kiosk when the countdown nears expiration.
+   */
+  async getExtensionOptions(bookingId: string, requestedOptions: number[] = [15, 30, 60]) {
+    if (!bookingId) {
+      throw new Error('Booking ID is required');
+    }
+
+    // 1. Fetch the booking and validate it's currently active
+    const { data: booking, error: bookingError } = await supabase
+      .from('bookings')
+      .select('id, location_id, bay_id, user_id, start_time, end_time, status')
+      .eq('id', bookingId)
+      .single();
+
+    if (bookingError || !booking) {
+      throw new Error('Booking not found');
+    }
+
+    if (booking.status !== 'confirmed') {
+      throw new Error('Booking is not confirmed');
+    }
+
+    const now = new Date();
+    const endTime = new Date(booking.end_time);
+
+    if (now >= endTime) {
+      throw new Error('Booking has already ended');
+    }
+
+    // 2. Get location timezone
+    const { data: location, error: locationError } = await supabase
+      .from('locations')
+      .select('timezone')
+      .eq('id', booking.location_id)
+      .single();
+
+    if (locationError || !location) {
+      throw new Error('Location not found');
+    }
+
+    const timezone = location.timezone || 'America/New_York';
+
+    // 3. Find the next booking on this bay to determine max extension
+    const { data: nextBookings, error: nextError } = await supabase
+      .from('bookings')
+      .select('start_time')
+      .eq('bay_id', booking.bay_id)
+      .neq('id', bookingId)
+      .not('status', 'in', '("cancelled","expired","abandoned")')
+      .gt('start_time', booking.end_time)
+      .order('start_time', { ascending: true })
+      .limit(1);
+
+    if (nextError) {
+      console.error('Error fetching next bookings:', nextError);
+      throw new Error('Failed to check availability');
+    }
+
+    // Max extension = gap until next booking, or unlimited if no next booking
+    let maxExtensionMinutes = 60; // default cap
+    if (nextBookings && nextBookings.length > 0) {
+      const nextStart = new Date(nextBookings[0].start_time);
+      const gapMinutes = (nextStart.getTime() - endTime.getTime()) / (1000 * 60);
+      maxExtensionMinutes = Math.floor(gapMinutes);
+    }
+
+    // 4. Get extension pricing rules (fall back to regular rules if none exist)
+    const { data: allRules, error: rulesError } = await supabase
+      .from('pricing_rules')
+      .select('name, hourly_rate, start_time, end_time, days_of_week, is_extension_rate')
+      .eq('location_id', booking.location_id)
+      .eq('is_active', true);
+
+    if (rulesError) {
+      throw new Error('Failed to fetch pricing rules');
+    }
+
+    const extensionRules = allRules?.filter(r => r.is_extension_rate) || [];
+    const regularRules = allRules?.filter(r => !r.is_extension_rate) || [];
+    const rulesToUse = extensionRules.length > 0 ? extensionRules : regularRules;
+
+    if (rulesToUse.length === 0) {
+      throw new Error('No pricing rules found');
+    }
+
+    // 5. Calculate price for each valid option
+    const options: { minutes: number; priceCents: number; priceFormatted: string }[] = [];
+
+    for (const optionMinutes of requestedOptions) {
+      if (optionMinutes > maxExtensionMinutes) continue;
+
+      // Calculate price using 15-min slot logic (same as payment.service.ts calculatePrice)
+      let totalCents = 0;
+      const extensionStart = new Date(endTime);
+      const extensionEnd = new Date(endTime.getTime() + optionMinutes * 60 * 1000);
+      let cursor = new Date(extensionStart);
+
+      while (cursor < extensionEnd) {
+        const localHour = parseInt(cursor.toLocaleString('en-US', {
+          hour: '2-digit',
+          hour12: false,
+          timeZone: timezone
+        }));
+
+        let rule;
+        if (localHour >= 9 || localHour < 2) {
+          rule = rulesToUse.find(r => r.name.includes('Standard'));
+        } else {
+          rule = rulesToUse.find(r => r.name.includes('Off-Peak') || r.name.includes('Off Peak'));
+        }
+
+        // Fall back to first available rule
+        if (!rule) rule = rulesToUse[0];
+
+        const priceForSlot = (rule.hourly_rate * 100) / 4; // cents per 15 min
+        totalCents += priceForSlot;
+        cursor.setUTCMinutes(cursor.getUTCMinutes() + 15);
+      }
+
+      totalCents = Math.round(totalCents);
+
+      options.push({
+        minutes: optionMinutes,
+        priceCents: totalCents,
+        priceFormatted: `$${(totalCents / 100).toFixed(2)}`
+      });
+    }
+
+    // 6. Get card on file info from the user's most recent successful payment
+    let card: { last4: string; brand: string } | null = null;
+
+    const { data: recentPayment } = await supabase
+      .from('payments')
+      .select('card_last_four, card_brand')
+      .eq('user_id', booking.user_id)
+      .eq('status', 'succeeded')
+      .not('card_last_four', 'is', null)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (recentPayment?.card_last_four) {
+      card = {
+        last4: recentPayment.card_last_four,
+        brand: recentPayment.card_brand || 'card'
+      };
+    }
+
+    return {
+      bookingId: booking.id,
+      currentEndTime: booking.end_time,
+      maxExtensionMinutes,
+      options,
+      card
+    };
+  }
+
+  /**
+   * Extend an active booking by charging the saved card off-session.
+   * Called by the kiosk when the player confirms the extension.
+   */
+  async extendBooking(
+    bookingId: string,
+    extensionMinutes: number,
+    locationId: string,
+    bayId: string
+  ) {
+    if (!bookingId || !extensionMinutes || !locationId || !bayId) {
+      throw new Error('bookingId, extensionMinutes, locationId, and bayId are required');
+    }
+
+    if (![15, 30, 60].includes(extensionMinutes)) {
+      throw new Error('extensionMinutes must be 15, 30, or 60');
+    }
+
+    // 1. Fetch and validate the booking
+    const { data: booking, error: bookingError } = await supabase
+      .from('bookings')
+      .select('id, location_id, bay_id, user_id, start_time, end_time, status, total_amount')
+      .eq('id', bookingId)
+      .single();
+
+    if (bookingError || !booking) {
+      throw new Error('Booking not found');
+    }
+
+    if (booking.status !== 'confirmed') {
+      throw new Error('Booking is not confirmed');
+    }
+
+    if (booking.bay_id !== bayId || booking.location_id !== locationId) {
+      throw new Error('Booking does not match the specified bay/location');
+    }
+
+    const now = new Date();
+    const currentEndTime = new Date(booking.end_time);
+
+    if (now >= currentEndTime) {
+      throw new Error('Booking has already ended');
+    }
+
+    // 2. Check availability for the extension window
+    const newEndTime = new Date(currentEndTime.getTime() + extensionMinutes * 60 * 1000);
+
+    const { data: conflicts, error: conflictError } = await supabase
+      .from('bookings')
+      .select('id')
+      .eq('bay_id', bayId)
+      .neq('id', bookingId)
+      .not('status', 'in', '("cancelled","expired","abandoned")')
+      .lt('start_time', newEndTime.toISOString())
+      .gt('end_time', currentEndTime.toISOString());
+
+    if (conflictError) {
+      throw new Error('Failed to check availability');
+    }
+
+    if (conflicts && conflicts.length > 0) {
+      throw new Error('Extension would conflict with another booking');
+    }
+
+    // 3. Calculate the extension price
+    const { data: location } = await supabase
+      .from('locations')
+      .select('timezone')
+      .eq('id', locationId)
+      .single();
+
+    const timezone = location?.timezone || 'America/New_York';
+
+    const { data: allRules } = await supabase
+      .from('pricing_rules')
+      .select('name, hourly_rate, is_extension_rate')
+      .eq('location_id', locationId)
+      .eq('is_active', true);
+
+    const extensionRules = allRules?.filter(r => r.is_extension_rate) || [];
+    const regularRules = allRules?.filter(r => !r.is_extension_rate) || [];
+    const rulesToUse = extensionRules.length > 0 ? extensionRules : regularRules;
+
+    if (rulesToUse.length === 0) {
+      throw new Error('No pricing rules found');
+    }
+
+    let totalCents = 0;
+    let cursor = new Date(currentEndTime);
+
+    while (cursor < newEndTime) {
+      const localHour = parseInt(cursor.toLocaleString('en-US', {
+        hour: '2-digit',
+        hour12: false,
+        timeZone: timezone
+      }));
+
+      let rule;
+      if (localHour >= 9 || localHour < 2) {
+        rule = rulesToUse.find(r => r.name.includes('Standard'));
+      } else {
+        rule = rulesToUse.find(r => r.name.includes('Off-Peak') || r.name.includes('Off Peak'));
+      }
+      if (!rule) rule = rulesToUse[0];
+
+      totalCents += (rule.hourly_rate * 100) / 4;
+      cursor.setUTCMinutes(cursor.getUTCMinutes() + 15);
+    }
+
+    totalCents = Math.round(totalCents);
+
+    // 4. Get the user's Stripe Customer and saved payment method
+    const { data: userProfile, error: userError } = await supabase
+      .from('user_profiles')
+      .select('stripe_customer_id')
+      .eq('id', booking.user_id)
+      .single();
+
+    if (userError || !userProfile?.stripe_customer_id) {
+      throw new Error('No payment method on file. Please visit the front desk.');
+    }
+
+    const customerId = userProfile.stripe_customer_id;
+
+    // Get the customer's saved payment methods
+    const paymentMethods = await stripe.paymentMethods.list({
+      customer: customerId,
+      type: 'card',
+      limit: 1
+    });
+
+    if (!paymentMethods.data || paymentMethods.data.length === 0) {
+      throw new Error('No saved card found. Please visit the front desk.');
+    }
+
+    const paymentMethodId = paymentMethods.data[0].id;
+
+    // 5. Charge off-session using the saved card
+    let paymentIntent: Stripe.PaymentIntent;
+    try {
+      paymentIntent = await stripe.paymentIntents.create({
+        amount: totalCents,
+        currency: 'usd',
+        customer: customerId,
+        payment_method: paymentMethodId,
+        off_session: true,
+        confirm: true,
+        metadata: {
+          booking_id: bookingId,
+          user_id: booking.user_id,
+          bay_id: bayId,
+          location_id: locationId,
+          extension: 'true',
+          extension_minutes: extensionMinutes.toString(),
+          original_end_time: currentEndTime.toISOString()
+        }
+      });
+    } catch (stripeError: any) {
+      console.error(`Extension payment failed for booking ${bookingId}:`, stripeError.message);
+
+      // Log the failure
+      await supabase.from('access_logs').insert({
+        location_id: locationId,
+        bay_id: bayId,
+        booking_id: bookingId,
+        user_id: booking.user_id,
+        action: 'extension_payment_failed',
+        success: false,
+        error_message: stripeError.message,
+        user_agent: 'Kiosk',
+        metadata: { extension_minutes: extensionMinutes, amount_cents: totalCents }
+      });
+
+      throw new Error('Payment failed. Please visit the front desk.');
+    }
+
+    // 6. Extend the booking end_time and update total_amount
+    const { error: updateError } = await supabase
+      .from('bookings')
+      .update({
+        end_time: newEndTime.toISOString(),
+        total_amount: (booking.total_amount || 0) + (totalCents / 100)
+      })
+      .eq('id', bookingId);
+
+    if (updateError) {
+      console.error(`Error extending booking ${bookingId}:`, updateError);
+      // Payment already succeeded - log this as critical
+      throw new Error('Payment succeeded but failed to extend booking. Contact staff.');
+    }
+
+    // 7. Create a payment record for the extension
+    const cardDetails = paymentMethods.data[0].card;
+    await supabase.from('payments').insert({
+      booking_id: bookingId,
+      amount: totalCents / 100,
+      status: 'succeeded',
+      stripe_payment_intent_id: paymentIntent.id,
+      currency: 'usd',
+      user_id: booking.user_id,
+      location_id: locationId,
+      payment_method: 'card',
+      card_last_four: cardDetails?.last4 || null,
+      card_brand: cardDetails?.brand || null,
+      processed_at: new Date().toISOString()
+    });
+
+    // 8. Log the successful extension
+    await supabase.from('access_logs').insert({
+      location_id: locationId,
+      bay_id: bayId,
+      booking_id: bookingId,
+      user_id: booking.user_id,
+      action: 'extension_accepted',
+      success: true,
+      user_agent: 'Kiosk',
+      metadata: {
+        extension_minutes: extensionMinutes,
+        amount_cents: totalCents,
+        original_end_time: currentEndTime.toISOString(),
+        new_end_time: newEndTime.toISOString()
+      }
+    });
+
+    console.log(`Successfully extended booking ${bookingId} by ${extensionMinutes} min. New end: ${newEndTime.toISOString()}, charged $${(totalCents / 100).toFixed(2)}`);
+
+    return {
+      success: true,
+      bookingId,
+      locationId,
+      bayId,
+      newEndTime: newEndTime.toISOString(),
+      amountCharged: totalCents / 100,
+      amountChargedFormatted: `$${(totalCents / 100).toFixed(2)}`
     };
   }
 } 
