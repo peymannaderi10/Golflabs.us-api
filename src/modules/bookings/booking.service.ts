@@ -1042,7 +1042,7 @@ export class BookingService {
    * Returns available durations with prices and card-on-file info.
    * Called by the kiosk when the countdown nears expiration.
    */
-  async getExtensionOptions(bookingId: string, requestedOptions: number[] = [15, 30, 60]) {
+  async getExtensionOptions(bookingId: string, requestedOptions: number[] = [15, 30, 45, 60]) {
     if (!bookingId) {
       throw new Error('Booking ID is required');
     }

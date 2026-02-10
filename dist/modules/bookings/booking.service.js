@@ -888,7 +888,7 @@ class BookingService {
      * Called by the kiosk when the countdown nears expiration.
      */
     getExtensionOptions(bookingId_1) {
-        return __awaiter(this, arguments, void 0, function* (bookingId, requestedOptions = [15, 30, 60]) {
+        return __awaiter(this, arguments, void 0, function* (bookingId, requestedOptions = [15, 30, 45, 60]) {
             if (!bookingId) {
                 throw new Error('Booking ID is required');
             }
