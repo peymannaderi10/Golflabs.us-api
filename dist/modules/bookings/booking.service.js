@@ -117,21 +117,25 @@ class BookingService {
                 throw new Error('Invalid location ID');
             }
             const timezone = location.timezone || 'America/New_York';
-            // Use the same createISOTimestamp logic for consistent timezone conversion
-            const startOfDayUTC = (0, date_utils_1.createISOTimestamp)(date, startTime || '12:00 AM', timezone);
+            // For date range, always use start of day for the lower bound of start_time
+            const startOfDayUTC = (0, date_utils_1.createISOTimestamp)(date, '12:00 AM', timezone);
             // For end of day, use 11:59:59 PM to stay within the same day
             // Since overnight bookings are not allowed, we only want bookings that START on this specific date
             const endOfDayUTC = (0, date_utils_1.createISOTimestamp)(date, '11:59 PM', timezone);
             // Add one minute to include 11:59 PM bookings but exclude midnight of next day
             const endOfDayPlusOneMinute = new Date(new Date(endOfDayUTC).getTime() + 60000).toISOString();
+            // If startTime is provided (for "today" views), we need to filter out bookings that have already ended
+            // But we should still include active bookings that started before the current time
+            const filterEndTimeAfter = startTime ? (0, date_utils_1.createISOTimestamp)(date, startTime, timezone) : null;
             console.log(`Fetching bookings for ${date} in timezone ${timezone}:`, {
                 startUTC: startOfDayUTC,
                 endUTC: endOfDayPlusOneMinute,
-                note: 'Only bookings that START on this date will be included'
+                filterEndTimeAfter: filterEndTimeAfter,
+                note: 'Bookings that START on this date and END after the filter time (if provided)'
             });
             // Query bookings that START within this specific date
             // Include expires_at to filter out expired reserved bookings
-            const { data, error } = yield database_1.supabase
+            let query = database_1.supabase
                 .from('bookings')
                 .select('id, bay_id, start_time, end_time, status, expires_at')
                 .eq('location_id', locationId)
@@ -140,6 +144,12 @@ class BookingService {
                 .neq('status', 'cancelled')
                 .neq('status', 'expired')
                 .neq('status', 'abandoned');
+            // If startTime filter is provided, only include bookings that END after that time
+            // This ensures we still show active bookings that started earlier
+            if (filterEndTimeAfter) {
+                query = query.gt('end_time', filterEndTimeAfter);
+            }
+            const { data, error } = yield query;
             if (error) {
                 console.error('Error fetching bookings:', error);
                 throw new Error('Failed to fetch bookings');
