@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.calculateHandicap = calculateHandicap;
 exports.calculateNetScore = calculateNetScore;
 exports.calculateDifferential = calculateDifferential;
+exports.calculateDifferentialFromPar = calculateDifferentialFromPar;
 /**
  * Simplified indoor sim handicap calculation.
  *
@@ -51,5 +52,16 @@ function calculateNetScore(grossScore, handicap) {
  */
 function calculateDifferential(grossScore, numHoles, parPerHole) {
     const totalPar = numHoles * parPerHole;
+    return grossScore - totalPar;
+}
+/**
+ * Calculate the differential using the actual course total par.
+ * Preferred over calculateDifferential when per-hole par data is available.
+ *
+ * @param grossScore Total strokes for the round
+ * @param totalPar Total par for the course (sum of all hole pars)
+ * @returns The differential (gross - total_par)
+ */
+function calculateDifferentialFromPar(grossScore, totalPar) {
     return grossScore - totalPar;
 }

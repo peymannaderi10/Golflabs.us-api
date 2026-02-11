@@ -62,3 +62,18 @@ export function calculateDifferential(
   const totalPar = numHoles * parPerHole;
   return grossScore - totalPar;
 }
+
+/**
+ * Calculate the differential using the actual course total par.
+ * Preferred over calculateDifferential when per-hole par data is available.
+ *
+ * @param grossScore Total strokes for the round
+ * @param totalPar Total par for the course (sum of all hole pars)
+ * @returns The differential (gross - total_par)
+ */
+export function calculateDifferentialFromPar(
+  grossScore: number,
+  totalPar: number
+): number {
+  return grossScore - totalPar;
+}

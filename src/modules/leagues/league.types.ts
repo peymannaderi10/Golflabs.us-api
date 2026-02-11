@@ -20,9 +20,31 @@ export interface League {
   handicap_enabled: boolean;
   handicap_rounds_used: number;
   handicap_rounds_window: number;
+  course_rotation: 'fixed' | 'rotating';
+  scoring_type: 'net_stroke_play' | 'gross_stroke_play' | 'points_based';
+  points_config: PointsConfig | null;
   status: 'draft' | 'registration' | 'active' | 'completed' | 'cancelled';
   created_at: string;
   updated_at: string;
+}
+
+export interface PointsConfig {
+  win_week: number;
+  second_place: number;
+  third_place: number;
+  participation: number;
+  low_gross_bonus: number;
+}
+
+export interface LeagueCourse {
+  id: string;
+  league_id: string;
+  course_name: string;
+  num_holes: number;
+  hole_pars: number[];   // [4, 3, 5, 4, 3, 4, 5, 3, 4]
+  total_par: number;
+  is_default: boolean;
+  created_at: string;
 }
 
 export interface LeaguePlayer {
@@ -44,6 +66,7 @@ export interface LeagueWeek {
   league_id: string;
   week_number: number;
   date: string;
+  league_course_id: string | null;
   status: 'upcoming' | 'active' | 'scoring' | 'finalized';
   notes: string | null;
   created_at: string;
@@ -57,6 +80,10 @@ export interface LeagueScore {
   strokes: number;
   entered_via: 'kiosk' | 'employee' | 'player_app';
   bay_id: string | null;
+  score_status: 'submitted' | 'confirmed' | 'overridden';
+  confirmed_at: string | null;
+  confirmed_by: string | null;
+  override_reason: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -86,6 +113,9 @@ export interface HandicapHistoryEntry {
     best_used: number[];
     average: number;
     multiplier: number;
+    type?: string;          // 'calculated' | 'manual_override'
+    reason?: string;
+    overridden_by?: string;
   };
   calculated_at: string;
 }
@@ -109,6 +139,10 @@ export interface CreateLeagueRequest {
   maxPlayers?: number;
   handicapEnabled?: boolean;
   startDate: string; // YYYY-MM-DD of the first week
+  courseRotation?: 'fixed' | 'rotating';
+  scoringType?: 'net_stroke_play' | 'gross_stroke_play' | 'points_based';
+  pointsConfig?: PointsConfig;
+  courses?: CreateCourseRequest[];
 }
 
 export interface UpdateLeagueRequest {
@@ -122,6 +156,22 @@ export interface UpdateLeagueRequest {
   handicapEnabled?: boolean;
   startTime?: string;
   endTime?: string;
+  courseRotation?: 'fixed' | 'rotating';
+  scoringType?: 'net_stroke_play' | 'gross_stroke_play' | 'points_based';
+  pointsConfig?: PointsConfig;
+}
+
+export interface CreateCourseRequest {
+  courseName: string;
+  numHoles: number;
+  holePars: number[];
+  isDefault?: boolean;
+}
+
+export interface UpdateCourseRequest {
+  courseName?: string;
+  holePars?: number[];
+  isDefault?: boolean;
 }
 
 export interface EnrollPlayerRequest {
@@ -145,6 +195,16 @@ export interface SubmitScoreResult {
   total_holes: number;
   round_gross: number;
   round_complete: boolean;
+}
+
+export interface OverrideScoreRequest {
+  strokes: number;
+  reason: string;
+}
+
+export interface OverrideHandicapRequest {
+  handicap: number;
+  reason: string;
 }
 
 export interface LeagueScorePayload {
@@ -196,4 +256,6 @@ export interface LiveLeaderboardEntry {
   seasonGross: number;
   seasonNet: number;
   weeksPlayed: number;
+  courseName?: string;
+  coursePar?: number;
 }

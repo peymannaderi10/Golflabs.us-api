@@ -71,6 +71,64 @@ export class LeagueController {
   };
 
   // =====================================================
+  // COURSE MANAGEMENT
+  // =====================================================
+
+  addCourse = async (req: Request, res: Response) => {
+    try {
+      const course = await this.leagueService.addCourse(req.params.leagueId, req.body);
+      res.status(201).json(course);
+    } catch (error: any) {
+      console.error('Error adding course:', error);
+      res.status(500).json({ error: error.message });
+    }
+  };
+
+  getCourses = async (req: Request, res: Response) => {
+    try {
+      const courses = await this.leagueService.getCourses(req.params.leagueId);
+      res.json(courses);
+    } catch (error: any) {
+      console.error('Error fetching courses:', error);
+      res.status(500).json({ error: error.message });
+    }
+  };
+
+  updateCourse = async (req: Request, res: Response) => {
+    try {
+      const course = await this.leagueService.updateCourse(req.params.courseId, req.body);
+      res.json(course);
+    } catch (error: any) {
+      console.error('Error updating course:', error);
+      res.status(500).json({ error: error.message });
+    }
+  };
+
+  deleteCourse = async (req: Request, res: Response) => {
+    try {
+      await this.leagueService.deleteCourse(req.params.courseId);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error('Error deleting course:', error);
+      res.status(500).json({ error: error.message });
+    }
+  };
+
+  assignCourseToWeek = async (req: Request, res: Response) => {
+    try {
+      const { courseId } = req.body;
+      if (!courseId) {
+        return res.status(400).json({ error: 'courseId is required' });
+      }
+      const week = await this.leagueService.assignCourseToWeek(req.params.weekId, courseId);
+      res.json(week);
+    } catch (error: any) {
+      console.error('Error assigning course to week:', error);
+      res.status(500).json({ error: error.message });
+    }
+  };
+
+  // =====================================================
   // PLAYER ENROLLMENT
   // =====================================================
 
@@ -106,6 +164,35 @@ export class LeagueController {
       res.json({ success: true });
     } catch (error: any) {
       console.error('Error withdrawing player:', error);
+      res.status(500).json({ error: error.message });
+    }
+  };
+
+  // =====================================================
+  // COMMISSIONER POWERS — HANDICAP OVERRIDE
+  // =====================================================
+
+  overrideHandicap = async (req: Request, res: Response) => {
+    try {
+      const { handicap, reason } = req.body;
+      if (handicap === undefined || !reason) {
+        return res.status(400).json({ error: 'handicap and reason are required' });
+      }
+
+      // Use the authenticated employee's ID as overrider
+      const overriddenBy = (req as any).employee?.id || 'unknown';
+
+      await this.leagueService.overrideHandicap(
+        req.params.leagueId,
+        req.params.playerId,
+        handicap,
+        overriddenBy,
+        reason
+      );
+
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error('Error overriding handicap:', error);
       res.status(500).json({ error: error.message });
     }
   };
@@ -216,6 +303,48 @@ export class LeagueController {
       res.json(scorecard);
     } catch (error: any) {
       console.error('Error fetching player scorecard:', error);
+      res.status(500).json({ error: error.message });
+    }
+  };
+
+  // =====================================================
+  // SCORE AUDITABILITY — CONFIRM / OVERRIDE
+  // =====================================================
+
+  confirmScore = async (req: Request, res: Response) => {
+    try {
+      const confirmedBy = (req as any).employee?.id || 'unknown';
+      await this.leagueService.confirmScore(req.params.scoreId, confirmedBy);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error('Error confirming score:', error);
+      res.status(500).json({ error: error.message });
+    }
+  };
+
+  confirmWeekScores = async (req: Request, res: Response) => {
+    try {
+      const confirmedBy = (req as any).employee?.id || 'unknown';
+      const count = await this.leagueService.confirmWeekScores(req.params.weekId, confirmedBy);
+      res.json({ success: true, confirmed: count });
+    } catch (error: any) {
+      console.error('Error confirming week scores:', error);
+      res.status(500).json({ error: error.message });
+    }
+  };
+
+  overrideScore = async (req: Request, res: Response) => {
+    try {
+      const { strokes, reason } = req.body;
+      if (strokes === undefined || !reason) {
+        return res.status(400).json({ error: 'strokes and reason are required' });
+      }
+
+      const overriddenBy = (req as any).employee?.id || 'unknown';
+      await this.leagueService.overrideScore(req.params.scoreId, strokes, overriddenBy, reason);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error('Error overriding score:', error);
       res.status(500).json({ error: error.message });
     }
   };

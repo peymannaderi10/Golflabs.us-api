@@ -71,6 +71,63 @@ class LeagueController {
             }
         });
         // =====================================================
+        // COURSE MANAGEMENT
+        // =====================================================
+        this.addCourse = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            try {
+                const course = yield this.leagueService.addCourse(req.params.leagueId, req.body);
+                res.status(201).json(course);
+            }
+            catch (error) {
+                console.error('Error adding course:', error);
+                res.status(500).json({ error: error.message });
+            }
+        });
+        this.getCourses = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            try {
+                const courses = yield this.leagueService.getCourses(req.params.leagueId);
+                res.json(courses);
+            }
+            catch (error) {
+                console.error('Error fetching courses:', error);
+                res.status(500).json({ error: error.message });
+            }
+        });
+        this.updateCourse = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            try {
+                const course = yield this.leagueService.updateCourse(req.params.courseId, req.body);
+                res.json(course);
+            }
+            catch (error) {
+                console.error('Error updating course:', error);
+                res.status(500).json({ error: error.message });
+            }
+        });
+        this.deleteCourse = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            try {
+                yield this.leagueService.deleteCourse(req.params.courseId);
+                res.json({ success: true });
+            }
+            catch (error) {
+                console.error('Error deleting course:', error);
+                res.status(500).json({ error: error.message });
+            }
+        });
+        this.assignCourseToWeek = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            try {
+                const { courseId } = req.body;
+                if (!courseId) {
+                    return res.status(400).json({ error: 'courseId is required' });
+                }
+                const week = yield this.leagueService.assignCourseToWeek(req.params.weekId, courseId);
+                res.json(week);
+            }
+            catch (error) {
+                console.error('Error assigning course to week:', error);
+                res.status(500).json({ error: error.message });
+            }
+        });
+        // =====================================================
         // PLAYER ENROLLMENT
         // =====================================================
         this.enrollPlayer = (req, res) => __awaiter(this, void 0, void 0, function* () {
@@ -106,6 +163,26 @@ class LeagueController {
             }
             catch (error) {
                 console.error('Error withdrawing player:', error);
+                res.status(500).json({ error: error.message });
+            }
+        });
+        // =====================================================
+        // COMMISSIONER POWERS — HANDICAP OVERRIDE
+        // =====================================================
+        this.overrideHandicap = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            var _a;
+            try {
+                const { handicap, reason } = req.body;
+                if (handicap === undefined || !reason) {
+                    return res.status(400).json({ error: 'handicap and reason are required' });
+                }
+                // Use the authenticated employee's ID as overrider
+                const overriddenBy = ((_a = req.employee) === null || _a === void 0 ? void 0 : _a.id) || 'unknown';
+                yield this.leagueService.overrideHandicap(req.params.leagueId, req.params.playerId, handicap, overriddenBy, reason);
+                res.json({ success: true });
+            }
+            catch (error) {
+                console.error('Error overriding handicap:', error);
                 res.status(500).json({ error: error.message });
             }
         });
@@ -204,6 +281,49 @@ class LeagueController {
             }
             catch (error) {
                 console.error('Error fetching player scorecard:', error);
+                res.status(500).json({ error: error.message });
+            }
+        });
+        // =====================================================
+        // SCORE AUDITABILITY — CONFIRM / OVERRIDE
+        // =====================================================
+        this.confirmScore = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            var _a;
+            try {
+                const confirmedBy = ((_a = req.employee) === null || _a === void 0 ? void 0 : _a.id) || 'unknown';
+                yield this.leagueService.confirmScore(req.params.scoreId, confirmedBy);
+                res.json({ success: true });
+            }
+            catch (error) {
+                console.error('Error confirming score:', error);
+                res.status(500).json({ error: error.message });
+            }
+        });
+        this.confirmWeekScores = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            var _a;
+            try {
+                const confirmedBy = ((_a = req.employee) === null || _a === void 0 ? void 0 : _a.id) || 'unknown';
+                const count = yield this.leagueService.confirmWeekScores(req.params.weekId, confirmedBy);
+                res.json({ success: true, confirmed: count });
+            }
+            catch (error) {
+                console.error('Error confirming week scores:', error);
+                res.status(500).json({ error: error.message });
+            }
+        });
+        this.overrideScore = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            var _a;
+            try {
+                const { strokes, reason } = req.body;
+                if (strokes === undefined || !reason) {
+                    return res.status(400).json({ error: 'strokes and reason are required' });
+                }
+                const overriddenBy = ((_a = req.employee) === null || _a === void 0 ? void 0 : _a.id) || 'unknown';
+                yield this.leagueService.overrideScore(req.params.scoreId, strokes, overriddenBy, reason);
+                res.json({ success: true });
+            }
+            catch (error) {
+                console.error('Error overriding score:', error);
                 res.status(500).json({ error: error.message });
             }
         });

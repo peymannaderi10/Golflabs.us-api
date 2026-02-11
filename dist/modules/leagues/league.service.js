@@ -19,7 +19,7 @@ class LeagueService {
     // =====================================================
     createLeague(data) {
         return __awaiter(this, void 0, void 0, function* () {
-            const { locationId, name, format = 'stroke_play', numHoles = 9, parPerHole = 3, totalWeeks, dayOfWeek, startTime, endTime, seasonFee = 0, weeklyPrizePot = 0, maxPlayers = 32, handicapEnabled = true, startDate, } = data;
+            const { locationId, name, format = 'stroke_play', numHoles = 9, parPerHole = 3, totalWeeks, dayOfWeek, startTime, endTime, seasonFee = 0, weeklyPrizePot = 0, maxPlayers = 32, handicapEnabled = true, startDate, courseRotation = 'fixed', scoringType = 'net_stroke_play', pointsConfig, courses, } = data;
             // Insert the league
             const { data: league, error } = yield database_1.supabase
                 .from('leagues')
@@ -37,11 +37,36 @@ class LeagueService {
                 weekly_prize_pot: weeklyPrizePot,
                 max_players: maxPlayers,
                 handicap_enabled: handicapEnabled,
+                course_rotation: courseRotation,
+                scoring_type: scoringType,
+                points_config: pointsConfig || null,
             })
                 .select()
                 .single();
             if (error || !league) {
                 throw new Error(`Failed to create league: ${error === null || error === void 0 ? void 0 : error.message}`);
+            }
+            // Create courses if provided
+            let createdCourses = [];
+            if (courses && courses.length > 0) {
+                const courseRows = courses.map((c, idx) => ({
+                    league_id: league.id,
+                    course_name: c.courseName,
+                    num_holes: c.numHoles,
+                    hole_pars: c.holePars,
+                    total_par: c.holePars.reduce((sum, p) => sum + p, 0),
+                    is_default: idx === 0 ? true : (c.isDefault || false),
+                }));
+                const { data: coursesData, error: coursesError } = yield database_1.supabase
+                    .from('league_courses')
+                    .insert(courseRows)
+                    .select();
+                if (coursesError) {
+                    console.error('Failed to create league courses:', coursesError);
+                }
+                else {
+                    createdCourses = coursesData || [];
+                }
             }
             // Auto-generate league_weeks rows
             const weeks = [];
@@ -49,11 +74,25 @@ class LeagueService {
             for (let i = 0; i < totalWeeks; i++) {
                 const weekDate = new Date(start);
                 weekDate.setDate(weekDate.getDate() + (i * 7));
+                // Assign course to week
+                let courseId = null;
+                if (createdCourses.length > 0) {
+                    if (courseRotation === 'fixed') {
+                        // Use the default course for all weeks
+                        const defaultCourse = createdCourses.find(c => c.is_default) || createdCourses[0];
+                        courseId = defaultCourse.id;
+                    }
+                    else {
+                        // Rotating: round-robin through courses
+                        courseId = createdCourses[i % createdCourses.length].id;
+                    }
+                }
                 weeks.push({
                     league_id: league.id,
                     week_number: i + 1,
                     date: weekDate.toISOString().split('T')[0],
                     status: 'upcoming',
+                    league_course_id: courseId,
                 });
             }
             const { error: weeksError } = yield database_1.supabase
@@ -116,6 +155,12 @@ class LeagueService {
                 updateData.start_time = data.startTime;
             if (data.endTime !== undefined)
                 updateData.end_time = data.endTime;
+            if (data.courseRotation !== undefined)
+                updateData.course_rotation = data.courseRotation;
+            if (data.scoringType !== undefined)
+                updateData.scoring_type = data.scoringType;
+            if (data.pointsConfig !== undefined)
+                updateData.points_config = data.pointsConfig;
             const { data: league, error } = yield database_1.supabase
                 .from('leagues')
                 .update(updateData)
@@ -224,6 +269,139 @@ class LeagueService {
         });
     }
     // =====================================================
+    // COURSE MANAGEMENT
+    // =====================================================
+    addCourse(leagueId, data) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const totalPar = data.holePars.reduce((sum, p) => sum + p, 0);
+            const { data: course, error } = yield database_1.supabase
+                .from('league_courses')
+                .insert({
+                league_id: leagueId,
+                course_name: data.courseName,
+                num_holes: data.numHoles,
+                hole_pars: data.holePars,
+                total_par: totalPar,
+                is_default: data.isDefault || false,
+            })
+                .select()
+                .single();
+            if (error || !course) {
+                throw new Error(`Failed to add course: ${error === null || error === void 0 ? void 0 : error.message}`);
+            }
+            // If this is set as default, unset other defaults
+            if (data.isDefault) {
+                yield database_1.supabase
+                    .from('league_courses')
+                    .update({ is_default: false })
+                    .eq('league_id', leagueId)
+                    .neq('id', course.id);
+            }
+            return course;
+        });
+    }
+    getCourses(leagueId) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const { data, error } = yield database_1.supabase
+                .from('league_courses')
+                .select('*')
+                .eq('league_id', leagueId)
+                .order('is_default', { ascending: false })
+                .order('created_at');
+            if (error) {
+                throw new Error(`Failed to fetch courses: ${error.message}`);
+            }
+            return data || [];
+        });
+    }
+    updateCourse(courseId, data) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const updateData = {};
+            if (data.courseName !== undefined)
+                updateData.course_name = data.courseName;
+            if (data.holePars !== undefined) {
+                updateData.hole_pars = data.holePars;
+                updateData.total_par = data.holePars.reduce((sum, p) => sum + p, 0);
+                updateData.num_holes = data.holePars.length;
+            }
+            if (data.isDefault !== undefined)
+                updateData.is_default = data.isDefault;
+            const { data: course, error } = yield database_1.supabase
+                .from('league_courses')
+                .update(updateData)
+                .eq('id', courseId)
+                .select()
+                .single();
+            if (error || !course) {
+                throw new Error(`Failed to update course: ${error === null || error === void 0 ? void 0 : error.message}`);
+            }
+            // If setting as default, unset others
+            if (data.isDefault) {
+                yield database_1.supabase
+                    .from('league_courses')
+                    .update({ is_default: false })
+                    .eq('league_id', course.league_id)
+                    .neq('id', course.id);
+            }
+            return course;
+        });
+    }
+    deleteCourse(courseId) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const { error } = yield database_1.supabase
+                .from('league_courses')
+                .delete()
+                .eq('id', courseId);
+            if (error) {
+                throw new Error(`Failed to delete course: ${error.message}`);
+            }
+        });
+    }
+    assignCourseToWeek(weekId, courseId) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const { data, error } = yield database_1.supabase
+                .from('league_weeks')
+                .update({ league_course_id: courseId })
+                .eq('id', weekId)
+                .select()
+                .single();
+            if (error || !data) {
+                throw new Error(`Failed to assign course to week: ${error === null || error === void 0 ? void 0 : error.message}`);
+            }
+            return data;
+        });
+    }
+    /**
+     * Get the course for a specific week, falling back to league defaults.
+     */
+    getCourseForWeek(weekId, league) {
+        return __awaiter(this, void 0, void 0, function* () {
+            // First check if week has an assigned course
+            const { data: week } = yield database_1.supabase
+                .from('league_weeks')
+                .select('league_course_id')
+                .eq('id', weekId)
+                .single();
+            if (week === null || week === void 0 ? void 0 : week.league_course_id) {
+                const { data: course } = yield database_1.supabase
+                    .from('league_courses')
+                    .select('*')
+                    .eq('id', week.league_course_id)
+                    .single();
+                if (course)
+                    return course;
+            }
+            // Fall back to default course for the league
+            const { data: defaultCourse } = yield database_1.supabase
+                .from('league_courses')
+                .select('*')
+                .eq('league_id', league.id)
+                .eq('is_default', true)
+                .single();
+            return defaultCourse || null;
+        });
+    }
+    // =====================================================
     // WEEKLY SESSIONS
     // =====================================================
     getWeeks(leagueId) {
@@ -321,7 +499,7 @@ class LeagueService {
         return __awaiter(this, void 0, void 0, function* () {
             const { data: scores, error } = yield database_1.supabase
                 .from('league_scores')
-                .select('hole_number, strokes, entered_via, created_at')
+                .select('hole_number, strokes, entered_via, score_status, created_at')
                 .eq('league_week_id', weekId)
                 .eq('league_player_id', playerId)
                 .order('hole_number');
@@ -333,13 +511,11 @@ class LeagueService {
                 .select('display_name, current_handicap')
                 .eq('id', playerId)
                 .single();
-            const { data: league } = yield database_1.supabase
-                .from('leagues')
-                .select('num_holes, par_per_hole')
-                .eq('id', leagueId)
-                .single();
+            const league = yield this.getLeague(leagueId);
+            // Try to get course par from the week's assigned course
+            const course = yield this.getCourseForWeek(weekId, league);
+            const totalPar = (course === null || course === void 0 ? void 0 : course.total_par) || (league.num_holes * league.par_per_hole);
             const totalGross = (scores || []).reduce((sum, s) => sum + s.strokes, 0);
-            const totalPar = ((league === null || league === void 0 ? void 0 : league.num_holes) || 9) * ((league === null || league === void 0 ? void 0 : league.par_per_hole) || 3);
             const netScore = (0, handicap_utils_1.calculateNetScore)(totalGross, (player === null || player === void 0 ? void 0 : player.current_handicap) || 0);
             return {
                 player: player === null || player === void 0 ? void 0 : player.display_name,
@@ -349,7 +525,9 @@ class LeagueService {
                 totalPar,
                 netScore,
                 holesCompleted: (scores || []).length,
-                totalHoles: (league === null || league === void 0 ? void 0 : league.num_holes) || 9,
+                totalHoles: league.num_holes,
+                courseName: (course === null || course === void 0 ? void 0 : course.course_name) || null,
+                holePars: (course === null || course === void 0 ? void 0 : course.hole_pars) || null,
             };
         });
     }
@@ -389,12 +567,19 @@ class LeagueService {
             // Get the current active or most recent finalized week
             const { data: activeWeek } = yield database_1.supabase
                 .from('league_weeks')
-                .select('*')
+                .select('*, league_courses(course_name, total_par)')
                 .eq('league_id', leagueId)
                 .in('status', ['active', 'scoring'])
                 .order('week_number', { ascending: false })
                 .limit(1)
                 .single();
+            // Resolve course info for this week
+            let courseName;
+            let coursePar;
+            if (activeWeek === null || activeWeek === void 0 ? void 0 : activeWeek.league_courses) {
+                courseName = activeWeek.league_courses.course_name;
+                coursePar = activeWeek.league_courses.total_par;
+            }
             // Get all active players
             const players = yield this.getPlayers(leagueId);
             // Get season standings
@@ -438,6 +623,8 @@ class LeagueService {
                     seasonGross: (standing === null || standing === void 0 ? void 0 : standing.total_gross) || 0,
                     seasonNet: (standing === null || standing === void 0 ? void 0 : standing.total_net) || 0,
                     weeksPlayed: (standing === null || standing === void 0 ? void 0 : standing.weeks_played) || 0,
+                    courseName,
+                    coursePar,
                 };
             });
             // Sort by today's net score (ascending), then by season rank
@@ -467,12 +654,14 @@ class LeagueService {
     recalculateStandings(leagueId) {
         return __awaiter(this, void 0, void 0, function* () {
             const league = yield this.getLeague(leagueId);
+            const scoringType = league.scoring_type || 'net_stroke_play';
             // Get all finalized weeks
             const { data: finalizedWeeks } = yield database_1.supabase
                 .from('league_weeks')
                 .select('id')
                 .eq('league_id', leagueId)
-                .eq('status', 'finalized');
+                .eq('status', 'finalized')
+                .order('week_number');
             const weekIds = (finalizedWeeks || []).map((w) => w.id);
             if (weekIds.length === 0)
                 return;
@@ -489,8 +678,6 @@ class LeagueService {
                 .neq('enrollment_status', 'withdrawn');
             if (!players || !allScores)
                 return;
-            // Calculate per-player stats
-            const playerStats = new Map();
             // Group scores by player and week
             const scoresByPlayerWeek = new Map();
             (allScores || []).forEach((score) => {
@@ -502,7 +689,35 @@ class LeagueService {
                 const weekGross = (weekMap.get(score.league_week_id) || 0) + score.strokes;
                 weekMap.set(score.league_week_id, weekGross);
             });
-            // Now compute stats
+            // Calculate per-player stats
+            const playerStats = new Map();
+            // For points-based scoring, compute weekly rankings first
+            let weeklyRankings = null; // weekId -> playerId -> rank
+            if (scoringType === 'points_based') {
+                weeklyRankings = new Map();
+                for (const weekId of weekIds) {
+                    const weekPlayerScores = [];
+                    for (const player of players) {
+                        const weekMap = scoresByPlayerWeek.get(player.id);
+                        const gross = weekMap === null || weekMap === void 0 ? void 0 : weekMap.get(weekId);
+                        if (gross !== undefined) {
+                            const handicap = player.current_handicap || 0;
+                            weekPlayerScores.push({
+                                playerId: player.id,
+                                net: gross - handicap,
+                            });
+                        }
+                    }
+                    // Sort by net ascending (lower is better)
+                    weekPlayerScores.sort((a, b) => a.net - b.net);
+                    const rankMap = new Map();
+                    weekPlayerScores.forEach((entry, idx) => {
+                        rankMap.set(entry.playerId, idx + 1);
+                    });
+                    weeklyRankings.set(weekId, rankMap);
+                }
+            }
+            // Now compute stats for each player
             for (const player of players) {
                 const weekMap = scoresByPlayerWeek.get(player.id);
                 if (!weekMap || weekMap.size === 0) {
@@ -512,12 +727,14 @@ class LeagueService {
                         totalNet: 0,
                         bestGross: null,
                         roundGrosses: [],
+                        points: 0,
                     });
                     continue;
                 }
                 const roundGrosses = [];
                 let totalGross = 0;
                 let bestGross = null;
+                let totalPoints = 0;
                 weekMap.forEach((gross) => {
                     roundGrosses.push(gross);
                     totalGross += gross;
@@ -527,15 +744,65 @@ class LeagueService {
                 });
                 const handicap = player.current_handicap || 0;
                 const totalNet = totalGross - (handicap * weekMap.size);
+                // Calculate points if points-based
+                if (scoringType === 'points_based' && weeklyRankings) {
+                    const config = league.points_config || {
+                        win_week: 10,
+                        second_place: 7,
+                        third_place: 5,
+                        participation: 2,
+                        low_gross_bonus: 3,
+                    };
+                    for (const weekId of weekIds) {
+                        const rankMap = weeklyRankings.get(weekId);
+                        if (!rankMap)
+                            continue;
+                        const rank = rankMap.get(player.id);
+                        if (rank === undefined)
+                            continue;
+                        // Award points based on placement
+                        if (rank === 1) {
+                            totalPoints += config.win_week;
+                        }
+                        else if (rank === 2) {
+                            totalPoints += config.second_place;
+                        }
+                        else if (rank === 3) {
+                            totalPoints += config.third_place;
+                        }
+                        else {
+                            totalPoints += config.participation;
+                        }
+                        // Low gross bonus: check if this player had the lowest gross for the week
+                        const weekGross = weekMap.get(weekId);
+                        if (weekGross !== undefined) {
+                            let isLowestGross = true;
+                            for (const otherPlayer of players) {
+                                if (otherPlayer.id === player.id)
+                                    continue;
+                                const otherWeekMap = scoresByPlayerWeek.get(otherPlayer.id);
+                                const otherGross = otherWeekMap === null || otherWeekMap === void 0 ? void 0 : otherWeekMap.get(weekId);
+                                if (otherGross !== undefined && otherGross < weekGross) {
+                                    isLowestGross = false;
+                                    break;
+                                }
+                            }
+                            if (isLowestGross) {
+                                totalPoints += config.low_gross_bonus;
+                            }
+                        }
+                    }
+                }
                 playerStats.set(player.id, {
                     weeksPlayed: weekMap.size,
                     totalGross,
                     totalNet: Math.round(totalNet * 10) / 10,
                     bestGross,
                     roundGrosses,
+                    points: totalPoints,
                 });
             }
-            // Sort players by total net for ranking
+            // Sort players based on scoring type
             const rankedPlayers = [...playerStats.entries()]
                 .sort((a, b) => {
                 // Players with no weeks come last
@@ -543,7 +810,16 @@ class LeagueService {
                     return 1;
                 if (a[1].weeksPlayed > 0 && b[1].weeksPlayed === 0)
                     return -1;
-                return a[1].totalNet - b[1].totalNet;
+                if (scoringType === 'gross_stroke_play') {
+                    return a[1].totalGross - b[1].totalGross;
+                }
+                else if (scoringType === 'points_based') {
+                    return b[1].points - a[1].points; // Higher points = better
+                }
+                else {
+                    // net_stroke_play (default)
+                    return a[1].totalNet - b[1].totalNet;
+                }
             });
             // Update standings
             for (let i = 0; i < rankedPlayers.length; i++) {
@@ -562,6 +838,7 @@ class LeagueService {
                     best_gross: stats.bestGross,
                     avg_gross: avgGross,
                     current_rank: stats.weeksPlayed > 0 ? i + 1 : 0,
+                    points: stats.points,
                     updated_at: new Date().toISOString(),
                 }, { onConflict: 'league_id,league_player_id' });
             }
@@ -574,16 +851,36 @@ class LeagueService {
         return __awaiter(this, void 0, void 0, function* () {
             const league = yield this.getLeague(leagueId);
             const players = yield this.getPlayers(leagueId);
-            // Get all finalized weeks in order
+            // Get all finalized weeks in order, including their course assignment
             const { data: finalizedWeeks } = yield database_1.supabase
                 .from('league_weeks')
-                .select('id')
+                .select('id, league_course_id')
                 .eq('league_id', leagueId)
                 .eq('status', 'finalized')
                 .order('week_number');
             const weekIds = (finalizedWeeks || []).map((w) => w.id);
             if (weekIds.length === 0)
                 return;
+            // Build a map of weekId -> totalPar (from course data or fallback)
+            const weekParMap = new Map();
+            const courseCache = new Map(); // courseId -> totalPar
+            for (const week of (finalizedWeeks || [])) {
+                if (week.league_course_id) {
+                    if (!courseCache.has(week.league_course_id)) {
+                        const { data: course } = yield database_1.supabase
+                            .from('league_courses')
+                            .select('total_par')
+                            .eq('id', week.league_course_id)
+                            .single();
+                        courseCache.set(week.league_course_id, (course === null || course === void 0 ? void 0 : course.total_par) || (league.num_holes * league.par_per_hole));
+                    }
+                    weekParMap.set(week.id, courseCache.get(week.league_course_id));
+                }
+                else {
+                    // Fallback to legacy par_per_hole calculation
+                    weekParMap.set(week.id, league.num_holes * league.par_per_hole);
+                }
+            }
             for (const player of players) {
                 // Get all scores for this player across finalized weeks
                 const { data: scores } = yield database_1.supabase
@@ -598,12 +895,13 @@ class LeagueService {
                 scores.forEach((s) => {
                     weekGrosses.set(s.league_week_id, (weekGrosses.get(s.league_week_id) || 0) + s.strokes);
                 });
-                // Build differentials in week order
+                // Build differentials in week order using actual course par
                 const differentials = [];
                 for (const wId of weekIds) {
                     const gross = weekGrosses.get(wId);
                     if (gross !== undefined) {
-                        differentials.push((0, handicap_utils_1.calculateDifferential)(gross, league.num_holes, league.par_per_hole));
+                        const totalPar = weekParMap.get(wId) || (league.num_holes * league.par_per_hole);
+                        differentials.push((0, handicap_utils_1.calculateDifferentialFromPar)(gross, totalPar));
                     }
                 }
                 // Calculate new handicap
@@ -624,6 +922,7 @@ class LeagueService {
                         old_handicap: oldHandicap,
                         new_handicap: newHandicap,
                         calculation_details: {
+                            type: 'calculated',
                             differentials,
                             best_used: [...differentials].sort((a, b) => a - b).slice(0, league.handicap_rounds_used),
                             average: differentials.length > 0
@@ -680,8 +979,9 @@ class LeagueService {
             if (playerError || !player) {
                 throw new Error(`Failed to create player record: ${playerError === null || playerError === void 0 ? void 0 : playerError.message}`);
             }
-            // Calculate total amount
-            const totalAmount = (league.season_fee + league.weekly_prize_pot) * 100; // cents
+            // Calculate total amount: season fee + full prize pot for the entire season
+            const totalPrizePot = league.weekly_prize_pot * league.total_weeks;
+            const totalAmount = (league.season_fee + totalPrizePot) * 100; // cents
             if (totalAmount === 0) {
                 // Free league — activate immediately
                 yield database_1.supabase
@@ -724,7 +1024,8 @@ class LeagueService {
                     user_id: userId,
                     league_player_id: player.id,
                     season_fee: String(league.season_fee),
-                    prize_pot: String(league.weekly_prize_pot),
+                    prize_pot_per_week: String(league.weekly_prize_pot),
+                    prize_pot_total: String(totalPrizePot),
                 },
             });
             // Store payment intent ID on the player record
@@ -830,10 +1131,10 @@ class LeagueService {
     getLeagueStateForKiosk(leagueId, options) {
         return __awaiter(this, void 0, void 0, function* () {
             const league = yield this.getLeague(leagueId);
-            // Get current active week
+            // Get current active week (with course info)
             const { data: activeWeek } = yield database_1.supabase
                 .from('league_weeks')
-                .select('*')
+                .select('*, league_courses(id, course_name, num_holes, hole_pars, total_par)')
                 .eq('league_id', leagueId)
                 .in('status', ['active', 'scoring'])
                 .order('week_number', { ascending: false })
@@ -862,7 +1163,7 @@ class LeagueService {
             // Get player's scores for the active week
             let scores = [];
             let nextHole = 1;
-            if (activeWeek) {
+            if (activeWeek && player) {
                 const { data: weekScores } = yield database_1.supabase
                     .from('league_scores')
                     .select('hole_number, strokes')
@@ -874,6 +1175,8 @@ class LeagueService {
                     ? Math.max(...scores.map((s) => s.hole_number)) + 1
                     : 1;
             }
+            // Extract course data
+            const courseData = activeWeek === null || activeWeek === void 0 ? void 0 : activeWeek.league_courses;
             return {
                 league: {
                     id: league.id,
@@ -888,6 +1191,13 @@ class LeagueService {
                     date: activeWeek.date,
                     status: activeWeek.status,
                 } : null,
+                course: courseData ? {
+                    id: courseData.id,
+                    courseName: courseData.course_name,
+                    numHoles: courseData.num_holes,
+                    holePars: courseData.hole_pars,
+                    totalPar: courseData.total_par,
+                } : null,
                 player: player ? {
                     id: player.id,
                     displayName: player.display_name,
@@ -897,6 +1207,102 @@ class LeagueService {
                 nextHole: Math.min(nextHole, league.num_holes),
                 roundComplete: player ? scores.length >= league.num_holes : false,
             };
+        });
+    }
+    // =====================================================
+    // SCORE AUDITABILITY — CONFIRM / OVERRIDE
+    // =====================================================
+    confirmScore(scoreId, confirmedBy) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const { error } = yield database_1.supabase
+                .from('league_scores')
+                .update({
+                score_status: 'confirmed',
+                confirmed_at: new Date().toISOString(),
+                confirmed_by: confirmedBy,
+            })
+                .eq('id', scoreId);
+            if (error) {
+                throw new Error(`Failed to confirm score: ${error.message}`);
+            }
+        });
+    }
+    confirmWeekScores(weekId, confirmedBy) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const { data, error } = yield database_1.supabase
+                .from('league_scores')
+                .update({
+                score_status: 'confirmed',
+                confirmed_at: new Date().toISOString(),
+                confirmed_by: confirmedBy,
+            })
+                .eq('league_week_id', weekId)
+                .eq('score_status', 'submitted')
+                .select('id');
+            if (error) {
+                throw new Error(`Failed to confirm week scores: ${error.message}`);
+            }
+            return (data || []).length;
+        });
+    }
+    overrideScore(scoreId, newStrokes, overriddenBy, reason) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const { error } = yield database_1.supabase
+                .from('league_scores')
+                .update({
+                strokes: newStrokes,
+                score_status: 'overridden',
+                confirmed_at: new Date().toISOString(),
+                confirmed_by: overriddenBy,
+                override_reason: reason,
+            })
+                .eq('id', scoreId);
+            if (error) {
+                throw new Error(`Failed to override score: ${error.message}`);
+            }
+        });
+    }
+    // =====================================================
+    // COMMISSIONER POWERS — HANDICAP OVERRIDE
+    // =====================================================
+    overrideHandicap(leagueId, playerId, newHandicap, overriddenBy, reason) {
+        return __awaiter(this, void 0, void 0, function* () {
+            // Get current handicap
+            const { data: player, error: playerError } = yield database_1.supabase
+                .from('league_players')
+                .select('current_handicap')
+                .eq('id', playerId)
+                .eq('league_id', leagueId)
+                .single();
+            if (playerError || !player) {
+                throw new Error(`Player not found: ${playerError === null || playerError === void 0 ? void 0 : playerError.message}`);
+            }
+            const oldHandicap = player.current_handicap;
+            // Update the handicap
+            const { error } = yield database_1.supabase
+                .from('league_players')
+                .update({ current_handicap: newHandicap })
+                .eq('id', playerId);
+            if (error) {
+                throw new Error(`Failed to override handicap: ${error.message}`);
+            }
+            // Record in history with manual override flag
+            yield database_1.supabase
+                .from('handicap_history')
+                .insert({
+                league_player_id: playerId,
+                old_handicap: oldHandicap,
+                new_handicap: newHandicap,
+                calculation_details: {
+                    type: 'manual_override',
+                    reason,
+                    overridden_by: overriddenBy,
+                    differentials: [],
+                    best_used: [],
+                    average: 0,
+                    multiplier: 0,
+                },
+            });
         });
     }
 }

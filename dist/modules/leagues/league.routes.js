@@ -15,18 +15,29 @@ const createLeagueRoutes = (socketService) => {
     router.get('/:leagueId', controller.getLeague);
     router.put('/:leagueId', employee_middleware_1.authenticateEmployee, controller.updateLeague);
     router.post('/:leagueId/activate', employee_middleware_1.authenticateEmployee, controller.activateLeague);
+    // --- Course management ---
+    router.post('/:leagueId/courses', employee_middleware_1.authenticateEmployee, controller.addCourse);
+    router.get('/:leagueId/courses', controller.getCourses);
+    router.put('/:leagueId/courses/:courseId', employee_middleware_1.authenticateEmployee, controller.updateCourse);
+    router.delete('/:leagueId/courses/:courseId', employee_middleware_1.authenticateEmployee, controller.deleteCourse);
     // --- Player enrollment ---
     router.post('/:leagueId/enroll', controller.enrollPlayer);
     router.get('/:leagueId/players', controller.getPlayers);
     router.post('/:leagueId/players/:playerId/withdraw', employee_middleware_1.authenticateEmployee, controller.withdrawPlayer);
+    router.post('/:leagueId/players/:playerId/override-handicap', employee_middleware_1.authenticateEmployee, controller.overrideHandicap);
     // --- Weekly sessions ---
     router.get('/:leagueId/weeks', controller.getWeeks);
     router.post('/:leagueId/weeks/:weekId/activate', employee_middleware_1.authenticateEmployee, controller.activateWeek);
     router.post('/:leagueId/weeks/:weekId/finalize', employee_middleware_1.authenticateEmployee, controller.finalizeWeek);
+    router.post('/:leagueId/weeks/:weekId/assign-course', employee_middleware_1.authenticateEmployee, controller.assignCourseToWeek);
+    router.post('/:leagueId/weeks/:weekId/confirm-scores', employee_middleware_1.authenticateEmployee, controller.confirmWeekScores);
     // --- Score entry (kiosk + employee — no auth required for kiosk) ---
     router.post('/:leagueId/scores', controller.submitScore);
     router.get('/:leagueId/weeks/:weekId/scores', controller.getWeekScores);
     router.get('/:leagueId/weeks/:weekId/scorecard/:playerId', controller.getPlayerScorecard);
+    // --- Score auditability (employee-only) ---
+    router.post('/:leagueId/scores/:scoreId/confirm', employee_middleware_1.authenticateEmployee, controller.confirmScore);
+    router.post('/:leagueId/scores/:scoreId/override', employee_middleware_1.authenticateEmployee, controller.overrideScore);
     // --- Leaderboard (public, no auth) ---
     router.get('/:leagueId/standings', controller.getStandings);
     router.get('/:leagueId/leaderboard', controller.getLiveLeaderboard);
