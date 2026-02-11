@@ -43,6 +43,11 @@ const createLeagueRoutes = (socketService) => {
     router.get('/:leagueId/leaderboard', controller.getLiveLeaderboard);
     // --- Payments ---
     router.post('/:leagueId/enroll-and-pay', controller.enrollAndPay);
+    // --- Prize pool ledger ---
+    router.get('/:leagueId/prize-pool', controller.getPrizePoolSummary);
+    router.get('/:leagueId/prize-pool/player/:playerId', controller.getPlayerPrizeHistory);
+    router.post('/:leagueId/weeks/:weekId/confirm-payouts', employee_middleware_1.authenticateEmployee, controller.confirmWeekPayouts);
+    router.post('/:leagueId/prize-ledger/:entryId/confirm', employee_middleware_1.authenticateEmployee, controller.confirmSinglePayout);
     // --- Kiosk state ---
     router.get('/:leagueId/kiosk-state', controller.getLeagueStateForKiosk); // ?playerId= or ?userId=
     return router;

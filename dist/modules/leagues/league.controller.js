@@ -411,6 +411,53 @@ class LeagueController {
                 res.status(500).json({ error: error.message });
             }
         });
+        // =====================================================
+        // PRIZE POOL LEDGER
+        // =====================================================
+        this.getPrizePoolSummary = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            try {
+                const summary = yield this.leagueService.getPrizePoolSummary(req.params.leagueId);
+                res.json(summary);
+            }
+            catch (error) {
+                console.error('Error fetching prize pool summary:', error);
+                res.status(500).json({ error: error.message });
+            }
+        });
+        this.getPlayerPrizeHistory = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            try {
+                const history = yield this.leagueService.getPlayerPrizeHistory(req.params.leagueId, req.params.playerId);
+                res.json(history);
+            }
+            catch (error) {
+                console.error('Error fetching player prize history:', error);
+                res.status(500).json({ error: error.message });
+            }
+        });
+        this.confirmWeekPayouts = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            var _a;
+            try {
+                const confirmedBy = ((_a = req.employee) === null || _a === void 0 ? void 0 : _a.id) || 'unknown';
+                yield this.leagueService.confirmWeekPayouts(req.params.leagueId, req.params.weekId, confirmedBy);
+                res.json({ success: true });
+            }
+            catch (error) {
+                console.error('Error confirming week payouts:', error);
+                res.status(500).json({ error: error.message });
+            }
+        });
+        this.confirmSinglePayout = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            var _a;
+            try {
+                const confirmedBy = ((_a = req.employee) === null || _a === void 0 ? void 0 : _a.id) || 'unknown';
+                yield this.leagueService.confirmPayout(req.params.entryId, confirmedBy);
+                res.json({ success: true });
+            }
+            catch (error) {
+                console.error('Error confirming payout:', error);
+                res.status(500).json({ error: error.message });
+            }
+        });
         this.leagueService = new league_service_1.LeagueService();
         this.socketService = socketService;
     }

@@ -14,6 +14,7 @@ const stripe_1 = require("../../config/stripe");
 const database_1 = require("../../config/database");
 const email_service_1 = require("../email/email.service");
 const promotion_service_1 = require("../promotions/promotion.service");
+const league_service_1 = require("../leagues/league.service");
 function handleStripeWebhook(req, res, socketService) {
     return __awaiter(this, void 0, void 0, function* () {
         var _a;
@@ -37,39 +38,71 @@ function handleStripeWebhook(req, res, socketService) {
             case 'payment_intent.payment_failed':
                 const paymentIntent = event.data.object;
                 // --- LEAGUE ENROLLMENT PAYMENT ---
-                if (paymentIntent.metadata.type === 'league_enrollment' && event.type === 'payment_intent.succeeded') {
+                if (paymentIntent.metadata.type === 'league_enrollment') {
                     const leaguePlayerId = paymentIntent.metadata.league_player_id;
                     const leagueId = paymentIntent.metadata.league_id;
-                    console.log(`League enrollment payment succeeded for player ${leaguePlayerId} in league ${leagueId}`);
-                    try {
-                        // Activate the player enrollment
-                        const { error: playerError } = yield database_1.supabase
-                            .from('league_players')
-                            .update({
-                            enrollment_status: 'active',
-                            season_paid: true,
-                            prize_pot_paid: true,
-                        })
-                            .eq('id', leaguePlayerId);
-                        if (playerError) {
-                            console.error(`Error activating league player ${leaguePlayerId}:`, playerError);
-                        }
-                        else {
-                            console.log(`League player ${leaguePlayerId} activated successfully.`);
-                            // Create league_standings row for the player
-                            const { error: standingsError } = yield database_1.supabase
-                                .from('league_standings')
-                                .upsert({
-                                league_id: leagueId,
-                                league_player_id: leaguePlayerId,
-                            }, { onConflict: 'league_id,league_player_id' });
-                            if (standingsError) {
-                                console.error(`Error creating standings for league player ${leaguePlayerId}:`, standingsError);
+                    if (event.type === 'payment_intent.succeeded') {
+                        console.log(`League enrollment payment succeeded for player ${leaguePlayerId} in league ${leagueId}`);
+                        try {
+                            // Activate the player enrollment
+                            const { error: playerError } = yield database_1.supabase
+                                .from('league_players')
+                                .update({
+                                enrollment_status: 'active',
+                                season_paid: true,
+                                prize_pot_paid: true,
+                            })
+                                .eq('id', leaguePlayerId);
+                            if (playerError) {
+                                console.error(`Error activating league player ${leaguePlayerId}:`, playerError);
+                            }
+                            else {
+                                console.log(`League player ${leaguePlayerId} activated successfully.`);
+                                // Create league_standings row for the player
+                                const { error: standingsError } = yield database_1.supabase
+                                    .from('league_standings')
+                                    .upsert({
+                                    league_id: leagueId,
+                                    league_player_id: leaguePlayerId,
+                                }, { onConflict: 'league_id,league_player_id' });
+                                if (standingsError) {
+                                    console.error(`Error creating standings for league player ${leaguePlayerId}:`, standingsError);
+                                }
+                                // Insert prize pool contribution into the ledger
+                                const prizePotTotal = parseFloat(paymentIntent.metadata.prize_pot_total || '0');
+                                if (prizePotTotal > 0) {
+                                    try {
+                                        const leagueService = new league_service_1.LeagueService();
+                                        yield leagueService.insertPrizeContribution(leagueId, leaguePlayerId, prizePotTotal, `Prize pool buy-in ($${prizePotTotal.toFixed(2)})`);
+                                        console.log(`Inserted prize contribution of $${prizePotTotal.toFixed(2)} for player ${leaguePlayerId}`);
+                                    }
+                                    catch (ledgerError) {
+                                        console.error(`Error inserting prize contribution:`, ledgerError);
+                                        // Non-fatal — enrollment is still active
+                                    }
+                                }
                             }
                         }
+                        catch (leagueError) {
+                            console.error(`Error processing league enrollment payment:`, leagueError);
+                        }
                     }
-                    catch (leagueError) {
-                        console.error(`Error processing league enrollment payment:`, leagueError);
+                    else if (event.type === 'payment_intent.payment_failed') {
+                        console.log(`League enrollment payment failed for player ${leaguePlayerId} in league ${leagueId}`);
+                        // Mark enrollment as failed
+                        yield database_1.supabase
+                            .from('league_players')
+                            .update({ enrollment_status: 'pending' })
+                            .eq('id', leaguePlayerId);
+                    }
+                    else if (event.type === 'payment_intent.canceled') {
+                        console.log(`League enrollment payment cancelled for player ${leaguePlayerId} in league ${leagueId}`);
+                        // Remove the pending player record
+                        yield database_1.supabase
+                            .from('league_players')
+                            .delete()
+                            .eq('id', leaguePlayerId)
+                            .eq('enrollment_status', 'pending');
                     }
                     return res.json({ received: true });
                 }

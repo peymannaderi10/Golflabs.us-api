@@ -444,4 +444,57 @@ export class LeagueController {
       res.status(500).json({ error: error.message });
     }
   };
+
+  // =====================================================
+  // PRIZE POOL LEDGER
+  // =====================================================
+
+  getPrizePoolSummary = async (req: Request, res: Response) => {
+    try {
+      const summary = await this.leagueService.getPrizePoolSummary(req.params.leagueId);
+      res.json(summary);
+    } catch (error: any) {
+      console.error('Error fetching prize pool summary:', error);
+      res.status(500).json({ error: error.message });
+    }
+  };
+
+  getPlayerPrizeHistory = async (req: Request, res: Response) => {
+    try {
+      const history = await this.leagueService.getPlayerPrizeHistory(
+        req.params.leagueId,
+        req.params.playerId
+      );
+      res.json(history);
+    } catch (error: any) {
+      console.error('Error fetching player prize history:', error);
+      res.status(500).json({ error: error.message });
+    }
+  };
+
+  confirmWeekPayouts = async (req: Request, res: Response) => {
+    try {
+      const confirmedBy = (req as any).employee?.id || 'unknown';
+      await this.leagueService.confirmWeekPayouts(
+        req.params.leagueId,
+        req.params.weekId,
+        confirmedBy
+      );
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error('Error confirming week payouts:', error);
+      res.status(500).json({ error: error.message });
+    }
+  };
+
+  confirmSinglePayout = async (req: Request, res: Response) => {
+    try {
+      const confirmedBy = (req as any).employee?.id || 'unknown';
+      await this.leagueService.confirmPayout(req.params.entryId, confirmedBy);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error('Error confirming payout:', error);
+      res.status(500).json({ error: error.message });
+    }
+  };
 }

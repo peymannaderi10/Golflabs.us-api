@@ -53,6 +53,12 @@ export const createLeagueRoutes = (socketService: SocketService): Router => {
   // --- Payments ---
   router.post('/:leagueId/enroll-and-pay', controller.enrollAndPay);
 
+  // --- Prize pool ledger ---
+  router.get('/:leagueId/prize-pool', controller.getPrizePoolSummary);
+  router.get('/:leagueId/prize-pool/player/:playerId', controller.getPlayerPrizeHistory);
+  router.post('/:leagueId/weeks/:weekId/confirm-payouts', authenticateEmployee, controller.confirmWeekPayouts);
+  router.post('/:leagueId/prize-ledger/:entryId/confirm', authenticateEmployee, controller.confirmSinglePayout);
+
   // --- Kiosk state ---
   router.get('/:leagueId/kiosk-state', controller.getLeagueStateForKiosk);           // ?playerId= or ?userId=
 

@@ -23,6 +23,7 @@ export interface League {
   course_rotation: 'fixed' | 'rotating';
   scoring_type: 'net_stroke_play' | 'gross_stroke_play' | 'points_based';
   points_config: PointsConfig | null;
+  payout_config: PayoutConfig | null;
   status: 'draft' | 'registration' | 'active' | 'completed' | 'cancelled';
   created_at: string;
   updated_at: string;
@@ -34,6 +35,53 @@ export interface PointsConfig {
   third_place: number;
   participation: number;
   low_gross_bonus: number;
+}
+
+export interface PayoutConfig {
+  first_pct: number;    // e.g. 50
+  second_pct: number;   // e.g. 30
+  third_pct: number;    // e.g. 20
+  payout_method: 'weekly' | 'end_of_season';
+}
+
+export interface PrizeLedgerEntry {
+  id: string;
+  league_id: string;
+  league_week_id: string | null;
+  league_player_id: string;
+  type: 'contribution' | 'payout' | 'adjustment';
+  amount: number;
+  description: string | null;
+  payout_status: 'pending' | 'paid' | 'cancelled' | null;
+  placement: number | null;
+  paid_at: string | null;
+  paid_by: string | null;
+  created_at: string;
+  // Joined fields
+  player_name?: string;
+}
+
+export interface PrizePoolSummary {
+  totalCollected: number;
+  totalPaidOut: number;
+  totalPending: number;
+  balance: number;
+  weeklyBreakdown: WeekPayoutSummary[];
+}
+
+export interface WeekPayoutSummary {
+  weekId: string;
+  weekNumber: number;
+  date: string;
+  prizePoolTotal: number;
+  payoutsConfirmed: boolean;
+  payouts: {
+    playerId: string;
+    playerName: string;
+    placement: number;
+    amount: number;
+    status: string;
+  }[];
 }
 
 export interface LeagueCourse {
@@ -68,6 +116,8 @@ export interface LeagueWeek {
   date: string;
   league_course_id: string | null;
   status: 'upcoming' | 'active' | 'scoring' | 'finalized';
+  prize_pool_total: number;
+  payouts_confirmed: boolean;
   notes: string | null;
   created_at: string;
 }
@@ -142,6 +192,7 @@ export interface CreateLeagueRequest {
   courseRotation?: 'fixed' | 'rotating';
   scoringType?: 'net_stroke_play' | 'gross_stroke_play' | 'points_based';
   pointsConfig?: PointsConfig;
+  payoutConfig?: PayoutConfig;
   courses?: CreateCourseRequest[];
 }
 
@@ -159,6 +210,7 @@ export interface UpdateLeagueRequest {
   courseRotation?: 'fixed' | 'rotating';
   scoringType?: 'net_stroke_play' | 'gross_stroke_play' | 'points_based';
   pointsConfig?: PointsConfig;
+  payoutConfig?: PayoutConfig;
 }
 
 export interface CreateCourseRequest {
