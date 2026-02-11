@@ -1,6 +1,7 @@
 import { handleExpiredReservations } from './expired-reservations.job';
 import { dispatchNotifications } from './notifications.job';
 import { enqueueReminders } from './reminder.job';
+import { recalculateAllHandicaps } from './handicap.job';
 
 export function startScheduler() {
   // Run the expiration check every 2 minutes
@@ -11,6 +12,11 @@ export function startScheduler() {
   
   // Run the reminder check every 5 minutes
   setInterval(enqueueReminders, 5 * 60 * 1000);
+
+  // Run handicap recalculation daily at 3 AM as a safety net
+  // (Primary trigger is on-demand via LeagueService.finalizeWeek)
+  const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
+  setInterval(recalculateAllHandicaps, TWENTY_FOUR_HOURS);
   
-  console.log('Background job scheduler started (expiration: 2min, notifications: 1min, reminders: 5min)');
+  console.log('Background job scheduler started (expiration: 2min, notifications: 1min, reminders: 5min, handicaps: 24h)');
 } 

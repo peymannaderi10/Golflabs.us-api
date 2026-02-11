@@ -161,7 +161,7 @@ export class BookingService {
     // Include expires_at to filter out expired reserved bookings
     let query = supabase
       .from('bookings')
-      .select('id, bay_id, start_time, end_time, status, expires_at')
+      .select('id, bay_id, user_id, start_time, end_time, status, expires_at')
       .eq('location_id', locationId)
       .gte('start_time', startOfDayUTC)
       .lt('start_time', endOfDayPlusOneMinute) // Exclude bookings that start on the next day
@@ -217,6 +217,7 @@ export class BookingService {
       return {
         id: booking.id,
         bayId: booking.bay_id,
+        userId: booking.user_id,
         startTime: startTimeLocal,
         endTime: endTimeLocal
       };

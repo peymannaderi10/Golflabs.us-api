@@ -36,6 +36,43 @@ function handleStripeWebhook(req, res, socketService) {
             case 'payment_intent.canceled':
             case 'payment_intent.payment_failed':
                 const paymentIntent = event.data.object;
+                // --- LEAGUE ENROLLMENT PAYMENT ---
+                if (paymentIntent.metadata.type === 'league_enrollment' && event.type === 'payment_intent.succeeded') {
+                    const leaguePlayerId = paymentIntent.metadata.league_player_id;
+                    const leagueId = paymentIntent.metadata.league_id;
+                    console.log(`League enrollment payment succeeded for player ${leaguePlayerId} in league ${leagueId}`);
+                    try {
+                        // Activate the player enrollment
+                        const { error: playerError } = yield database_1.supabase
+                            .from('league_players')
+                            .update({
+                            enrollment_status: 'active',
+                            season_paid: true,
+                            prize_pot_paid: true,
+                        })
+                            .eq('id', leaguePlayerId);
+                        if (playerError) {
+                            console.error(`Error activating league player ${leaguePlayerId}:`, playerError);
+                        }
+                        else {
+                            console.log(`League player ${leaguePlayerId} activated successfully.`);
+                            // Create league_standings row for the player
+                            const { error: standingsError } = yield database_1.supabase
+                                .from('league_standings')
+                                .upsert({
+                                league_id: leagueId,
+                                league_player_id: leaguePlayerId,
+                            }, { onConflict: 'league_id,league_player_id' });
+                            if (standingsError) {
+                                console.error(`Error creating standings for league player ${leaguePlayerId}:`, standingsError);
+                            }
+                        }
+                    }
+                    catch (leagueError) {
+                        console.error(`Error processing league enrollment payment:`, leagueError);
+                    }
+                    return res.json({ received: true });
+                }
                 const bookingId = paymentIntent.metadata.booking_id;
                 if (!bookingId) {
                     console.warn(`Webhook received for event ${event.type} with no booking_id in metadata.`);

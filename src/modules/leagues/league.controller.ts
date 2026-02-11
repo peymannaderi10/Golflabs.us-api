@@ -1,0 +1,318 @@
+import { Request, Response } from 'express';
+import { LeagueService } from './league.service';
+import { SocketService } from '../sockets/socket.service';
+import { LeagueScorePayload } from './league.types';
+
+export class LeagueController {
+  private leagueService: LeagueService;
+  private socketService: SocketService;
+
+  constructor(socketService: SocketService) {
+    this.leagueService = new LeagueService();
+    this.socketService = socketService;
+  }
+
+  // =====================================================
+  // LEAGUE CRUD
+  // =====================================================
+
+  createLeague = async (req: Request, res: Response) => {
+    try {
+      const league = await this.leagueService.createLeague(req.body);
+      res.status(201).json(league);
+    } catch (error: any) {
+      console.error('Error creating league:', error);
+      res.status(500).json({ error: error.message });
+    }
+  };
+
+  getLeaguesByLocation = async (req: Request, res: Response) => {
+    try {
+      const { locationId } = req.query;
+      if (!locationId) {
+        return res.status(400).json({ error: 'locationId is required' });
+      }
+      const leagues = await this.leagueService.getLeaguesByLocation(locationId as string);
+      res.json(leagues);
+    } catch (error: any) {
+      console.error('Error fetching leagues:', error);
+      res.status(500).json({ error: error.message });
+    }
+  };
+
+  getLeague = async (req: Request, res: Response) => {
+    try {
+      const league = await this.leagueService.getLeague(req.params.leagueId);
+      res.json(league);
+    } catch (error: any) {
+      console.error('Error fetching league:', error);
+      res.status(404).json({ error: error.message });
+    }
+  };
+
+  updateLeague = async (req: Request, res: Response) => {
+    try {
+      const league = await this.leagueService.updateLeague(req.params.leagueId, req.body);
+      res.json(league);
+    } catch (error: any) {
+      console.error('Error updating league:', error);
+      res.status(500).json({ error: error.message });
+    }
+  };
+
+  activateLeague = async (req: Request, res: Response) => {
+    try {
+      const league = await this.leagueService.activateLeague(req.params.leagueId);
+      res.json(league);
+    } catch (error: any) {
+      console.error('Error activating league:', error);
+      res.status(400).json({ error: error.message });
+    }
+  };
+
+  // =====================================================
+  // PLAYER ENROLLMENT
+  // =====================================================
+
+  enrollPlayer = async (req: Request, res: Response) => {
+    try {
+      const player = await this.leagueService.enrollPlayer(req.params.leagueId, req.body);
+      res.status(201).json(player);
+    } catch (error: any) {
+      console.error('Error enrolling player:', error);
+      if (error.message.includes('already enrolled')) {
+        return res.status(409).json({ error: error.message });
+      }
+      if (error.message.includes('full')) {
+        return res.status(409).json({ error: error.message });
+      }
+      res.status(500).json({ error: error.message });
+    }
+  };
+
+  getPlayers = async (req: Request, res: Response) => {
+    try {
+      const players = await this.leagueService.getPlayers(req.params.leagueId);
+      res.json(players);
+    } catch (error: any) {
+      console.error('Error fetching players:', error);
+      res.status(500).json({ error: error.message });
+    }
+  };
+
+  withdrawPlayer = async (req: Request, res: Response) => {
+    try {
+      await this.leagueService.withdrawPlayer(req.params.leagueId, req.params.playerId);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error('Error withdrawing player:', error);
+      res.status(500).json({ error: error.message });
+    }
+  };
+
+  // =====================================================
+  // WEEKLY SESSIONS
+  // =====================================================
+
+  getWeeks = async (req: Request, res: Response) => {
+    try {
+      const weeks = await this.leagueService.getWeeks(req.params.leagueId);
+      res.json(weeks);
+    } catch (error: any) {
+      console.error('Error fetching weeks:', error);
+      res.status(500).json({ error: error.message });
+    }
+  };
+
+  activateWeek = async (req: Request, res: Response) => {
+    try {
+      const week = await this.leagueService.activateWeek(req.params.leagueId, req.params.weekId);
+      res.json(week);
+    } catch (error: any) {
+      console.error('Error activating week:', error);
+      res.status(500).json({ error: error.message });
+    }
+  };
+
+  finalizeWeek = async (req: Request, res: Response) => {
+    try {
+      const result = await this.leagueService.finalizeWeek(req.params.leagueId, req.params.weekId);
+
+      // Broadcast updated standings via Socket.io
+      const league = await this.leagueService.getLeague(req.params.leagueId);
+      this.socketService.emitStandingsUpdate(league.location_id, league.id, {
+        type: 'league_standings_update',
+        leagueId: league.id,
+        standings: result.standings,
+        timestamp: new Date().toISOString(),
+      });
+
+      res.json(result);
+    } catch (error: any) {
+      console.error('Error finalizing week:', error);
+      res.status(500).json({ error: error.message });
+    }
+  };
+
+  // =====================================================
+  // SCORE ENTRY
+  // =====================================================
+
+  submitScore = async (req: Request, res: Response) => {
+    try {
+      const result = await this.leagueService.submitScore(req.body);
+
+      // Get player info for the broadcast payload
+      const league = await this.leagueService.getLeague(req.params.leagueId);
+      const players = await this.leagueService.getPlayers(req.params.leagueId);
+      const player = players.find(p => p.id === req.body.leaguePlayerId);
+
+      // Broadcast score update via Socket.io
+      if (player) {
+        const payload: LeagueScorePayload = {
+          type: 'league_score_update',
+          leagueId: league.id,
+          weekId: req.body.leagueWeekId,
+          player: {
+            id: player.id,
+            displayName: player.display_name,
+            handicap: player.current_handicap,
+          },
+          holeNumber: req.body.holeNumber,
+          strokes: req.body.strokes,
+          roundGross: result.round_gross,
+          holesCompleted: result.holes_entered,
+          totalHoles: result.total_holes,
+          timestamp: new Date().toISOString(),
+        };
+
+        this.socketService.emitScoreUpdate(league.location_id, league.id, payload);
+      }
+
+      res.json(result);
+    } catch (error: any) {
+      console.error('Error submitting score:', error);
+      res.status(500).json({ error: error.message });
+    }
+  };
+
+  getWeekScores = async (req: Request, res: Response) => {
+    try {
+      const scores = await this.leagueService.getWeekScores(req.params.leagueId, req.params.weekId);
+      res.json(scores);
+    } catch (error: any) {
+      console.error('Error fetching week scores:', error);
+      res.status(500).json({ error: error.message });
+    }
+  };
+
+  getPlayerScorecard = async (req: Request, res: Response) => {
+    try {
+      const scorecard = await this.leagueService.getPlayerScorecard(
+        req.params.leagueId,
+        req.params.weekId,
+        req.params.playerId
+      );
+      res.json(scorecard);
+    } catch (error: any) {
+      console.error('Error fetching player scorecard:', error);
+      res.status(500).json({ error: error.message });
+    }
+  };
+
+  // =====================================================
+  // STANDINGS & LEADERBOARD
+  // =====================================================
+
+  getStandings = async (req: Request, res: Response) => {
+    try {
+      const standings = await this.leagueService.getStandings(req.params.leagueId);
+      res.json(standings);
+    } catch (error: any) {
+      console.error('Error fetching standings:', error);
+      res.status(500).json({ error: error.message });
+    }
+  };
+
+  getLiveLeaderboard = async (req: Request, res: Response) => {
+    try {
+      const leaderboard = await this.leagueService.getLiveLeaderboard(req.params.leagueId);
+      res.json(leaderboard);
+    } catch (error: any) {
+      console.error('Error fetching live leaderboard:', error);
+      res.status(500).json({ error: error.message });
+    }
+  };
+
+  // =====================================================
+  // PAYMENT
+  // =====================================================
+
+  enrollAndPay = async (req: Request, res: Response) => {
+    try {
+      const { userId, displayName } = req.body;
+      if (!userId || !displayName) {
+        return res.status(400).json({ error: 'userId and displayName are required' });
+      }
+
+      const result = await this.leagueService.enrollAndPay(
+        req.params.leagueId,
+        userId,
+        displayName
+      );
+
+      res.json(result);
+    } catch (error: any) {
+      console.error('Error in enroll-and-pay:', error);
+      if (error.message.includes('already enrolled') || error.message.includes('full')) {
+        return res.status(409).json({ error: error.message });
+      }
+      if (error.message.includes('not accepting')) {
+        return res.status(400).json({ error: error.message });
+      }
+      res.status(500).json({ error: error.message });
+    }
+  };
+
+  // =====================================================
+  // USER-FACING: My Leagues
+  // =====================================================
+
+  getUserLeagues = async (req: Request, res: Response) => {
+    try {
+      const { userId } = req.params;
+      if (!userId) {
+        return res.status(400).json({ error: 'userId is required' });
+      }
+      const leagues = await this.leagueService.getLeaguesForUser(userId);
+      res.json(leagues);
+    } catch (error: any) {
+      console.error('Error fetching user leagues:', error);
+      res.status(500).json({ error: error.message });
+    }
+  };
+
+  // =====================================================
+  // KIOSK STATE
+  // =====================================================
+
+  getLeagueStateForKiosk = async (req: Request, res: Response) => {
+    try {
+      const { leagueId } = req.params;
+      const { playerId, userId } = req.query;
+
+      if (!playerId && !userId) {
+        return res.status(400).json({ error: 'Either playerId or userId query parameter is required' });
+      }
+
+      const state = await this.leagueService.getLeagueStateForKiosk(leagueId, {
+        playerId: playerId as string | undefined,
+        userId: userId as string | undefined,
+      });
+      res.json(state);
+    } catch (error: any) {
+      console.error('Error fetching league state for kiosk:', error);
+      res.status(500).json({ error: error.message });
+    }
+  };
+}

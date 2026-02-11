@@ -16,6 +16,7 @@ import { unlockRoutes } from './modules/unlock/unlock.routes';
 import { userRoutes } from './modules/user/user.routes';
 import promotionRoutes from './modules/promotions/promotion.routes';
 import { employeeRoutes } from './modules/employee';
+import { createLeagueRoutes } from './modules/leagues/league.routes';
 import { BookingController } from './modules/bookings/booking.controller';
 import { SocketService } from './modules/sockets/socket.service';
 
@@ -190,6 +191,7 @@ app.use('/', unlockRoutes(socketService)); // Unlock routes at root level
 app.use('/', userRoutes); // User routes at root level
 app.use('/promotions', promotionRoutes); // Promotions routes
 app.use('/employee', employeeRoutes); // Employee routes (reports, etc.)
+app.use('/leagues', createLeagueRoutes(socketService)); // League ecosystem routes
 
 // Health check endpoint
 app.get('/health', (req, res) => {

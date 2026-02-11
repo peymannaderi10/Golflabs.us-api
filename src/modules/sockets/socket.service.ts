@@ -1,6 +1,7 @@
 import { Server, Socket } from 'socket.io';
 import { BookingService } from '../bookings/booking.service';
 import { supabase } from '../../config/database';
+import { LeagueScorePayload, LeagueStandingsPayload } from '../leagues/league.types';
 
 /**
  * Service to manage WebSocket connections and broadcasts.
@@ -40,6 +41,15 @@ export class SocketService {
         }
       });
 
+      // Register a kiosk/TV to a league room for real-time score updates
+      socket.on('register_league', (payload: { locationId: string; leagueId: string }) => {
+        if (payload.locationId && payload.leagueId) {
+          const room = `location-${payload.locationId}-league-${payload.leagueId}`;
+          socket.join(room);
+          console.log(`Socket ${socket.id} joined league room: ${room}`);
+        }
+      });
+
       socket.on('disconnect', () => {
         console.log('Client disconnected:', socket.id);
       });
@@ -76,7 +86,7 @@ export class SocketService {
     // Get the specific booking details
     const { data: booking, error } = await supabase
       .from('bookings')
-      .select('id, bay_id, start_time, end_time, status')
+      .select('id, bay_id, user_id, start_time, end_time, status')
       .eq('id', bookingId)
       .eq('location_id', locationId)
       .eq('bay_id', bayId)
@@ -129,6 +139,7 @@ export class SocketService {
       booking: {
         id: booking.id,
         bayId: booking.bay_id,
+        userId: booking.user_id,
         startTime: startTimeLocal,
         endTime: endTimeLocal,
         status: booking.status
@@ -166,6 +177,7 @@ export class SocketService {
       bookings: bayBookings.map(booking => ({
         id: booking.id,
         bayId: booking.bayId,
+        userId: booking.userId,
         startTime: booking.startTime,
         endTime: booking.endTime,
         status: 'confirmed' // All bookings from getBookings are confirmed
@@ -198,6 +210,30 @@ export class SocketService {
 
     // 'en-CA' gives the YYYY-MM-DD format needed by the getBookings method.
     return new Date().toLocaleDateString('en-CA', { timeZone: location.timezone });
+  }
+
+  // =====================================================
+  // LEAGUE REAL-TIME EVENTS
+  // =====================================================
+
+  /**
+   * Broadcasts a score update to all clients in the league room.
+   * Called after a player submits a score via kiosk or employee dashboard.
+   */
+  public emitScoreUpdate(locationId: string, leagueId: string, payload: LeagueScorePayload) {
+    const room = `location-${locationId}-league-${leagueId}`;
+    this.io.to(room).emit('league_score_update', payload);
+    console.log(`Broadcasted league_score_update to room ${room} for player ${payload.player.displayName}, hole ${payload.holeNumber}.`);
+  }
+
+  /**
+   * Broadcasts updated standings to all clients in the league room.
+   * Called after week finalization or handicap recalculation.
+   */
+  public emitStandingsUpdate(locationId: string, leagueId: string, payload: LeagueStandingsPayload) {
+    const room = `location-${locationId}-league-${leagueId}`;
+    this.io.to(room).emit('league_standings_update', payload);
+    console.log(`Broadcasted league_standings_update to room ${room} with ${payload.standings.length} players.`);
   }
 
   /**
