@@ -11,6 +11,10 @@ export const createBookingRoutes = (socketService: SocketService): Router => {
   bookingRoutes.post('/reserve', controller.reserveBooking);
   bookingRoutes.get('/', controller.getBookings);
 
+  // Capacity holds (public, no auth - needed by booking page)
+  bookingRoutes.get('/capacity-holds', controller.getCapacityHolds);
+  bookingRoutes.get('/capacity-holds/today', controller.getTodaysHold);
+
   // Session extension routes (called by kiosk - no auth required)
   bookingRoutes.get('/:bookingId/extension-options', controller.getExtensionOptions);
   bookingRoutes.post('/:bookingId/extend', controller.extendBooking);

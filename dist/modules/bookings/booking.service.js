@@ -16,7 +16,11 @@ const date_utils_1 = require("../../shared/utils/date.utils");
 const email_service_1 = require("../email/email.service");
 const promotion_service_1 = require("../promotions/promotion.service");
 const resend_1 = require("../../config/resend");
+const capacity_hold_service_1 = require("./capacity-hold.service");
 class BookingService {
+    constructor() {
+        this.capacityHoldService = new capacity_hold_service_1.CapacityHoldService();
+    }
     reserveBooking(bookingData) {
         return __awaiter(this, void 0, void 0, function* () {
             var _a, _b, _c;
@@ -50,6 +54,22 @@ class BookingService {
                 input: { date, startTime, endTime },
                 output: { p_start_time, p_end_time }
             });
+            // Check capacity holds before proceeding
+            // Convert 12h time (e.g. "6:00 PM") to 24h (e.g. "18:00") for hold comparison
+            const start24 = `${String(startTimeParsed.hours).padStart(2, '0')}:${String(startTimeParsed.minutes).padStart(2, '0')}`;
+            const end24 = `${String(endTimeParsed.hours).padStart(2, '0')}:${String(endTimeParsed.minutes).padStart(2, '0')}`;
+            // Get total bays at this location for capacity calculations
+            const { data: baysData } = yield database_1.supabase
+                .from('bays')
+                .select('id')
+                .eq('location_id', locationId)
+                .neq('status', 'closed');
+            const totalBays = (baysData === null || baysData === void 0 ? void 0 : baysData.length) || 0;
+            const holdConflict = yield this.capacityHoldService.checkHoldConflict(locationId, date, start24, end24, totalBays);
+            if (holdConflict) {
+                const leagueName = holdConflict.league_name || 'League Night';
+                throw new Error(`This time is reserved for ${leagueName}. Please choose a different time.`);
+            }
             // Set expiration time using UTC timestamp
             const expiresAt = new Date(Date.now() + 2 * 60 * 1000).toISOString();
             // Generate a temporary payment intent ID for the reservation

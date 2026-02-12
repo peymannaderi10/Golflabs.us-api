@@ -11,6 +11,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.BookingController = void 0;
 const booking_service_1 = require("./booking.service");
+const capacity_hold_service_1 = require("./capacity-hold.service");
 class BookingController {
     constructor(socketService) {
         this.reserveBooking = (req, res) => __awaiter(this, void 0, void 0, function* () {
@@ -35,6 +36,34 @@ class BookingController {
             catch (error) {
                 console.error('Error in /bookings endpoint:', error);
                 res.status(500).json({ error: 'An unexpected error occurred' });
+            }
+        });
+        this.getCapacityHolds = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            try {
+                const { locationId, date } = req.query;
+                if (!locationId || !date) {
+                    return res.status(400).json({ error: 'locationId and date are required query parameters' });
+                }
+                const holds = yield this.capacityHoldService.getHoldsForDate(locationId, date);
+                res.json(holds);
+            }
+            catch (error) {
+                console.error('Error fetching capacity holds:', error);
+                res.status(500).json({ error: 'Failed to fetch capacity holds' });
+            }
+        });
+        this.getTodaysHold = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            try {
+                const { locationId } = req.query;
+                if (!locationId) {
+                    return res.status(400).json({ error: 'locationId is required' });
+                }
+                const hold = yield this.capacityHoldService.getTodaysHold(locationId);
+                res.json(hold);
+            }
+            catch (error) {
+                console.error('Error fetching today\'s hold:', error);
+                res.status(500).json({ error: 'Failed to fetch today\'s hold' });
             }
         });
         this.getUserReservedBookings = (req, res) => __awaiter(this, void 0, void 0, function* () {
@@ -217,6 +246,7 @@ class BookingController {
             }
         });
         this.bookingService = new booking_service_1.BookingService();
+        this.capacityHoldService = new capacity_hold_service_1.CapacityHoldService();
         this.socketService = socketService;
     }
 }

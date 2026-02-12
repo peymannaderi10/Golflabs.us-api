@@ -94,4 +94,19 @@ export interface TeamStatusEmailData {
   message: string;
   actionUrl?: string;
   actionLabel?: string;
+}
+
+// =====================================================
+// Attendance Reminder Email Types
+// =====================================================
+
+export interface AttendanceReminderEmailData {
+  playerName: string;
+  playerEmail: string;
+  leagueName: string;
+  weekNumber: number;
+  leagueDate: string;    // formatted date string e.g. "Tuesday, February 10"
+  startTime: string;     // e.g. "7:00 PM"
+  confirmUrl: string;
+  declineUrl: string;
 } 

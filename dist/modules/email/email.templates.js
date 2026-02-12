@@ -1042,5 +1042,106 @@ class EmailTemplates {
       `
         };
     }
+    static attendanceReminder(data) {
+        return {
+            subject: `Confirm your attendance for ${data.leagueName} - Week ${data.weekNumber}`,
+            html: `
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Attendance Confirmation - Golf Labs US</title>
+        </head>
+        <body style="margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f5f7fa;">
+          <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff;">
+            <!-- Header -->
+            <div style="background: linear-gradient(135deg, #2c5530 0%, #4a7c59 100%); padding: 40px 30px; text-align: center;">
+              <h1 style="margin: 0; font-size: 28px; font-weight: 600; letter-spacing: 1px; color: #ffffff;">
+                GOLF LABS US
+              </h1>
+            </div>
+            
+            <!-- Main Content -->
+            <div style="padding: 40px 30px;">
+              <div style="text-align: center; margin-bottom: 30px;">
+                <h2 style="margin: 0 0 10px 0; font-size: 24px; font-weight: 600; color: #2c5530;">
+                  Confirm Your Attendance
+                </h2>
+                <p style="margin: 0; font-size: 16px; color: #666;">
+                  This helps us reserve the right number of bays.
+                </p>
+              </div>
+              
+              <!-- League Details Card -->
+              <div style="background: linear-gradient(135deg, #f8fffe 0%, #e8f5e8 100%); border: 2px solid #4a7c59; border-radius: 12px; padding: 30px; margin: 30px 0;">
+                <div style="display: grid; gap: 12px;">
+                  <div style="padding: 8px 0; border-bottom: 1px solid #e0e0e0;">
+                    <span style="color: #4a7c59; font-weight: 600;">League:</span>
+                    <span style="color: #333; font-weight: 500; margin-left: 8px;">${data.leagueName}</span>
+                  </div>
+                  <div style="padding: 8px 0; border-bottom: 1px solid #e0e0e0;">
+                    <span style="color: #4a7c59; font-weight: 600;">Week:</span>
+                    <span style="color: #333; font-weight: 500; margin-left: 8px;">Week ${data.weekNumber}</span>
+                  </div>
+                  <div style="padding: 8px 0; border-bottom: 1px solid #e0e0e0;">
+                    <span style="color: #4a7c59; font-weight: 600;">Date:</span>
+                    <span style="color: #333; font-weight: 500; margin-left: 8px;">${data.leagueDate}</span>
+                  </div>
+                  <div style="padding: 8px 0;">
+                    <span style="color: #4a7c59; font-weight: 600;">Time:</span>
+                    <span style="color: #333; font-weight: 500; margin-left: 8px;">${data.startTime}</span>
+                  </div>
+                </div>
+              </div>
+
+              <p style="text-align: center; color: #333; font-size: 16px; margin: 24px 0; font-weight: 500;">
+                Hey ${data.playerName}, are you playing this week?
+              </p>
+
+              <!-- Action Buttons -->
+              <div style="text-align: center; margin: 40px 0;">
+                <a href="${data.confirmUrl}" 
+                   style="display: inline-block; background: linear-gradient(135deg, #4a7c59 0%, #2c5530 100%); color: #ffffff; padding: 16px 40px; border-radius: 50px; font-weight: 600; font-size: 16px; text-decoration: none; margin: 0 8px;">
+                  I'm Playing
+                </a>
+                <a href="${data.declineUrl}" 
+                   style="display: inline-block; background: #ffffff; color: #666; padding: 14px 40px; border-radius: 50px; font-weight: 600; font-size: 16px; text-decoration: none; border: 2px solid #e0e0e0; margin: 0 8px;">
+                  Can't Make It
+                </a>
+              </div>
+
+              <p style="text-align: center; color: #999; font-size: 13px; margin-top: 20px;">
+                If we don't hear from you, you'll be marked as not attending for capacity planning.
+              </p>
+            </div>
+            
+            <!-- Footer -->
+            <div style="background-color: #2c5530; padding: 30px; text-align: center;">
+              <p style="color: #a8d5aa; margin: 0; font-size: 14px;">
+                Golf Labs US - Where Technology Meets Golf
+              </p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `,
+            text: `
+        GOLF LABS US - Attendance Confirmation
+
+        Hey ${data.playerName}, are you playing this week?
+
+        League: ${data.leagueName}
+        Week: ${data.weekNumber}
+        Date: ${data.leagueDate}
+        Time: ${data.startTime}
+
+        Confirm: ${data.confirmUrl}
+        Decline: ${data.declineUrl}
+
+        This helps us reserve the right number of bays.
+      `
+        };
+    }
 }
 exports.EmailTemplates = EmailTemplates;

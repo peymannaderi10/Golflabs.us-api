@@ -11,6 +11,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.LeagueController = void 0;
 const league_service_1 = require("./league.service");
+const attendance_service_1 = require("./attendance.service");
 class LeagueController {
     constructor(socketService) {
         // =====================================================
@@ -617,7 +618,132 @@ class LeagueController {
                 res.status(500).json({ error: error.message });
             }
         });
+        // =====================================================
+        // ATTENDANCE CONFIRMATION
+        // =====================================================
+        /**
+         * Token-based confirm (from email link, no auth required)
+         */
+        this.confirmAttendanceByToken = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            try {
+                const { token } = req.params;
+                const result = yield this.attendanceService.confirmAttendance(token);
+                if (!result.success) {
+                    return res.status(400).json({ error: result.message });
+                }
+                res.json(result);
+            }
+            catch (error) {
+                console.error('Error confirming attendance:', error);
+                res.status(500).json({ error: error.message });
+            }
+        });
+        /**
+         * Token-based decline (from email link, no auth required)
+         */
+        this.declineAttendanceByToken = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            try {
+                const { token } = req.params;
+                const result = yield this.attendanceService.declineAttendance(token);
+                if (!result.success) {
+                    return res.status(400).json({ error: result.message });
+                }
+                res.json(result);
+            }
+            catch (error) {
+                console.error('Error declining attendance:', error);
+                res.status(500).json({ error: error.message });
+            }
+        });
+        /**
+         * Get attendance list for a week (employee view)
+         */
+        this.getWeekAttendance = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            try {
+                const { weekId } = req.params;
+                const attendance = yield this.attendanceService.getAttendanceForWeek(weekId);
+                res.json(attendance);
+            }
+            catch (error) {
+                console.error('Error fetching week attendance:', error);
+                res.status(500).json({ error: error.message });
+            }
+        });
+        /**
+         * Get attendance summary for a week
+         */
+        this.getWeekAttendanceSummary = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            try {
+                const { leagueId, weekId } = req.params;
+                // Get players_per_bay from league
+                const league = yield this.leagueService.getLeague(leagueId);
+                const playersPerBay = (league === null || league === void 0 ? void 0 : league.players_per_bay) || 2;
+                const summary = yield this.attendanceService.getAttendanceSummary(weekId, playersPerBay);
+                res.json(summary);
+            }
+            catch (error) {
+                console.error('Error fetching attendance summary:', error);
+                res.status(500).json({ error: error.message });
+            }
+        });
+        /**
+         * Update own attendance (auth-based, from user dashboard)
+         */
+        this.updateAttendance = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            try {
+                const { weekId } = req.params;
+                const { status, leaguePlayerId } = req.body;
+                if (!leaguePlayerId || !status) {
+                    return res.status(400).json({ error: 'leaguePlayerId and status are required' });
+                }
+                if (!['confirmed', 'declined'].includes(status)) {
+                    return res.status(400).json({ error: 'Status must be "confirmed" or "declined"' });
+                }
+                const attendance = yield this.attendanceService.updateAttendance(leaguePlayerId, weekId, status);
+                res.json(attendance);
+            }
+            catch (error) {
+                console.error('Error updating attendance:', error);
+                if (error.message.includes('locked') || error.message.includes('not found')) {
+                    return res.status(400).json({ error: error.message });
+                }
+                res.status(500).json({ error: error.message });
+            }
+        });
+        /**
+         * Get all my attendance statuses across weeks for a league
+         */
+        this.getMyAttendance = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            try {
+                const { leagueId } = req.params;
+                const userId = req.query.userId;
+                if (!userId) {
+                    return res.status(400).json({ error: 'userId query param is required' });
+                }
+                const attendance = yield this.attendanceService.getPlayerAttendance(userId, leagueId);
+                res.json(attendance);
+            }
+            catch (error) {
+                console.error('Error fetching player attendance:', error);
+                res.status(500).json({ error: error.message });
+            }
+        });
+        /**
+         * Employee: manually trigger capacity adjustment for a week
+         */
+        this.manualAdjustCapacity = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            try {
+                const { leagueId, weekId } = req.params;
+                const result = yield this.attendanceService.adjustCapacityHold(leagueId, weekId);
+                res.json(result);
+            }
+            catch (error) {
+                console.error('Error adjusting capacity:', error);
+                res.status(500).json({ error: error.message });
+            }
+        });
         this.leagueService = new league_service_1.LeagueService();
+        this.attendanceService = new attendance_service_1.AttendanceService();
         this.socketService = socketService;
     }
 }

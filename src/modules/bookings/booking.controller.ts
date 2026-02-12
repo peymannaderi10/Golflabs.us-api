@@ -1,13 +1,16 @@
 import { Request, Response } from 'express';
 import { BookingService } from './booking.service';
+import { CapacityHoldService } from './capacity-hold.service';
 import { SocketService } from '../sockets/socket.service';
 
 export class BookingController {
   private bookingService: BookingService;
+  private capacityHoldService: CapacityHoldService;
   private socketService: SocketService;
 
   constructor(socketService: SocketService) {
     this.bookingService = new BookingService();
+    this.capacityHoldService = new CapacityHoldService();
     this.socketService = socketService;
   }
 
@@ -34,6 +37,41 @@ export class BookingController {
     } catch (error: any) {
       console.error('Error in /bookings endpoint:', error);
       res.status(500).json({ error: 'An unexpected error occurred' });
+    }
+  };
+
+  getCapacityHolds = async (req: Request, res: Response) => {
+    try {
+      const { locationId, date } = req.query;
+
+      if (!locationId || !date) {
+        return res.status(400).json({ error: 'locationId and date are required query parameters' });
+      }
+
+      const holds = await this.capacityHoldService.getHoldsForDate(
+        locationId as string,
+        date as string
+      );
+      res.json(holds);
+    } catch (error: any) {
+      console.error('Error fetching capacity holds:', error);
+      res.status(500).json({ error: 'Failed to fetch capacity holds' });
+    }
+  };
+
+  getTodaysHold = async (req: Request, res: Response) => {
+    try {
+      const { locationId } = req.query;
+
+      if (!locationId) {
+        return res.status(400).json({ error: 'locationId is required' });
+      }
+
+      const hold = await this.capacityHoldService.getTodaysHold(locationId as string);
+      res.json(hold);
+    } catch (error: any) {
+      console.error('Error fetching today\'s hold:', error);
+      res.status(500).json({ error: 'Failed to fetch today\'s hold' });
     }
   };
 

@@ -13,14 +13,18 @@ exports.LeagueService = void 0;
 const database_1 = require("../../config/database");
 const stripe_1 = require("../../config/stripe");
 const email_service_1 = require("../email/email.service");
+const capacity_hold_service_1 = require("../bookings/capacity-hold.service");
 const handicap_utils_1 = require("./handicap.utils");
 class LeagueService {
+    constructor() {
+        this.capacityHoldService = new capacity_hold_service_1.CapacityHoldService();
+    }
     // =====================================================
     // LEAGUE CRUD
     // =====================================================
     createLeague(data) {
         return __awaiter(this, void 0, void 0, function* () {
-            const { locationId, name, format = 'stroke_play', numHoles = 9, parPerHole = 3, totalWeeks, dayOfWeek, startTime, endTime, seasonFee = 0, weeklyPrizePot = 0, maxPlayers = 32, handicapEnabled = true, startDate, courseRotation = 'fixed', scoringType = 'net_stroke_play', pointsConfig, payoutConfig, courses, playersPerTeam = 2, teamScoringFormat = 'best_ball', } = data;
+            const { locationId, name, format = 'stroke_play', numHoles = 9, parPerHole = 3, totalWeeks, dayOfWeek, startTime, endTime, seasonFee = 0, weeklyPrizePot = 0, maxPlayers = 32, handicapEnabled = true, startDate, courseRotation = 'fixed', scoringType = 'net_stroke_play', pointsConfig, payoutConfig, courses, playersPerTeam = 2, teamScoringFormat = 'best_ball', capacityHoldType = 'all_bays', capacityHoldValue = 100, bufferBeforeMins = 0, bufferAfterMins = 0, attendanceRequired = false, attendanceAutoAdjust = false, attendanceReminderHours = 24, attendanceCutoffHours = 8, playersPerBay = 2, teamMinAttendance = null, } = data;
             // Insert the league
             const { data: league, error } = yield database_1.supabase
                 .from('leagues')
@@ -44,6 +48,16 @@ class LeagueService {
                 payout_config: payoutConfig || { first_pct: 50, second_pct: 30, third_pct: 20, payout_method: 'weekly' },
                 players_per_team: format === 'team' ? playersPerTeam : 2,
                 team_scoring_format: format === 'team' ? teamScoringFormat : 'best_ball',
+                capacity_hold_type: capacityHoldType,
+                capacity_hold_value: capacityHoldValue,
+                buffer_before_mins: bufferBeforeMins,
+                buffer_after_mins: bufferAfterMins,
+                attendance_required: attendanceRequired,
+                attendance_auto_adjust: attendanceAutoAdjust,
+                attendance_reminder_hours: attendanceReminderHours,
+                attendance_cutoff_hours: attendanceCutoffHours,
+                players_per_bay: playersPerBay,
+                team_min_attendance: teamMinAttendance,
             })
                 .select()
                 .single();
@@ -99,12 +113,28 @@ class LeagueService {
                     league_course_id: courseId,
                 });
             }
-            const { error: weeksError } = yield database_1.supabase
+            const { data: weeksData, error: weeksError } = yield database_1.supabase
                 .from('league_weeks')
-                .insert(weeks);
+                .insert(weeks)
+                .select('id, date');
             if (weeksError) {
                 console.error('Failed to create league weeks:', weeksError);
                 // Non-fatal — league is still created
+            }
+            // Generate capacity holds for each league week
+            if (weeksData && weeksData.length > 0) {
+                try {
+                    yield this.capacityHoldService.generateHoldsForLeague(league.id, locationId, startTime, endTime, weeksData.map((w) => ({ id: w.id, date: w.date })), {
+                        holdType: capacityHoldType,
+                        holdValue: capacityHoldValue,
+                        bufferBeforeMins,
+                        bufferAfterMins,
+                    });
+                }
+                catch (holdError) {
+                    console.error('Failed to generate capacity holds:', holdError.message);
+                    // Non-fatal — league is still created
+                }
             }
             return league;
         });
@@ -171,6 +201,26 @@ class LeagueService {
                 updateData.players_per_team = data.playersPerTeam;
             if (data.teamScoringFormat !== undefined)
                 updateData.team_scoring_format = data.teamScoringFormat;
+            if (data.capacityHoldType !== undefined)
+                updateData.capacity_hold_type = data.capacityHoldType;
+            if (data.capacityHoldValue !== undefined)
+                updateData.capacity_hold_value = data.capacityHoldValue;
+            if (data.bufferBeforeMins !== undefined)
+                updateData.buffer_before_mins = data.bufferBeforeMins;
+            if (data.bufferAfterMins !== undefined)
+                updateData.buffer_after_mins = data.bufferAfterMins;
+            if (data.attendanceRequired !== undefined)
+                updateData.attendance_required = data.attendanceRequired;
+            if (data.attendanceAutoAdjust !== undefined)
+                updateData.attendance_auto_adjust = data.attendanceAutoAdjust;
+            if (data.attendanceReminderHours !== undefined)
+                updateData.attendance_reminder_hours = data.attendanceReminderHours;
+            if (data.attendanceCutoffHours !== undefined)
+                updateData.attendance_cutoff_hours = data.attendanceCutoffHours;
+            if (data.playersPerBay !== undefined)
+                updateData.players_per_bay = data.playersPerBay;
+            if (data.teamMinAttendance !== undefined)
+                updateData.team_min_attendance = data.teamMinAttendance;
             const { data: league, error } = yield database_1.supabase
                 .from('leagues')
                 .update(updateData)
@@ -179,6 +229,42 @@ class LeagueService {
                 .single();
             if (error || !league) {
                 throw new Error(`Failed to update league: ${error === null || error === void 0 ? void 0 : error.message}`);
+            }
+            // If capacity hold config changed, update future holds
+            if (data.capacityHoldType !== undefined || data.capacityHoldValue !== undefined ||
+                data.bufferBeforeMins !== undefined || data.bufferAfterMins !== undefined) {
+                try {
+                    yield this.capacityHoldService.updateHoldConfig(leagueId, {
+                        holdType: league.capacity_hold_type || 'all_bays',
+                        holdValue: league.capacity_hold_value || 100,
+                        bufferBeforeMins: league.buffer_before_mins || 0,
+                        bufferAfterMins: league.buffer_after_mins || 0,
+                    });
+                }
+                catch (holdError) {
+                    console.error('Failed to update capacity holds:', holdError.message);
+                }
+            }
+            return league;
+        });
+    }
+    cancelLeague(leagueId) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const { data: league, error } = yield database_1.supabase
+                .from('leagues')
+                .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+                .eq('id', leagueId)
+                .select()
+                .single();
+            if (error || !league) {
+                throw new Error(`Failed to cancel league: ${error === null || error === void 0 ? void 0 : error.message}`);
+            }
+            // Release all capacity holds
+            try {
+                yield this.capacityHoldService.releaseHoldsForLeague(leagueId);
+            }
+            catch (holdError) {
+                console.error('Failed to release capacity holds:', holdError.message);
             }
             return league;
         });

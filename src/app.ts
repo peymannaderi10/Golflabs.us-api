@@ -10,13 +10,13 @@ import { createBookingRoutes } from './modules/bookings/booking.routes';
 import { paymentRoutes } from './modules/payments/payment.routes';
 import { pricingRoutes } from './modules/pricing/pricing.routes';
 import { locationRoutes } from './modules/locations/location.routes';
-import { bayRoutes } from './modules/bays/bay.routes';
+import { createBayRoutes } from './modules/bays/bay.routes';
 import { logRoutes } from './modules/logs/log.routes';
 import { unlockRoutes } from './modules/unlock/unlock.routes';
 import { userRoutes } from './modules/user/user.routes';
 import promotionRoutes from './modules/promotions/promotion.routes';
 import { employeeRoutes } from './modules/employee';
-import { createLeagueRoutes, createTeamInviteRoutes } from './modules/leagues/league.routes';
+import { createLeagueRoutes, createTeamInviteRoutes, createAttendanceRoutes } from './modules/leagues/league.routes';
 import { BookingController } from './modules/bookings/booking.controller';
 import { SocketService } from './modules/sockets/socket.service';
 
@@ -185,7 +185,7 @@ app.use('/bookings', createBookingRoutes(socketService));
 app.use('/', paymentRoutes); // Payment routes are at root level for backwards compatibility
 app.use('/', pricingRoutes); // Pricing routes are at root level for backwards compatibility
 app.use('/locations', locationRoutes);
-app.use('/bays', bayRoutes);
+app.use('/bays', createBayRoutes(socketService));
 app.use('/logs', logRoutes);
 app.use('/', unlockRoutes(socketService)); // Unlock routes at root level
 app.use('/', userRoutes); // User routes at root level
@@ -193,6 +193,7 @@ app.use('/promotions', promotionRoutes); // Promotions routes
 app.use('/employee', employeeRoutes); // Employee routes (reports, etc.)
 app.use('/leagues', createLeagueRoutes(socketService)); // League ecosystem routes
 app.use('/team-invites', createTeamInviteRoutes(socketService)); // Team invite routes (token-based)
+app.use('/attendance', createAttendanceRoutes(socketService)); // Attendance confirmation routes (token-based)
 
 // Health check endpoint
 app.get('/health', (req, res) => {

@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.createTeamInviteRoutes = exports.createLeagueRoutes = void 0;
+exports.createAttendanceRoutes = exports.createTeamInviteRoutes = exports.createLeagueRoutes = void 0;
 const express_1 = require("express");
 const league_controller_1 = require("./league.controller");
 const employee_middleware_1 = require("../bookings/employee.middleware");
@@ -58,6 +58,12 @@ const createLeagueRoutes = (socketService) => {
     router.post('/:leagueId/teams/:teamId/invites', controller.inviteTeammates);
     router.post('/:leagueId/teams/:teamId/pay', controller.enrollTeamPlayer);
     router.post('/:leagueId/teams/:teamId/disqualify', employee_middleware_1.authenticateEmployee, controller.disqualifyTeam);
+    // --- Attendance confirmation (authenticated) ---
+    router.get('/:leagueId/weeks/:weekId/attendance', controller.getWeekAttendance);
+    router.get('/:leagueId/weeks/:weekId/attendance/summary', controller.getWeekAttendanceSummary);
+    router.put('/:leagueId/weeks/:weekId/attendance', controller.updateAttendance);
+    router.get('/:leagueId/attendance/me', controller.getMyAttendance);
+    router.post('/:leagueId/weeks/:weekId/attendance/adjust', employee_middleware_1.authenticateEmployee, controller.manualAdjustCapacity);
     // --- Team invites (public - token-based) ---
     // Note: these routes are mounted BEFORE /:leagueId to avoid route capture
     return router;
@@ -78,3 +84,15 @@ const createTeamInviteRoutes = (socketService) => {
     return router;
 };
 exports.createTeamInviteRoutes = createTeamInviteRoutes;
+/**
+ * Creates public attendance confirmation routes (token-based, no auth).
+ * Mount these at /attendance
+ */
+const createAttendanceRoutes = (socketService) => {
+    const router = (0, express_1.Router)();
+    const controller = new league_controller_1.LeagueController(socketService);
+    router.post('/confirm/:token', controller.confirmAttendanceByToken);
+    router.post('/decline/:token', controller.declineAttendanceByToken);
+    return router;
+};
+exports.createAttendanceRoutes = createAttendanceRoutes;

@@ -173,7 +173,7 @@ exports.app.use('/bookings', (0, booking_routes_1.createBookingRoutes)(socketSer
 exports.app.use('/', payment_routes_1.paymentRoutes); // Payment routes are at root level for backwards compatibility
 exports.app.use('/', pricing_routes_1.pricingRoutes); // Pricing routes are at root level for backwards compatibility
 exports.app.use('/locations', location_routes_1.locationRoutes);
-exports.app.use('/bays', bay_routes_1.bayRoutes);
+exports.app.use('/bays', (0, bay_routes_1.createBayRoutes)(socketService));
 exports.app.use('/logs', log_routes_1.logRoutes);
 exports.app.use('/', (0, unlock_routes_1.unlockRoutes)(socketService)); // Unlock routes at root level
 exports.app.use('/', user_routes_1.userRoutes); // User routes at root level
@@ -181,6 +181,7 @@ exports.app.use('/promotions', promotion_routes_1.default); // Promotions routes
 exports.app.use('/employee', employee_1.employeeRoutes); // Employee routes (reports, etc.)
 exports.app.use('/leagues', (0, league_routes_1.createLeagueRoutes)(socketService)); // League ecosystem routes
 exports.app.use('/team-invites', (0, league_routes_1.createTeamInviteRoutes)(socketService)); // Team invite routes (token-based)
+exports.app.use('/attendance', (0, league_routes_1.createAttendanceRoutes)(socketService)); // Attendance confirmation routes (token-based)
 // Health check endpoint
 exports.app.get('/health', (req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });

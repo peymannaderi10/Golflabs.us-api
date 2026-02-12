@@ -1,14 +1,17 @@
 import { Request, Response } from 'express';
 import { LeagueService } from './league.service';
+import { AttendanceService } from './attendance.service';
 import { SocketService } from '../sockets/socket.service';
 import { LeagueScorePayload } from './league.types';
 
 export class LeagueController {
   private leagueService: LeagueService;
+  private attendanceService: AttendanceService;
   private socketService: SocketService;
 
   constructor(socketService: SocketService) {
     this.leagueService = new LeagueService();
+    this.attendanceService = new AttendanceService();
     this.socketService = socketService;
   }
 
@@ -662,6 +665,138 @@ export class LeagueController {
       res.json(teams);
     } catch (error: any) {
       console.error('Error fetching user teams:', error);
+      res.status(500).json({ error: error.message });
+    }
+  };
+
+  // =====================================================
+  // ATTENDANCE CONFIRMATION
+  // =====================================================
+
+  /**
+   * Token-based confirm (from email link, no auth required)
+   */
+  confirmAttendanceByToken = async (req: Request, res: Response) => {
+    try {
+      const { token } = req.params;
+      const result = await this.attendanceService.confirmAttendance(token);
+      if (!result.success) {
+        return res.status(400).json({ error: result.message });
+      }
+      res.json(result);
+    } catch (error: any) {
+      console.error('Error confirming attendance:', error);
+      res.status(500).json({ error: error.message });
+    }
+  };
+
+  /**
+   * Token-based decline (from email link, no auth required)
+   */
+  declineAttendanceByToken = async (req: Request, res: Response) => {
+    try {
+      const { token } = req.params;
+      const result = await this.attendanceService.declineAttendance(token);
+      if (!result.success) {
+        return res.status(400).json({ error: result.message });
+      }
+      res.json(result);
+    } catch (error: any) {
+      console.error('Error declining attendance:', error);
+      res.status(500).json({ error: error.message });
+    }
+  };
+
+  /**
+   * Get attendance list for a week (employee view)
+   */
+  getWeekAttendance = async (req: Request, res: Response) => {
+    try {
+      const { weekId } = req.params;
+      const attendance = await this.attendanceService.getAttendanceForWeek(weekId);
+      res.json(attendance);
+    } catch (error: any) {
+      console.error('Error fetching week attendance:', error);
+      res.status(500).json({ error: error.message });
+    }
+  };
+
+  /**
+   * Get attendance summary for a week
+   */
+  getWeekAttendanceSummary = async (req: Request, res: Response) => {
+    try {
+      const { leagueId, weekId } = req.params;
+
+      // Get players_per_bay from league
+      const league = await this.leagueService.getLeague(leagueId);
+      const playersPerBay = (league as any)?.players_per_bay || 2;
+
+      const summary = await this.attendanceService.getAttendanceSummary(weekId, playersPerBay);
+      res.json(summary);
+    } catch (error: any) {
+      console.error('Error fetching attendance summary:', error);
+      res.status(500).json({ error: error.message });
+    }
+  };
+
+  /**
+   * Update own attendance (auth-based, from user dashboard)
+   */
+  updateAttendance = async (req: Request, res: Response) => {
+    try {
+      const { weekId } = req.params;
+      const { status, leaguePlayerId } = req.body;
+
+      if (!leaguePlayerId || !status) {
+        return res.status(400).json({ error: 'leaguePlayerId and status are required' });
+      }
+
+      if (!['confirmed', 'declined'].includes(status)) {
+        return res.status(400).json({ error: 'Status must be "confirmed" or "declined"' });
+      }
+
+      const attendance = await this.attendanceService.updateAttendance(leaguePlayerId, weekId, status);
+      res.json(attendance);
+    } catch (error: any) {
+      console.error('Error updating attendance:', error);
+      if (error.message.includes('locked') || error.message.includes('not found')) {
+        return res.status(400).json({ error: error.message });
+      }
+      res.status(500).json({ error: error.message });
+    }
+  };
+
+  /**
+   * Get all my attendance statuses across weeks for a league
+   */
+  getMyAttendance = async (req: Request, res: Response) => {
+    try {
+      const { leagueId } = req.params;
+      const userId = req.query.userId as string;
+
+      if (!userId) {
+        return res.status(400).json({ error: 'userId query param is required' });
+      }
+
+      const attendance = await this.attendanceService.getPlayerAttendance(userId, leagueId);
+      res.json(attendance);
+    } catch (error: any) {
+      console.error('Error fetching player attendance:', error);
+      res.status(500).json({ error: error.message });
+    }
+  };
+
+  /**
+   * Employee: manually trigger capacity adjustment for a week
+   */
+  manualAdjustCapacity = async (req: Request, res: Response) => {
+    try {
+      const { leagueId, weekId } = req.params;
+      const result = await this.attendanceService.adjustCapacityHold(leagueId, weekId);
+      res.json(result);
+    } catch (error: any) {
+      console.error('Error adjusting capacity:', error);
       res.status(500).json({ error: error.message });
     }
   };

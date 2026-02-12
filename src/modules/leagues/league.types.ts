@@ -28,6 +28,16 @@ export interface League {
   payout_config: PayoutConfig | null;
   players_per_team: number;
   team_scoring_format: TeamScoringFormat;
+  capacity_hold_type: 'all_bays' | 'num_bays' | 'pct_capacity';
+  capacity_hold_value: number;
+  buffer_before_mins: number;
+  buffer_after_mins: number;
+  attendance_required: boolean;
+  attendance_auto_adjust: boolean;
+  attendance_reminder_hours: number;
+  attendance_cutoff_hours: number;
+  players_per_bay: number;
+  team_min_attendance: number | null;
   status: 'draft' | 'registration' | 'active' | 'completed' | 'cancelled';
   created_at: string;
   updated_at: string;
@@ -250,6 +260,18 @@ export interface CreateLeagueRequest {
   // Team league fields
   playersPerTeam?: number;
   teamScoringFormat?: TeamScoringFormat;
+  // Capacity hold fields
+  capacityHoldType?: 'all_bays' | 'num_bays' | 'pct_capacity';
+  capacityHoldValue?: number;
+  bufferBeforeMins?: number;
+  bufferAfterMins?: number;
+  // Attendance confirmation fields
+  attendanceRequired?: boolean;
+  attendanceAutoAdjust?: boolean;
+  attendanceReminderHours?: number;
+  attendanceCutoffHours?: number;
+  playersPerBay?: number;
+  teamMinAttendance?: number | null;
 }
 
 export interface UpdateLeagueRequest {
@@ -269,6 +291,18 @@ export interface UpdateLeagueRequest {
   payoutConfig?: PayoutConfig;
   playersPerTeam?: number;
   teamScoringFormat?: TeamScoringFormat;
+  // Capacity hold fields
+  capacityHoldType?: 'all_bays' | 'num_bays' | 'pct_capacity';
+  capacityHoldValue?: number;
+  bufferBeforeMins?: number;
+  bufferAfterMins?: number;
+  // Attendance confirmation fields
+  attendanceRequired?: boolean;
+  attendanceAutoAdjust?: boolean;
+  attendanceReminderHours?: number;
+  attendanceCutoffHours?: number;
+  playersPerBay?: number;
+  teamMinAttendance?: number | null;
 }
 
 export interface CreateCourseRequest {
@@ -410,4 +444,39 @@ export interface TeamLeaderboardEntry {
   scoringFormat: TeamScoringFormat;
   courseName?: string;
   coursePar?: number;
+}
+
+// =====================================================
+// Attendance Confirmation Types
+// =====================================================
+
+export type AttendanceStatus = 'confirmed' | 'declined' | 'no_response';
+
+export interface LeagueAttendance {
+  id: string;
+  league_id: string;
+  league_week_id: string;
+  league_player_id: string;
+  user_id: string;
+  status: AttendanceStatus;
+  responded_at: string | null;
+  confirmation_token: string;
+  reminder_sent_at: string | null;
+  locked: boolean;
+  created_at: string;
+  updated_at: string;
+  // Joined fields
+  display_name?: string;
+  team_name?: string;
+  league_team_id?: string | null;
+}
+
+export interface AttendanceSummary {
+  weekId: string;
+  totalPlayers: number;
+  confirmed: number;
+  declined: number;
+  noResponse: number;
+  baysNeeded: number;
+  locked: boolean;
 }

@@ -71,6 +71,13 @@ export const createLeagueRoutes = (socketService: SocketService): Router => {
   router.post('/:leagueId/teams/:teamId/pay', controller.enrollTeamPlayer);
   router.post('/:leagueId/teams/:teamId/disqualify', authenticateEmployee, controller.disqualifyTeam);
 
+  // --- Attendance confirmation (authenticated) ---
+  router.get('/:leagueId/weeks/:weekId/attendance', controller.getWeekAttendance);
+  router.get('/:leagueId/weeks/:weekId/attendance/summary', controller.getWeekAttendanceSummary);
+  router.put('/:leagueId/weeks/:weekId/attendance', controller.updateAttendance);
+  router.get('/:leagueId/attendance/me', controller.getMyAttendance);
+  router.post('/:leagueId/weeks/:weekId/attendance/adjust', authenticateEmployee, controller.manualAdjustCapacity);
+
   // --- Team invites (public - token-based) ---
   // Note: these routes are mounted BEFORE /:leagueId to avoid route capture
   return router;
@@ -90,6 +97,20 @@ export const createTeamInviteRoutes = (socketService: SocketService): Router => 
 
   // User's teams
   router.get('/user/:userId/teams', controller.getUserTeams);
+
+  return router;
+};
+
+/**
+ * Creates public attendance confirmation routes (token-based, no auth).
+ * Mount these at /attendance
+ */
+export const createAttendanceRoutes = (socketService: SocketService): Router => {
+  const router = Router();
+  const controller = new LeagueController(socketService);
+
+  router.post('/confirm/:token', controller.confirmAttendanceByToken);
+  router.post('/decline/:token', controller.declineAttendanceByToken);
 
   return router;
 };

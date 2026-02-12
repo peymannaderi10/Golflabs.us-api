@@ -232,5 +232,21 @@ class EmailService {
             }
         });
     }
+    /**
+     * Send an attendance reminder email.
+     */
+    static sendAttendanceReminderEmail(data) {
+        return __awaiter(this, void 0, void 0, function* () {
+            try {
+                const template = email_templates_1.EmailTemplates.attendanceReminder(data);
+                yield this.sendEmail(data.playerEmail, template.subject, template.html);
+                console.log(`Sent attendance reminder to ${data.playerEmail} for ${data.leagueName} Week ${data.weekNumber}`);
+            }
+            catch (error) {
+                console.error(`Failed to send attendance reminder to ${data.playerEmail}:`, error);
+                // Don't throw — reminder is best-effort
+            }
+        });
+    }
 }
 exports.EmailService = EmailService;

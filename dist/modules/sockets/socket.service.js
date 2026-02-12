@@ -30,9 +30,11 @@ class SocketService {
             // Register a kiosk and have it join a room based on its location and bay
             socket.on('register_kiosk', (payload) => {
                 if (payload.locationId && payload.bayId) {
-                    const room = `location-${payload.locationId}-bay-${payload.bayId}`;
-                    socket.join(room);
-                    console.log(`Socket ${socket.id} (Bay ${payload.bayId}) joined room: ${room}`);
+                    const bayRoom = `location-${payload.locationId}-bay-${payload.bayId}`;
+                    const locationRoom = `location-${payload.locationId}`;
+                    socket.join(bayRoom);
+                    socket.join(locationRoom);
+                    console.log(`Socket ${socket.id} (Bay ${payload.bayId}) joined rooms: ${bayRoom}, ${locationRoom}`);
                 }
             });
             // Handle request from a kiosk for a full data refresh
@@ -269,6 +271,15 @@ class SocketService {
                 resolve(false);
             }
         }));
+    }
+    /**
+     * Broadcasts an event to all kiosks at a location.
+     * Kiosks join the location-level room on registration.
+     */
+    broadcastToLocation(locationId, event, payload) {
+        const room = `location-${locationId}`;
+        this.io.to(room).emit(event, payload);
+        console.log(`Broadcasted ${event} to room ${room}`);
     }
 }
 exports.SocketService = SocketService;

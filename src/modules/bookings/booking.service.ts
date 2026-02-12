@@ -6,8 +6,11 @@ import { BookingDetails } from './booking.types';
 import { EmailService } from '../email/email.service';
 import { promotionService } from '../promotions/promotion.service';
 import { resendConfig } from '../../config/resend';
+import { CapacityHoldService } from './capacity-hold.service';
 
 export class BookingService {
+  private capacityHoldService = new CapacityHoldService();
+
   async reserveBooking(bookingData: BookingDetails) {
     const { 
       locationId, 
@@ -56,6 +59,27 @@ export class BookingService {
       input: { date, startTime, endTime },
       output: { p_start_time, p_end_time }
     });
+
+    // Check capacity holds before proceeding
+    // Convert 12h time (e.g. "6:00 PM") to 24h (e.g. "18:00") for hold comparison
+    const start24 = `${String(startTimeParsed.hours).padStart(2, '0')}:${String(startTimeParsed.minutes).padStart(2, '0')}`;
+    const end24 = `${String(endTimeParsed.hours).padStart(2, '0')}:${String(endTimeParsed.minutes).padStart(2, '0')}`;
+
+    // Get total bays at this location for capacity calculations
+    const { data: baysData } = await supabase
+      .from('bays')
+      .select('id')
+      .eq('location_id', locationId)
+      .neq('status', 'closed');
+    const totalBays = baysData?.length || 0;
+
+    const holdConflict = await this.capacityHoldService.checkHoldConflict(
+      locationId, date, start24, end24, totalBays
+    );
+    if (holdConflict) {
+      const leagueName = holdConflict.league_name || 'League Night';
+      throw new Error(`This time is reserved for ${leagueName}. Please choose a different time.`);
+    }
     
     // Set expiration time using UTC timestamp
     const expiresAt = new Date(Date.now() + 2 * 60 * 1000).toISOString();
