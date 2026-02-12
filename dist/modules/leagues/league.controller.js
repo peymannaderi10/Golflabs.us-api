@@ -12,6 +12,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.LeagueController = void 0;
 const league_service_1 = require("./league.service");
 const attendance_service_1 = require("./attendance.service");
+const capacity_hold_service_1 = require("../bookings/capacity-hold.service");
 class LeagueController {
     constructor(socketService) {
         // =====================================================
@@ -742,8 +743,63 @@ class LeagueController {
                 res.status(500).json({ error: error.message });
             }
         });
+        /**
+         * Get all capacity holds for a league (schedule view)
+         */
+        this.getLeagueHolds = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            try {
+                const { leagueId } = req.params;
+                const holds = yield this.capacityHoldService.getHoldsForLeague(leagueId);
+                res.json(holds);
+            }
+            catch (error) {
+                console.error('Error fetching league holds:', error);
+                res.status(500).json({ error: error.message });
+            }
+        });
+        /**
+         * Employee: skip a week (holiday) — suspends the capacity hold for that week
+         */
+        this.skipWeek = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            try {
+                const { leagueId, weekId } = req.params;
+                // Find the capacity hold for this week
+                const holds = yield this.capacityHoldService.getHoldsForLeague(leagueId);
+                const weekHold = holds.find(h => h.league_week_id === weekId && h.status === 'active');
+                if (!weekHold) {
+                    return res.status(404).json({ error: 'No active hold found for this week' });
+                }
+                yield this.capacityHoldService.suspendHold(weekHold.id);
+                res.json({ success: true, message: 'Week skipped — hold suspended and bays released.' });
+            }
+            catch (error) {
+                console.error('Error skipping week:', error);
+                res.status(500).json({ error: error.message });
+            }
+        });
+        /**
+         * Employee: unskip a week — reactivates the capacity hold for that week
+         */
+        this.unskipWeek = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            try {
+                const { leagueId, weekId } = req.params;
+                // Find the suspended hold for this week
+                const holds = yield this.capacityHoldService.getHoldsForLeague(leagueId);
+                const weekHold = holds.find(h => h.league_week_id === weekId && h.status === 'suspended');
+                if (!weekHold) {
+                    return res.status(404).json({ error: 'No suspended hold found for this week' });
+                }
+                yield this.capacityHoldService.activateHold(weekHold.id);
+                res.json({ success: true, message: 'Week restored — hold reactivated.' });
+            }
+            catch (error) {
+                console.error('Error unskipping week:', error);
+                res.status(500).json({ error: error.message });
+            }
+        });
         this.leagueService = new league_service_1.LeagueService();
         this.attendanceService = new attendance_service_1.AttendanceService();
+        this.capacityHoldService = new capacity_hold_service_1.CapacityHoldService();
         this.socketService = socketService;
     }
 }

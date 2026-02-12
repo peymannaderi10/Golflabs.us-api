@@ -71,6 +71,11 @@ export const createLeagueRoutes = (socketService: SocketService): Router => {
   router.post('/:leagueId/teams/:teamId/pay', controller.enrollTeamPlayer);
   router.post('/:leagueId/teams/:teamId/disqualify', authenticateEmployee, controller.disqualifyTeam);
 
+  // --- Week management (employee-only) ---
+  router.get('/:leagueId/holds', controller.getLeagueHolds);
+  router.post('/:leagueId/weeks/:weekId/skip', authenticateEmployee, controller.skipWeek);
+  router.post('/:leagueId/weeks/:weekId/unskip', authenticateEmployee, controller.unskipWeek);
+
   // --- Attendance confirmation (authenticated) ---
   router.get('/:leagueId/weeks/:weekId/attendance', controller.getWeekAttendance);
   router.get('/:leagueId/weeks/:weekId/attendance/summary', controller.getWeekAttendanceSummary);
