@@ -2272,7 +2272,7 @@ export class LeagueService {
     // Verify team exists and user is captain
     const { data: team, error: teamError } = await supabase
       .from('league_teams')
-      .select('*, leagues(name, players_per_team, id)')
+      .select('*, leagues(id, name, players_per_team, total_weeks, season_fee, weekly_prize_pot, num_holes)')
       .eq('id', teamId)
       .single();
 
