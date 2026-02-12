@@ -1,5 +1,5 @@
 import { format, toZonedTime } from 'date-fns-tz';
-import { EmailTemplate, BookingEmailData } from './email.types';
+import { EmailTemplate, BookingEmailData, TeamInviteEmailData, TeamStatusEmailData } from './email.types';
 
 export class EmailTemplates {
   static thankYou(data: BookingEmailData): EmailTemplate {
@@ -863,6 +863,198 @@ export class EmailTemplates {
         We'd love to have you back! Visit our website to book your next session.
         
         Golf Labs US - Where Technology Meets Golf
+      `
+    };
+  }
+
+  // =====================================================
+  // Team League Email Templates
+  // =====================================================
+
+  static teamInvite(data: TeamInviteEmailData): EmailTemplate {
+    const totalPrizePot = data.weeklyPrizePot * data.totalWeeks;
+    const totalCost = data.seasonFee + totalPrizePot;
+
+    return {
+      subject: `You've been invited to join "${data.teamName}" in ${data.leagueName}!`,
+      html: `
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Team Invite - Golf Labs US</title>
+        </head>
+        <body style="margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f5f7fa;">
+          <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff;">
+            <!-- Header -->
+            <div style="background: linear-gradient(135deg, #2c5530 0%, #4a7c59 100%); padding: 40px 30px; text-align: center;">
+              <h1 style="margin: 0; font-size: 28px; font-weight: 600; letter-spacing: 1px; color: #ffffff;">
+                GOLF LABS US
+              </h1>
+            </div>
+            
+            <!-- Main Content -->
+            <div style="padding: 40px 30px;">
+              <div style="text-align: center; margin-bottom: 30px;">
+                <h2 style="margin: 0 0 10px 0; font-size: 24px; font-weight: 600; color: #2c5530;">
+                  Team Invite
+                </h2>
+                <p style="margin: 0; font-size: 16px; color: #666;">
+                  ${data.captainName} has invited you to join their team!
+                </p>
+              </div>
+              
+              <!-- Team Details Card -->
+              <div style="background: linear-gradient(135deg, #f8fffe 0%, #e8f5e8 100%); border: 2px solid #4a7c59; border-radius: 12px; padding: 30px; margin: 30px 0;">
+                <div style="display: grid; gap: 12px;">
+                  <div style="padding: 8px 0; border-bottom: 1px solid #e0e0e0;">
+                    <span style="color: #4a7c59; font-weight: 600;">Team:</span>
+                    <span style="color: #333; font-weight: 500; margin-left: 8px;">${data.teamName}</span>
+                  </div>
+                  <div style="padding: 8px 0; border-bottom: 1px solid #e0e0e0;">
+                    <span style="color: #4a7c59; font-weight: 600;">League:</span>
+                    <span style="color: #333; font-weight: 500; margin-left: 8px;">${data.leagueName}</span>
+                  </div>
+                  <div style="padding: 8px 0; border-bottom: 1px solid #e0e0e0;">
+                    <span style="color: #4a7c59; font-weight: 600;">Format:</span>
+                    <span style="color: #333; font-weight: 500; margin-left: 8px;">${data.playersPerTeam} players per team, ${data.numHoles} holes</span>
+                  </div>
+                  <div style="padding: 8px 0; border-bottom: 1px solid #e0e0e0;">
+                    <span style="color: #4a7c59; font-weight: 600;">Season:</span>
+                    <span style="color: #333; font-weight: 500; margin-left: 8px;">${data.totalWeeks} weeks</span>
+                  </div>
+                  ${data.seasonFee > 0 ? `
+                  <div style="padding: 8px 0; border-bottom: 1px solid #e0e0e0;">
+                    <span style="color: #4a7c59; font-weight: 600;">Season Fee:</span>
+                    <span style="color: #333; font-weight: 500; margin-left: 8px;">$${data.seasonFee.toFixed(2)}</span>
+                  </div>
+                  ` : ''}
+                  ${totalPrizePot > 0 ? `
+                  <div style="padding: 8px 0; border-bottom: 1px solid #e0e0e0;">
+                    <span style="color: #4a7c59; font-weight: 600;">Prize Pool Buy-In:</span>
+                    <span style="color: #333; font-weight: 500; margin-left: 8px;">$${totalPrizePot.toFixed(2)} ($${data.weeklyPrizePot}/week x ${data.totalWeeks} weeks)</span>
+                  </div>
+                  ` : ''}
+                  ${totalCost > 0 ? `
+                  <div style="padding: 8px 0;">
+                    <span style="color: #4a7c59; font-weight: 600;">Total Cost:</span>
+                    <span style="color: #2c5530; font-weight: 700; font-size: 18px; margin-left: 8px;">$${totalCost.toFixed(2)}</span>
+                  </div>
+                  ` : ''}
+                </div>
+              </div>
+              
+              <p style="text-align: center; color: #666; font-size: 14px; margin: 20px 0;">
+                Each team member pays individually. Payment is due before the league starts.
+              </p>
+
+              <!-- Action Buttons -->
+              <div style="text-align: center; margin: 40px 0;">
+                <a href="${data.acceptUrl}" 
+                   style="display: inline-block; background: linear-gradient(135deg, #4a7c59 0%, #2c5530 100%); color: #ffffff; padding: 16px 40px; border-radius: 50px; font-weight: 600; font-size: 16px; text-decoration: none; margin-right: 12px;">
+                  Accept Invitation
+                </a>
+                <a href="${data.declineUrl}" 
+                   style="display: inline-block; background: #f0f0f0; color: #666; padding: 16px 30px; border-radius: 50px; font-weight: 600; font-size: 14px; text-decoration: none;">
+                  Decline
+                </a>
+              </div>
+            </div>
+            
+            <!-- Footer -->
+            <div style="background-color: #2c5530; padding: 30px; text-align: center;">
+              <p style="color: #a8d5aa; margin: 0; font-size: 14px;">
+                Golf Labs US - Where Technology Meets Golf
+              </p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `,
+      text: `
+        GOLF LABS US - Team Invite
+
+        ${data.captainName} has invited you to join team "${data.teamName}" in ${data.leagueName}!
+
+        DETAILS:
+        Team: ${data.teamName}
+        League: ${data.leagueName}
+        Players per team: ${data.playersPerTeam}
+        Season: ${data.totalWeeks} weeks, ${data.numHoles} holes
+        ${data.seasonFee > 0 ? `Season Fee: $${data.seasonFee.toFixed(2)}` : ''}
+        ${totalPrizePot > 0 ? `Prize Pool Buy-In: $${totalPrizePot.toFixed(2)}` : ''}
+        ${totalCost > 0 ? `Total Cost: $${totalCost.toFixed(2)}` : ''}
+
+        Accept: ${data.acceptUrl}
+        Decline: ${data.declineUrl}
+      `
+    };
+  }
+
+  static teamStatus(data: TeamStatusEmailData): EmailTemplate {
+    return {
+      subject: `Team Update: ${data.teamName} - ${data.leagueName}`,
+      html: `
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Team Update - Golf Labs US</title>
+        </head>
+        <body style="margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f5f7fa;">
+          <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff;">
+            <!-- Header -->
+            <div style="background: linear-gradient(135deg, #2c5530 0%, #4a7c59 100%); padding: 40px 30px; text-align: center;">
+              <h1 style="margin: 0; font-size: 28px; font-weight: 600; letter-spacing: 1px; color: #ffffff;">
+                GOLF LABS US
+              </h1>
+            </div>
+            
+            <!-- Main Content -->
+            <div style="padding: 40px 30px;">
+              <h2 style="margin: 0 0 10px 0; font-size: 22px; font-weight: 600; color: #2c5530; text-align: center;">
+                Team Update
+              </h2>
+              <p style="margin: 0 0 5px 0; font-size: 16px; color: #666; text-align: center;">
+                ${data.teamName} - ${data.leagueName}
+              </p>
+              
+              <div style="background: #f8f9fa; border-radius: 8px; padding: 24px; margin: 30px 0; text-align: center;">
+                <p style="margin: 0; font-size: 16px; color: #333; line-height: 1.6;">
+                  ${data.message}
+                </p>
+              </div>
+
+              ${data.actionUrl ? `
+              <div style="text-align: center; margin: 30px 0;">
+                <a href="${data.actionUrl}" 
+                   style="display: inline-block; background: linear-gradient(135deg, #4a7c59 0%, #2c5530 100%); color: #ffffff; padding: 14px 36px; border-radius: 50px; font-weight: 600; font-size: 15px; text-decoration: none;">
+                  ${data.actionLabel || 'View Details'}
+                </a>
+              </div>
+              ` : ''}
+            </div>
+            
+            <!-- Footer -->
+            <div style="background-color: #2c5530; padding: 30px; text-align: center;">
+              <p style="color: #a8d5aa; margin: 0; font-size: 14px;">
+                Golf Labs US - Where Technology Meets Golf
+              </p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `,
+      text: `
+        GOLF LABS US - Team Update
+
+        ${data.teamName} - ${data.leagueName}
+
+        ${data.message}
+
+        ${data.actionUrl ? `${data.actionLabel || 'View Details'}: ${data.actionUrl}` : ''}
       `
     };
   }

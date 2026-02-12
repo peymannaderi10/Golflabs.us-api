@@ -2,6 +2,8 @@
 // League System Type Definitions
 // =====================================================
 
+export type TeamScoringFormat = 'best_ball' | 'combined' | 'scramble';
+
 export interface League {
   id: string;
   location_id: string;
@@ -24,6 +26,8 @@ export interface League {
   scoring_type: 'net_stroke_play' | 'gross_stroke_play' | 'points_based';
   points_config: PointsConfig | null;
   payout_config: PayoutConfig | null;
+  players_per_team: number;
+  team_scoring_format: TeamScoringFormat;
   status: 'draft' | 'registration' | 'active' | 'completed' | 'cancelled';
   created_at: string;
   updated_at: string;
@@ -106,6 +110,7 @@ export interface LeaguePlayer {
   season_paid: boolean;
   prize_pot_paid: boolean;
   stripe_payment_intent_id: string | null;
+  league_team_id: string | null;
   joined_at: string;
 }
 
@@ -142,6 +147,7 @@ export interface LeagueStanding {
   id: string;
   league_id: string;
   league_player_id: string;
+  league_team_id: string | null;
   weeks_played: number;
   total_gross: number;
   total_net: number;
@@ -171,6 +177,53 @@ export interface HandicapHistoryEntry {
 }
 
 // =====================================================
+// Team Types
+// =====================================================
+
+export type TeamStatus = 'forming' | 'pending_payment' | 'active' | 'disqualified' | 'withdrawn';
+export type TeamInviteStatus = 'pending' | 'accepted' | 'declined' | 'expired';
+
+export interface LeagueTeam {
+  id: string;
+  league_id: string;
+  team_name: string;
+  captain_user_id: string;
+  players_per_team: number;
+  status: TeamStatus;
+  created_at: string;
+  // Joined fields
+  captain_name?: string;
+  members?: LeagueTeamMember[];
+  invites?: LeagueTeamInvite[];
+}
+
+export interface LeagueTeamMember {
+  league_player_id: string;
+  user_id: string;
+  display_name: string;
+  enrollment_status: string;
+  season_paid: boolean;
+  prize_pot_paid: boolean;
+  is_captain: boolean;
+}
+
+export interface LeagueTeamInvite {
+  id: string;
+  league_team_id: string;
+  invited_user_id: string;
+  invited_email: string;
+  status: TeamInviteStatus;
+  invite_token: string;
+  invited_at: string;
+  responded_at: string | null;
+  // Joined fields
+  invited_user_name?: string;
+  team_name?: string;
+  league_name?: string;
+  league_id?: string;
+}
+
+// =====================================================
 // Request / Response Types
 // =====================================================
 
@@ -194,6 +247,9 @@ export interface CreateLeagueRequest {
   pointsConfig?: PointsConfig;
   payoutConfig?: PayoutConfig;
   courses?: CreateCourseRequest[];
+  // Team league fields
+  playersPerTeam?: number;
+  teamScoringFormat?: TeamScoringFormat;
 }
 
 export interface UpdateLeagueRequest {
@@ -211,6 +267,8 @@ export interface UpdateLeagueRequest {
   scoringType?: 'net_stroke_play' | 'gross_stroke_play' | 'points_based';
   pointsConfig?: PointsConfig;
   payoutConfig?: PayoutConfig;
+  playersPerTeam?: number;
+  teamScoringFormat?: TeamScoringFormat;
 }
 
 export interface CreateCourseRequest {
@@ -227,6 +285,21 @@ export interface UpdateCourseRequest {
 }
 
 export interface EnrollPlayerRequest {
+  userId: string;
+  displayName: string;
+}
+
+export interface CreateTeamRequest {
+  teamName: string;
+  captainUserId: string;
+  teammateEmails: string[];      // emails of teammates to invite
+}
+
+export interface InviteTeammatesRequest {
+  emails: string[];
+}
+
+export interface TeamPaymentRequest {
   userId: string;
   displayName: string;
 }
@@ -294,6 +367,8 @@ export interface StandingWithPlayer {
   avgGross: number;
   bestGross: number | null;
   points: number;
+  teamId?: string;
+  teamName?: string;
 }
 
 export interface LiveLeaderboardEntry {
@@ -308,6 +383,31 @@ export interface LiveLeaderboardEntry {
   seasonGross: number;
   seasonNet: number;
   weeksPlayed: number;
+  courseName?: string;
+  coursePar?: number;
+}
+
+export interface TeamLeaderboardEntry {
+  rank: number;
+  teamId: string;
+  teamName: string;
+  status: TeamStatus;
+  members: {
+    playerId: string;
+    displayName: string;
+    handicap: number;
+    todayGross: number;
+    todayNet: number;
+    thru: number;
+    seasonGross: number;
+    seasonNet: number;
+  }[];
+  teamTodayGross: number;
+  teamTodayNet: number;
+  teamSeasonGross: number;
+  teamSeasonNet: number;
+  weeksPlayed: number;
+  scoringFormat: TeamScoringFormat;
   courseName?: string;
   coursePar?: number;
 }

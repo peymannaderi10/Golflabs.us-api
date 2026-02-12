@@ -81,6 +81,20 @@ function handleStripeWebhook(req, res, socketService) {
                                         // Non-fatal — enrollment is still active
                                     }
                                 }
+                                // If this is a team enrollment, check if all team members have paid
+                                const teamId = paymentIntent.metadata.league_team_id;
+                                if (teamId) {
+                                    try {
+                                        const leagueService = new league_service_1.LeagueService();
+                                        const allPaid = yield leagueService.checkTeamAllPaid(teamId);
+                                        if (allPaid) {
+                                            console.log(`All team members paid for team ${teamId} — team is now active.`);
+                                        }
+                                    }
+                                    catch (teamError) {
+                                        console.error(`Error checking team payment status:`, teamError);
+                                    }
+                                }
                             }
                         }
                         catch (leagueError) {

@@ -1,7 +1,7 @@
 import { resend, resendConfig } from '../../config/resend';
 import { NotificationService } from './notification.service';
 import { EmailTemplates } from './email.templates';
-import { BookingEmailData } from './email.types';
+import { BookingEmailData, TeamInviteEmailData, TeamStatusEmailData } from './email.types';
 
 export class EmailService {
   /**
@@ -216,6 +216,37 @@ export class EmailService {
     } catch (error) {
       console.error('Error dispatching notifications:', error);
       return 0;
+    }
+  }
+
+  // =====================================================
+  // Team League Emails (direct send, not booking-based)
+  // =====================================================
+
+  /**
+   * Send a team invite email directly (not through the notification queue).
+   */
+  static async sendTeamInviteEmail(data: TeamInviteEmailData): Promise<void> {
+    try {
+      const template = EmailTemplates.teamInvite(data);
+      await this.sendEmail(data.invitedEmail, template.subject, template.html);
+      console.log(`Sent team invite email to ${data.invitedEmail} for team "${data.teamName}"`);
+    } catch (error) {
+      console.error(`Failed to send team invite email to ${data.invitedEmail}:`, error);
+      // Don't throw — invite record is already created, email is best-effort
+    }
+  }
+
+  /**
+   * Send a team status update email directly.
+   */
+  static async sendTeamStatusEmail(data: TeamStatusEmailData): Promise<void> {
+    try {
+      const template = EmailTemplates.teamStatus(data);
+      await this.sendEmail(data.recipientEmail, template.subject, template.html);
+      console.log(`Sent team status email to ${data.recipientEmail} for team "${data.teamName}"`);
+    } catch (error) {
+      console.error(`Failed to send team status email to ${data.recipientEmail}:`, error);
     }
   }
 } 

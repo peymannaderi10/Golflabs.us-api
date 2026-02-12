@@ -12,6 +12,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.LeagueService = void 0;
 const database_1 = require("../../config/database");
 const stripe_1 = require("../../config/stripe");
+const email_service_1 = require("../email/email.service");
 const handicap_utils_1 = require("./handicap.utils");
 class LeagueService {
     // =====================================================
@@ -19,7 +20,7 @@ class LeagueService {
     // =====================================================
     createLeague(data) {
         return __awaiter(this, void 0, void 0, function* () {
-            const { locationId, name, format = 'stroke_play', numHoles = 9, parPerHole = 3, totalWeeks, dayOfWeek, startTime, endTime, seasonFee = 0, weeklyPrizePot = 0, maxPlayers = 32, handicapEnabled = true, startDate, courseRotation = 'fixed', scoringType = 'net_stroke_play', pointsConfig, payoutConfig, courses, } = data;
+            const { locationId, name, format = 'stroke_play', numHoles = 9, parPerHole = 3, totalWeeks, dayOfWeek, startTime, endTime, seasonFee = 0, weeklyPrizePot = 0, maxPlayers = 32, handicapEnabled = true, startDate, courseRotation = 'fixed', scoringType = 'net_stroke_play', pointsConfig, payoutConfig, courses, playersPerTeam = 2, teamScoringFormat = 'best_ball', } = data;
             // Insert the league
             const { data: league, error } = yield database_1.supabase
                 .from('leagues')
@@ -41,6 +42,8 @@ class LeagueService {
                 scoring_type: scoringType,
                 points_config: pointsConfig || null,
                 payout_config: payoutConfig || { first_pct: 50, second_pct: 30, third_pct: 20, payout_method: 'weekly' },
+                players_per_team: format === 'team' ? playersPerTeam : 2,
+                team_scoring_format: format === 'team' ? teamScoringFormat : 'best_ball',
             })
                 .select()
                 .single();
@@ -164,6 +167,10 @@ class LeagueService {
                 updateData.points_config = data.pointsConfig;
             if (data.payoutConfig !== undefined)
                 updateData.payout_config = data.payoutConfig;
+            if (data.playersPerTeam !== undefined)
+                updateData.players_per_team = data.playersPerTeam;
+            if (data.teamScoringFormat !== undefined)
+                updateData.team_scoring_format = data.teamScoringFormat;
             const { data: league, error } = yield database_1.supabase
                 .from('leagues')
                 .update(updateData)
@@ -459,6 +466,15 @@ class LeagueService {
             if (league.handicap_enabled) {
                 yield this.recalculateHandicaps(leagueId, weekId);
             }
+            // For team leagues, also calculate team scores for this week
+            if (league.format === 'team') {
+                try {
+                    yield this.recalculateTeamStandings(leagueId);
+                }
+                catch (teamError) {
+                    console.error(`Error recalculating team standings:`, teamError.message);
+                }
+            }
             // Generate weekly prize payouts if prize pot is configured
             let payouts;
             if (league.weekly_prize_pot > 0) {
@@ -552,14 +568,14 @@ class LeagueService {
         return __awaiter(this, void 0, void 0, function* () {
             const { data, error } = yield database_1.supabase
                 .from('league_standings')
-                .select('*, league_players(display_name, current_handicap)')
+                .select('*, league_players(display_name, current_handicap), league_teams(team_name)')
                 .eq('league_id', leagueId)
                 .order('current_rank');
             if (error) {
                 throw new Error(`Failed to fetch standings: ${error.message}`);
             }
             return (data || []).map((s) => {
-                var _a, _b;
+                var _a, _b, _c;
                 return ({
                     rank: s.current_rank,
                     playerId: s.league_player_id,
@@ -571,6 +587,8 @@ class LeagueService {
                     avgGross: s.avg_gross,
                     bestGross: s.best_gross,
                     points: s.points,
+                    teamId: s.league_team_id || undefined,
+                    teamName: ((_c = s.league_teams) === null || _c === void 0 ? void 0 : _c.team_name) || undefined,
                 });
             });
         });
@@ -856,6 +874,237 @@ class LeagueService {
                     updated_at: new Date().toISOString(),
                 }, { onConflict: 'league_id,league_player_id' });
             }
+        });
+    }
+    // =====================================================
+    // TEAM STANDINGS RECALCULATION
+    // =====================================================
+    recalculateTeamStandings(leagueId) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const league = yield this.getLeague(leagueId);
+            // Get all active teams for this league
+            const { data: teams } = yield database_1.supabase
+                .from('league_teams')
+                .select('id, team_name, status')
+                .eq('league_id', leagueId)
+                .in('status', ['active']);
+            if (!teams || teams.length === 0)
+                return;
+            // Get all finalized weeks
+            const { data: finalizedWeeks } = yield database_1.supabase
+                .from('league_weeks')
+                .select('id')
+                .eq('league_id', leagueId)
+                .eq('status', 'finalized')
+                .order('week_number');
+            const weekIds = (finalizedWeeks || []).map((w) => w.id);
+            if (weekIds.length === 0)
+                return;
+            // Calculate team scores for each team across all finalized weeks
+            const teamStats = new Map();
+            for (const team of teams) {
+                let weeksPlayed = 0;
+                let totalGross = 0;
+                let totalNet = 0;
+                let bestGross = null;
+                for (const weekId of weekIds) {
+                    const result = yield this.calculateTeamScore(team.id, weekId, league);
+                    if (result.teamGross > 0) {
+                        weeksPlayed++;
+                        totalGross += result.teamGross;
+                        totalNet += result.teamNet;
+                        if (bestGross === null || result.teamGross < bestGross) {
+                            bestGross = result.teamGross;
+                        }
+                    }
+                }
+                teamStats.set(team.id, {
+                    weeksPlayed,
+                    totalGross,
+                    totalNet: Math.round(totalNet * 10) / 10,
+                    bestGross,
+                    points: 0, // Team points can be added later if needed
+                });
+            }
+            // Rank teams by net score (ascending = better)
+            const rankedTeams = [...teamStats.entries()]
+                .sort((a, b) => {
+                if (a[1].weeksPlayed === 0 && b[1].weeksPlayed > 0)
+                    return 1;
+                if (a[1].weeksPlayed > 0 && b[1].weeksPlayed === 0)
+                    return -1;
+                return a[1].totalNet - b[1].totalNet;
+            });
+            // Upsert team standings
+            for (let i = 0; i < rankedTeams.length; i++) {
+                const [teamId, stats] = rankedTeams[i];
+                const avgGross = stats.weeksPlayed > 0
+                    ? Math.round((stats.totalGross / stats.weeksPlayed) * 10) / 10
+                    : 0;
+                // Get any member's league_player_id to use as the reference player for this team standing
+                const { data: teamMember } = yield database_1.supabase
+                    .from('league_players')
+                    .select('id')
+                    .eq('league_team_id', teamId)
+                    .limit(1)
+                    .single();
+                if (!teamMember)
+                    continue;
+                yield database_1.supabase
+                    .from('league_standings')
+                    .upsert({
+                    league_id: leagueId,
+                    league_player_id: teamMember.id,
+                    league_team_id: teamId,
+                    weeks_played: stats.weeksPlayed,
+                    total_gross: stats.totalGross,
+                    total_net: stats.totalNet,
+                    best_gross: stats.bestGross,
+                    avg_gross: avgGross,
+                    current_rank: stats.weeksPlayed > 0 ? i + 1 : 0,
+                    points: stats.points,
+                    updated_at: new Date().toISOString(),
+                }, { onConflict: 'league_id,league_player_id' });
+            }
+        });
+    }
+    // =====================================================
+    // TEAM LEADERBOARD
+    // =====================================================
+    getTeamLeaderboard(leagueId) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const league = yield this.getLeague(leagueId);
+            if (league.format !== 'team') {
+                throw new Error('This league is not a team league');
+            }
+            // Get all active teams
+            const { data: teams } = yield database_1.supabase
+                .from('league_teams')
+                .select('id, team_name, status')
+                .eq('league_id', leagueId)
+                .in('status', ['active']);
+            if (!teams || teams.length === 0)
+                return [];
+            // Get the current active week
+            const { data: activeWeek } = yield database_1.supabase
+                .from('league_weeks')
+                .select('*, league_courses(course_name, total_par)')
+                .eq('league_id', leagueId)
+                .in('status', ['active', 'scoring'])
+                .order('week_number', { ascending: false })
+                .limit(1)
+                .single();
+            let courseName;
+            let coursePar;
+            if (activeWeek === null || activeWeek === void 0 ? void 0 : activeWeek.league_courses) {
+                courseName = activeWeek.league_courses.course_name;
+                coursePar = activeWeek.league_courses.total_par;
+            }
+            // Get team standings
+            const { data: standings } = yield database_1.supabase
+                .from('league_standings')
+                .select('*')
+                .eq('league_id', leagueId)
+                .not('league_team_id', 'is', null);
+            const standingsMap = new Map((standings || []).map((s) => [s.league_team_id, s]));
+            // Build entries for each team
+            const entries = [];
+            for (const team of teams) {
+                // Get team members
+                const { data: members } = yield database_1.supabase
+                    .from('league_players')
+                    .select('id, user_id, display_name, current_handicap')
+                    .eq('league_team_id', team.id)
+                    .neq('enrollment_status', 'withdrawn');
+                if (!members)
+                    continue;
+                const memberIds = members.map(m => m.id);
+                // Get today's scores for team members
+                let memberEntries = [];
+                let teamTodayGross = 0;
+                let teamTodayNet = 0;
+                if (activeWeek) {
+                    const { data: todayScores } = yield database_1.supabase
+                        .from('league_scores')
+                        .select('league_player_id, hole_number, strokes')
+                        .eq('league_week_id', activeWeek.id)
+                        .in('league_player_id', memberIds);
+                    // Aggregate per member
+                    const memberScoreMap = new Map();
+                    (todayScores || []).forEach((s) => {
+                        const existing = memberScoreMap.get(s.league_player_id) || { gross: 0, holes: 0 };
+                        existing.gross += s.strokes;
+                        existing.holes += 1;
+                        memberScoreMap.set(s.league_player_id, existing);
+                    });
+                    memberEntries = members.map(m => {
+                        const scores = memberScoreMap.get(m.id);
+                        // Get individual season standings
+                        const memberStanding = (standings || []).find((s) => s.league_player_id === m.id && !s.league_team_id);
+                        return {
+                            playerId: m.id,
+                            displayName: m.display_name,
+                            handicap: m.current_handicap || 0,
+                            todayGross: (scores === null || scores === void 0 ? void 0 : scores.gross) || 0,
+                            todayNet: scores ? (0, handicap_utils_1.calculateNetScore)(scores.gross, m.current_handicap || 0) : 0,
+                            thru: (scores === null || scores === void 0 ? void 0 : scores.holes) || 0,
+                            seasonGross: (memberStanding === null || memberStanding === void 0 ? void 0 : memberStanding.total_gross) || 0,
+                            seasonNet: (memberStanding === null || memberStanding === void 0 ? void 0 : memberStanding.total_net) || 0,
+                        };
+                    });
+                    // Calculate team today score based on scoring format
+                    if (todayScores && todayScores.length > 0) {
+                        const result = yield this.calculateTeamScore(team.id, activeWeek.id, league);
+                        teamTodayGross = result.teamGross;
+                        teamTodayNet = result.teamNet;
+                    }
+                }
+                else {
+                    memberEntries = members.map(m => ({
+                        playerId: m.id,
+                        displayName: m.display_name,
+                        handicap: m.current_handicap || 0,
+                        todayGross: 0,
+                        todayNet: 0,
+                        thru: 0,
+                        seasonGross: 0,
+                        seasonNet: 0,
+                    }));
+                }
+                const teamStanding = standingsMap.get(team.id);
+                entries.push({
+                    rank: (teamStanding === null || teamStanding === void 0 ? void 0 : teamStanding.current_rank) || 0,
+                    teamId: team.id,
+                    teamName: team.team_name,
+                    status: team.status,
+                    members: memberEntries,
+                    teamTodayGross,
+                    teamTodayNet: Math.round(teamTodayNet * 10) / 10,
+                    teamSeasonGross: (teamStanding === null || teamStanding === void 0 ? void 0 : teamStanding.total_gross) || 0,
+                    teamSeasonNet: (teamStanding === null || teamStanding === void 0 ? void 0 : teamStanding.total_net) || 0,
+                    weeksPlayed: (teamStanding === null || teamStanding === void 0 ? void 0 : teamStanding.weeks_played) || 0,
+                    scoringFormat: league.team_scoring_format || 'best_ball',
+                    courseName,
+                    coursePar,
+                });
+            }
+            // Sort by today's team net score, then by season rank
+            entries.sort((a, b) => {
+                const aPlaying = a.members.some(m => m.thru > 0);
+                const bPlaying = b.members.some(m => m.thru > 0);
+                if (aPlaying && !bPlaying)
+                    return -1;
+                if (!aPlaying && bPlaying)
+                    return 1;
+                if (aPlaying && bPlaying) {
+                    return a.teamTodayNet - b.teamTodayNet;
+                }
+                return a.rank - b.rank;
+            });
+            entries.forEach((entry, index) => {
+                entry.rank = index + 1;
+            });
+            return entries;
         });
     }
     // =====================================================
@@ -1602,6 +1851,869 @@ class LeagueService {
         const suffixes = ['th', 'st', 'nd', 'rd'];
         const v = n % 100;
         return n + (suffixes[(v - 20) % 10] || suffixes[v] || suffixes[0]);
+    }
+    // =====================================================
+    // TEAM MANAGEMENT
+    // =====================================================
+    /**
+     * Create a team in a team league. The captain is automatically enrolled.
+     */
+    createTeam(leagueId, captainUserId, teamName) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const league = yield this.getLeague(leagueId);
+            if (league.format !== 'team') {
+                throw new Error('This league does not support teams');
+            }
+            if (league.status !== 'registration' && league.status !== 'active') {
+                throw new Error('League is not accepting teams');
+            }
+            // Check if captain is already on a team in this league
+            const { data: existingPlayer } = yield database_1.supabase
+                .from('league_players')
+                .select('id, league_team_id')
+                .eq('league_id', leagueId)
+                .eq('user_id', captainUserId)
+                .neq('enrollment_status', 'withdrawn')
+                .single();
+            if (existingPlayer && existingPlayer.league_team_id) {
+                throw new Error('You are already on a team in this league');
+            }
+            // Get captain's display name
+            const { data: userProfile } = yield database_1.supabase
+                .from('user_profiles')
+                .select('full_name, email')
+                .eq('id', captainUserId)
+                .single();
+            if (!userProfile) {
+                throw new Error('User not found');
+            }
+            // Create the team
+            const { data: team, error } = yield database_1.supabase
+                .from('league_teams')
+                .insert({
+                league_id: leagueId,
+                team_name: teamName,
+                captain_user_id: captainUserId,
+                players_per_team: league.players_per_team,
+                status: 'forming',
+            })
+                .select()
+                .single();
+            if (error || !team) {
+                if ((error === null || error === void 0 ? void 0 : error.code) === '23505') {
+                    throw new Error('A team with that name already exists in this league');
+                }
+                throw new Error(`Failed to create team: ${error === null || error === void 0 ? void 0 : error.message}`);
+            }
+            // Create league_player record for the captain, linked to the team
+            if (existingPlayer) {
+                // Update existing player record to link to team
+                yield database_1.supabase
+                    .from('league_players')
+                    .update({ league_team_id: team.id })
+                    .eq('id', existingPlayer.id);
+            }
+            else {
+                const { error: playerError } = yield database_1.supabase
+                    .from('league_players')
+                    .insert({
+                    league_id: leagueId,
+                    user_id: captainUserId,
+                    display_name: userProfile.full_name || userProfile.email,
+                    enrollment_status: 'pending',
+                    season_paid: false,
+                    prize_pot_paid: false,
+                    league_team_id: team.id,
+                });
+                if (playerError) {
+                    console.error('Failed to create captain player record:', playerError);
+                }
+            }
+            return team;
+        });
+    }
+    /**
+     * Invite teammates by email. Only existing users can be invited.
+     */
+    inviteTeammates(teamId, captainUserId, emails) {
+        return __awaiter(this, void 0, void 0, function* () {
+            var _a;
+            // Verify team exists and user is captain
+            const { data: team, error: teamError } = yield database_1.supabase
+                .from('league_teams')
+                .select('*, leagues(name, players_per_team, id)')
+                .eq('id', teamId)
+                .single();
+            if (teamError || !team) {
+                throw new Error('Team not found');
+            }
+            if (team.captain_user_id !== captainUserId) {
+                throw new Error('Only the team captain can invite teammates');
+            }
+            if (team.status !== 'forming') {
+                throw new Error('Team is no longer accepting invites');
+            }
+            const league = team.leagues;
+            // Check how many slots remain
+            const { count: existingInvites } = yield database_1.supabase
+                .from('league_team_invites')
+                .select('id', { count: 'exact', head: true })
+                .eq('league_team_id', teamId)
+                .in('status', ['pending', 'accepted']);
+            const { count: existingMembers } = yield database_1.supabase
+                .from('league_players')
+                .select('id', { count: 'exact', head: true })
+                .eq('league_team_id', teamId)
+                .neq('enrollment_status', 'withdrawn');
+            const totalSlotsTaken = (existingMembers || 0);
+            const maxNeeded = league.players_per_team - totalSlotsTaken;
+            if (emails.length > maxNeeded) {
+                throw new Error(`Team only has ${maxNeeded} open slot(s). You tried to invite ${emails.length} player(s).`);
+            }
+            const invited = [];
+            const errors = [];
+            for (const email of emails) {
+                const normalizedEmail = email.toLowerCase().trim();
+                // Find user by email
+                const { data: user } = yield database_1.supabase
+                    .from('user_profiles')
+                    .select('id, full_name, email')
+                    .eq('email', normalizedEmail)
+                    .single();
+                if (!user) {
+                    errors.push({ email: normalizedEmail, reason: 'No account found with this email' });
+                    continue;
+                }
+                if (user.id === captainUserId) {
+                    errors.push({ email: normalizedEmail, reason: 'You cannot invite yourself' });
+                    continue;
+                }
+                // Check if already invited to this team
+                const { data: existingInvite } = yield database_1.supabase
+                    .from('league_team_invites')
+                    .select('id, status')
+                    .eq('league_team_id', teamId)
+                    .eq('invited_user_id', user.id)
+                    .in('status', ['pending', 'accepted'])
+                    .single();
+                if (existingInvite) {
+                    errors.push({ email: normalizedEmail, reason: 'Already invited to this team' });
+                    continue;
+                }
+                // Check if already on another team in this league
+                const { data: otherTeamPlayer } = yield database_1.supabase
+                    .from('league_players')
+                    .select('id, league_team_id')
+                    .eq('league_id', team.league_id)
+                    .eq('user_id', user.id)
+                    .neq('enrollment_status', 'withdrawn')
+                    .not('league_team_id', 'is', null)
+                    .single();
+                if (otherTeamPlayer) {
+                    errors.push({ email: normalizedEmail, reason: 'Already on a team in this league' });
+                    continue;
+                }
+                // Create invite
+                const { data: invite, error: inviteError } = yield database_1.supabase
+                    .from('league_team_invites')
+                    .insert({
+                    league_team_id: teamId,
+                    invited_user_id: user.id,
+                    invited_email: normalizedEmail,
+                    status: 'pending',
+                })
+                    .select()
+                    .single();
+                if (inviteError || !invite) {
+                    errors.push({ email: normalizedEmail, reason: `Failed to create invite: ${inviteError === null || inviteError === void 0 ? void 0 : inviteError.message}` });
+                    continue;
+                }
+                invited.push(invite);
+                // Send invite email (fire-and-forget)
+                const frontendUrl = process.env.FRONTEND_URL || 'https://golflabs.us';
+                const captainProfile = yield database_1.supabase
+                    .from('user_profiles')
+                    .select('full_name')
+                    .eq('id', captainUserId)
+                    .single();
+                email_service_1.EmailService.sendTeamInviteEmail({
+                    invitedUserName: user.full_name || user.email,
+                    invitedEmail: normalizedEmail,
+                    captainName: ((_a = captainProfile.data) === null || _a === void 0 ? void 0 : _a.full_name) || 'Your teammate',
+                    teamName: team.team_name,
+                    leagueName: league.name,
+                    seasonFee: league.season_fee || 0,
+                    weeklyPrizePot: league.weekly_prize_pot || 0,
+                    totalWeeks: league.total_weeks || 0,
+                    numHoles: league.num_holes || 9,
+                    playersPerTeam: league.players_per_team,
+                    acceptUrl: `${frontendUrl}/team-invite/${invite.invite_token}`,
+                    declineUrl: `${frontendUrl}/team-invite/${invite.invite_token}?action=decline`,
+                }).catch(err => console.error('Failed to send team invite email:', err));
+            }
+            return { invited, errors };
+        });
+    }
+    /**
+     * Accept a team invite. Creates a league_player record linked to the team.
+     */
+    acceptInvite(inviteToken, userId) {
+        return __awaiter(this, void 0, void 0, function* () {
+            // Find the invite by token
+            const { data: invite, error: inviteError } = yield database_1.supabase
+                .from('league_team_invites')
+                .select('*, league_teams(*, leagues(*))')
+                .eq('invite_token', inviteToken)
+                .single();
+            if (inviteError || !invite) {
+                throw new Error('Invite not found or invalid token');
+            }
+            if (invite.status !== 'pending') {
+                throw new Error(`Invite has already been ${invite.status}`);
+            }
+            if (invite.invited_user_id !== userId) {
+                throw new Error('This invite was not sent to you');
+            }
+            const team = invite.league_teams;
+            const league = team === null || team === void 0 ? void 0 : team.leagues;
+            if (!team || !league) {
+                throw new Error('Team or league not found');
+            }
+            // Accept the invite
+            const { data: updatedInvite, error: updateError } = yield database_1.supabase
+                .from('league_team_invites')
+                .update({
+                status: 'accepted',
+                responded_at: new Date().toISOString(),
+            })
+                .eq('id', invite.id)
+                .select()
+                .single();
+            if (updateError || !updatedInvite) {
+                throw new Error(`Failed to accept invite: ${updateError === null || updateError === void 0 ? void 0 : updateError.message}`);
+            }
+            // Get user profile for display name
+            const { data: userProfile } = yield database_1.supabase
+                .from('user_profiles')
+                .select('full_name, email')
+                .eq('id', userId)
+                .single();
+            // Create league_player record (pending - payment not yet done)
+            const { error: playerError } = yield database_1.supabase
+                .from('league_players')
+                .upsert({
+                league_id: team.league_id,
+                user_id: userId,
+                display_name: (userProfile === null || userProfile === void 0 ? void 0 : userProfile.full_name) || (userProfile === null || userProfile === void 0 ? void 0 : userProfile.email) || 'Unknown',
+                enrollment_status: 'pending',
+                season_paid: false,
+                prize_pot_paid: false,
+                league_team_id: team.id,
+            }, { onConflict: 'league_id,user_id' });
+            if (playerError) {
+                console.error('Failed to create player record on invite accept:', playerError);
+            }
+            // Check if all invites are now accepted
+            yield this.checkAndTransitionTeamStatus(team.id);
+            return { team, invite: updatedInvite };
+        });
+    }
+    /**
+     * Decline a team invite.
+     */
+    declineInvite(inviteToken, userId) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const { data: invite, error: inviteError } = yield database_1.supabase
+                .from('league_team_invites')
+                .select('*')
+                .eq('invite_token', inviteToken)
+                .single();
+            if (inviteError || !invite) {
+                throw new Error('Invite not found or invalid token');
+            }
+            if (invite.status !== 'pending') {
+                throw new Error(`Invite has already been ${invite.status}`);
+            }
+            if (invite.invited_user_id !== userId) {
+                throw new Error('This invite was not sent to you');
+            }
+            yield database_1.supabase
+                .from('league_team_invites')
+                .update({
+                status: 'declined',
+                responded_at: new Date().toISOString(),
+            })
+                .eq('id', invite.id);
+        });
+    }
+    /**
+     * Get invite details by token (public - for the invite page).
+     */
+    getInviteByToken(token) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const { data, error } = yield database_1.supabase
+                .from('league_team_invites')
+                .select('*, league_teams(team_name, captain_user_id, status, league_id, leagues(name, season_fee, weekly_prize_pot, total_weeks, start_time, num_holes, format, players_per_team, team_scoring_format))')
+                .eq('invite_token', token)
+                .single();
+            if (error || !data) {
+                throw new Error('Invite not found');
+            }
+            const team = data.league_teams;
+            const league = team === null || team === void 0 ? void 0 : team.leagues;
+            // Get captain name
+            const { data: captain } = yield database_1.supabase
+                .from('user_profiles')
+                .select('full_name')
+                .eq('id', team.captain_user_id)
+                .single();
+            return {
+                id: data.id,
+                status: data.status,
+                invitedEmail: data.invited_email,
+                invitedUserId: data.invited_user_id,
+                inviteToken: data.invite_token,
+                teamName: team.team_name,
+                teamStatus: team.status,
+                captainName: (captain === null || captain === void 0 ? void 0 : captain.full_name) || 'Unknown',
+                league: league ? {
+                    id: league.id || team.league_id,
+                    name: league.name,
+                    seasonFee: league.season_fee,
+                    weeklyPrizePot: league.weekly_prize_pot,
+                    totalWeeks: league.total_weeks,
+                    startTime: league.start_time,
+                    numHoles: league.num_holes,
+                    format: league.format,
+                    playersPerTeam: league.players_per_team,
+                    teamScoringFormat: league.team_scoring_format,
+                } : null,
+            };
+        });
+    }
+    /**
+     * Check if all invites are accepted and transition the team status.
+     */
+    checkAndTransitionTeamStatus(teamId) {
+        return __awaiter(this, void 0, void 0, function* () {
+            var _a;
+            const { data: team } = yield database_1.supabase
+                .from('league_teams')
+                .select('*, leagues(players_per_team)')
+                .eq('id', teamId)
+                .single();
+            if (!team)
+                return;
+            const playersPerTeam = ((_a = team.leagues) === null || _a === void 0 ? void 0 : _a.players_per_team) || team.players_per_team;
+            // Count current members (league_players linked to this team, not withdrawn)
+            const { count: memberCount } = yield database_1.supabase
+                .from('league_players')
+                .select('id', { count: 'exact', head: true })
+                .eq('league_team_id', teamId)
+                .neq('enrollment_status', 'withdrawn');
+            // If team is full, move to pending_payment
+            if ((memberCount || 0) >= playersPerTeam && team.status === 'forming') {
+                yield database_1.supabase
+                    .from('league_teams')
+                    .update({ status: 'pending_payment' })
+                    .eq('id', teamId);
+            }
+        });
+    }
+    /**
+     * Get teams for a league.
+     */
+    getTeams(leagueId) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const { data: teams, error } = yield database_1.supabase
+                .from('league_teams')
+                .select('*')
+                .eq('league_id', leagueId)
+                .order('created_at', { ascending: true });
+            if (error) {
+                throw new Error(`Failed to fetch teams: ${error.message}`);
+            }
+            // Enrich with members and invites
+            const enrichedTeams = [];
+            for (const team of (teams || [])) {
+                // Get captain name
+                const { data: captain } = yield database_1.supabase
+                    .from('user_profiles')
+                    .select('full_name')
+                    .eq('id', team.captain_user_id)
+                    .single();
+                // Get team members
+                const { data: members } = yield database_1.supabase
+                    .from('league_players')
+                    .select('id, user_id, display_name, enrollment_status, season_paid, prize_pot_paid')
+                    .eq('league_team_id', team.id)
+                    .neq('enrollment_status', 'withdrawn');
+                // Get invites
+                const { data: invites } = yield database_1.supabase
+                    .from('league_team_invites')
+                    .select('*')
+                    .eq('league_team_id', team.id)
+                    .order('invited_at');
+                enrichedTeams.push(Object.assign(Object.assign({}, team), { captain_name: (captain === null || captain === void 0 ? void 0 : captain.full_name) || 'Unknown', members: (members || []).map(m => ({
+                        league_player_id: m.id,
+                        user_id: m.user_id,
+                        display_name: m.display_name,
+                        enrollment_status: m.enrollment_status,
+                        season_paid: m.season_paid,
+                        prize_pot_paid: m.prize_pot_paid,
+                        is_captain: m.user_id === team.captain_user_id,
+                    })), invites: invites || [] }));
+            }
+            return enrichedTeams;
+        });
+    }
+    /**
+     * Get a single team with full details.
+     */
+    getTeam(teamId) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const { data: team, error } = yield database_1.supabase
+                .from('league_teams')
+                .select('*')
+                .eq('id', teamId)
+                .single();
+            if (error || !team) {
+                throw new Error(`Team not found: ${error === null || error === void 0 ? void 0 : error.message}`);
+            }
+            const { data: captain } = yield database_1.supabase
+                .from('user_profiles')
+                .select('full_name')
+                .eq('id', team.captain_user_id)
+                .single();
+            const { data: members } = yield database_1.supabase
+                .from('league_players')
+                .select('id, user_id, display_name, enrollment_status, season_paid, prize_pot_paid')
+                .eq('league_team_id', team.id)
+                .neq('enrollment_status', 'withdrawn');
+            const { data: invites } = yield database_1.supabase
+                .from('league_team_invites')
+                .select('*')
+                .eq('league_team_id', team.id)
+                .order('invited_at');
+            return Object.assign(Object.assign({}, team), { captain_name: (captain === null || captain === void 0 ? void 0 : captain.full_name) || 'Unknown', members: (members || []).map(m => ({
+                    league_player_id: m.id,
+                    user_id: m.user_id,
+                    display_name: m.display_name,
+                    enrollment_status: m.enrollment_status,
+                    season_paid: m.season_paid,
+                    prize_pot_paid: m.prize_pot_paid,
+                    is_captain: m.user_id === team.captain_user_id,
+                })), invites: invites || [] });
+        });
+    }
+    /**
+     * Pay for team enrollment (individual player). Same as enrollAndPay but with team context.
+     */
+    enrollTeamPlayer(leagueId, teamId, userId, displayName) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const league = yield this.getLeague(leagueId);
+            if (league.format !== 'team') {
+                throw new Error('This league does not support teams');
+            }
+            // Verify team exists and is in valid state
+            const { data: team } = yield database_1.supabase
+                .from('league_teams')
+                .select('*')
+                .eq('id', teamId)
+                .single();
+            if (!team) {
+                throw new Error('Team not found');
+            }
+            if (team.status !== 'pending_payment' && team.status !== 'forming') {
+                throw new Error(`Team is in '${team.status}' status and cannot accept payments`);
+            }
+            // Get the player's existing record (should already exist from invite accept or team creation)
+            const { data: existingPlayer } = yield database_1.supabase
+                .from('league_players')
+                .select('*')
+                .eq('league_id', leagueId)
+                .eq('user_id', userId)
+                .eq('league_team_id', teamId)
+                .single();
+            if (!existingPlayer) {
+                throw new Error('You must accept the team invite before paying');
+            }
+            if (existingPlayer.enrollment_status === 'active' && existingPlayer.season_paid) {
+                throw new Error('You have already paid for this league');
+            }
+            // Calculate total amount: season fee + full prize pot for the entire season
+            const totalPrizePot = league.weekly_prize_pot * league.total_weeks;
+            const totalAmount = (league.season_fee + totalPrizePot) * 100; // cents
+            if (totalAmount === 0) {
+                // Free league — activate immediately
+                yield database_1.supabase
+                    .from('league_players')
+                    .update({ enrollment_status: 'active', season_paid: true, prize_pot_paid: true })
+                    .eq('id', existingPlayer.id);
+                yield database_1.supabase
+                    .from('league_standings')
+                    .upsert({ league_id: leagueId, league_player_id: existingPlayer.id }, { onConflict: 'league_id,league_player_id' });
+                // Check if all team members have paid
+                yield this.checkTeamAllPaid(teamId);
+                return { clientSecret: '', playerId: existingPlayer.id };
+            }
+            // Get or create Stripe customer
+            const { data: userProfile } = yield database_1.supabase
+                .from('user_profiles')
+                .select('stripe_customer_id, email, full_name')
+                .eq('id', userId)
+                .single();
+            let stripeCustomerId = userProfile === null || userProfile === void 0 ? void 0 : userProfile.stripe_customer_id;
+            if (!stripeCustomerId) {
+                const customer = yield stripe_1.stripe.customers.create({
+                    email: userProfile === null || userProfile === void 0 ? void 0 : userProfile.email,
+                    name: userProfile === null || userProfile === void 0 ? void 0 : userProfile.full_name,
+                    metadata: { user_id: userId },
+                });
+                stripeCustomerId = customer.id;
+                yield database_1.supabase
+                    .from('user_profiles')
+                    .update({ stripe_customer_id: stripeCustomerId })
+                    .eq('id', userId);
+            }
+            // Create PaymentIntent
+            const paymentIntent = yield stripe_1.stripe.paymentIntents.create({
+                amount: totalAmount,
+                currency: 'usd',
+                customer: stripeCustomerId,
+                automatic_payment_methods: { enabled: true },
+                metadata: {
+                    type: 'league_enrollment',
+                    league_id: leagueId,
+                    user_id: userId,
+                    league_player_id: existingPlayer.id,
+                    league_team_id: teamId,
+                    season_fee: String(league.season_fee),
+                    prize_pot_per_week: String(league.weekly_prize_pot),
+                    prize_pot_total: String(totalPrizePot),
+                },
+            });
+            // Store payment intent ID on the player record
+            yield database_1.supabase
+                .from('league_players')
+                .update({ stripe_payment_intent_id: paymentIntent.id })
+                .eq('id', existingPlayer.id);
+            return {
+                clientSecret: paymentIntent.client_secret,
+                playerId: existingPlayer.id,
+            };
+        });
+    }
+    /**
+     * Check if all team members have paid and transition team to 'active' if so.
+     */
+    checkTeamAllPaid(teamId) {
+        return __awaiter(this, void 0, void 0, function* () {
+            var _a;
+            const { data: team } = yield database_1.supabase
+                .from('league_teams')
+                .select('*, leagues(players_per_team)')
+                .eq('id', teamId)
+                .single();
+            if (!team)
+                return false;
+            const playersPerTeam = ((_a = team.leagues) === null || _a === void 0 ? void 0 : _a.players_per_team) || team.players_per_team;
+            // Get all team members
+            const { data: members } = yield database_1.supabase
+                .from('league_players')
+                .select('id, enrollment_status, season_paid')
+                .eq('league_team_id', teamId)
+                .neq('enrollment_status', 'withdrawn');
+            if (!members || members.length < playersPerTeam)
+                return false;
+            const allPaid = members.every(m => m.enrollment_status === 'active' && m.season_paid);
+            if (allPaid && (team.status === 'pending_payment' || team.status === 'forming')) {
+                yield database_1.supabase
+                    .from('league_teams')
+                    .update({ status: 'active' })
+                    .eq('id', teamId);
+                // Create standings rows for team members who don't have one
+                for (const member of members) {
+                    yield database_1.supabase
+                        .from('league_standings')
+                        .upsert({
+                        league_id: team.league_id,
+                        league_player_id: member.id,
+                        league_team_id: teamId,
+                    }, { onConflict: 'league_id,league_player_id' });
+                }
+                return true;
+            }
+            return false;
+        });
+    }
+    /**
+     * Disqualify a team and refund paid members.
+     */
+    disqualifyTeam(teamId, reason) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const { data: team, error: teamError } = yield database_1.supabase
+                .from('league_teams')
+                .select('*')
+                .eq('id', teamId)
+                .single();
+            if (teamError || !team) {
+                throw new Error('Team not found');
+            }
+            // Mark team as disqualified
+            yield database_1.supabase
+                .from('league_teams')
+                .update({ status: 'disqualified' })
+                .eq('id', teamId);
+            // Get all team members
+            const { data: members } = yield database_1.supabase
+                .from('league_players')
+                .select('id, user_id, display_name, enrollment_status, season_paid, stripe_payment_intent_id')
+                .eq('league_team_id', teamId)
+                .neq('enrollment_status', 'withdrawn');
+            const refundedPlayers = [];
+            for (const member of (members || [])) {
+                // Refund paid members
+                if (member.season_paid && member.stripe_payment_intent_id) {
+                    try {
+                        yield stripe_1.stripe.refunds.create({
+                            payment_intent: member.stripe_payment_intent_id,
+                            metadata: {
+                                league_id: team.league_id,
+                                league_player_id: member.id,
+                                league_team_id: teamId,
+                                reason: `Team disqualified: ${reason}`,
+                            },
+                        });
+                        refundedPlayers.push(member.display_name);
+                    }
+                    catch (refundError) {
+                        console.error(`Failed to refund player ${member.id}:`, refundError.message);
+                    }
+                }
+                // Mark all team members as withdrawn
+                yield database_1.supabase
+                    .from('league_players')
+                    .update({ enrollment_status: 'withdrawn' })
+                    .eq('id', member.id);
+                // Cancel any pending prize ledger entries for this player
+                yield database_1.supabase
+                    .from('league_prize_ledger')
+                    .update({ payout_status: 'cancelled' })
+                    .eq('league_player_id', member.id)
+                    .eq('league_id', team.league_id)
+                    .eq('payout_status', 'pending');
+            }
+            // Expire any pending invites
+            yield database_1.supabase
+                .from('league_team_invites')
+                .update({ status: 'expired', responded_at: new Date().toISOString() })
+                .eq('league_team_id', teamId)
+                .eq('status', 'pending');
+            return { refundedPlayers };
+        });
+    }
+    /**
+     * Process all teams that should be disqualified (unpaid members past deadline).
+     * Called by the scheduled job.
+     */
+    processTeamDeadlines() {
+        return __awaiter(this, void 0, void 0, function* () {
+            const now = new Date();
+            const disqualified = [];
+            // Find all team leagues that are active or in registration
+            const { data: teamLeagues } = yield database_1.supabase
+                .from('leagues')
+                .select('*')
+                .eq('format', 'team')
+                .in('status', ['registration', 'active']);
+            if (!teamLeagues || teamLeagues.length === 0)
+                return { disqualified };
+            for (const league of teamLeagues) {
+                // Get the first week date/time as the deadline
+                const { data: firstWeek } = yield database_1.supabase
+                    .from('league_weeks')
+                    .select('date')
+                    .eq('league_id', league.id)
+                    .order('week_number', { ascending: true })
+                    .limit(1)
+                    .single();
+                if (!firstWeek)
+                    continue;
+                // Build deadline: first week date + league start_time
+                const deadline = new Date(`${firstWeek.date}T${league.start_time}`);
+                if (now < deadline)
+                    continue; // Deadline hasn't passed yet
+                // Find teams that are NOT 'active' and not already 'disqualified'/'withdrawn'
+                const { data: teams } = yield database_1.supabase
+                    .from('league_teams')
+                    .select('*')
+                    .eq('league_id', league.id)
+                    .in('status', ['forming', 'pending_payment']);
+                for (const team of (teams || [])) {
+                    // Check if all members have paid
+                    const { data: members } = yield database_1.supabase
+                        .from('league_players')
+                        .select('enrollment_status, season_paid')
+                        .eq('league_team_id', team.id)
+                        .neq('enrollment_status', 'withdrawn');
+                    const allPaid = (members || []).length >= league.players_per_team &&
+                        (members || []).every(m => m.enrollment_status === 'active' && m.season_paid);
+                    if (!allPaid) {
+                        try {
+                            yield this.disqualifyTeam(team.id, 'Payment deadline passed');
+                            disqualified.push(`${team.team_name} (league: ${league.name})`);
+                        }
+                        catch (err) {
+                            console.error(`Failed to disqualify team ${team.id}:`, err.message);
+                        }
+                    }
+                }
+            }
+            return { disqualified };
+        });
+    }
+    /**
+     * Get teams that the current user is on (for user dashboard).
+     */
+    getUserTeams(userId) {
+        return __awaiter(this, void 0, void 0, function* () {
+            // Get all league_players for this user that are on teams
+            const { data: players, error } = yield database_1.supabase
+                .from('league_players')
+                .select('*, league_teams(*, leagues(name, format, status, total_weeks, season_fee, weekly_prize_pot, start_time, num_holes, players_per_team, team_scoring_format))')
+                .eq('user_id', userId)
+                .neq('enrollment_status', 'withdrawn')
+                .not('league_team_id', 'is', null);
+            if (error) {
+                throw new Error(`Failed to fetch user teams: ${error.message}`);
+            }
+            const results = [];
+            for (const player of (players || [])) {
+                const team = player.league_teams;
+                const league = team === null || team === void 0 ? void 0 : team.leagues;
+                if (!team || !league)
+                    continue;
+                // Get team members
+                const { data: members } = yield database_1.supabase
+                    .from('league_players')
+                    .select('id, user_id, display_name, enrollment_status, season_paid')
+                    .eq('league_team_id', team.id)
+                    .neq('enrollment_status', 'withdrawn');
+                // Get invites
+                const { data: invites } = yield database_1.supabase
+                    .from('league_team_invites')
+                    .select('id, invited_email, status')
+                    .eq('league_team_id', team.id);
+                results.push({
+                    teamId: team.id,
+                    teamName: team.team_name,
+                    teamStatus: team.status,
+                    isCaptain: team.captain_user_id === userId,
+                    playerId: player.id,
+                    enrollmentStatus: player.enrollment_status,
+                    seasonPaid: player.season_paid,
+                    league: {
+                        id: team.league_id,
+                        name: league.name,
+                        format: league.format,
+                        status: league.status,
+                        totalWeeks: league.total_weeks,
+                        seasonFee: league.season_fee,
+                        weeklyPrizePot: league.weekly_prize_pot,
+                        numHoles: league.num_holes,
+                        playersPerTeam: league.players_per_team,
+                        teamScoringFormat: league.team_scoring_format,
+                    },
+                    members: (members || []).map(m => ({
+                        playerId: m.id,
+                        userId: m.user_id,
+                        displayName: m.display_name,
+                        enrollmentStatus: m.enrollment_status,
+                        seasonPaid: m.season_paid,
+                        isCaptain: m.user_id === team.captain_user_id,
+                    })),
+                    pendingInvites: (invites || []).filter(i => i.status === 'pending'),
+                });
+            }
+            return results;
+        });
+    }
+    // =====================================================
+    // TEAM SCORING
+    // =====================================================
+    /**
+     * Calculate team score for a week based on the scoring format.
+     */
+    calculateTeamScore(teamId, weekId, league) {
+        return __awaiter(this, void 0, void 0, function* () {
+            // Get all team member scores for this week
+            const { data: members } = yield database_1.supabase
+                .from('league_players')
+                .select('id, current_handicap, display_name')
+                .eq('league_team_id', teamId)
+                .neq('enrollment_status', 'withdrawn');
+            if (!members || members.length === 0) {
+                return { teamGross: 0, teamNet: 0, memberScores: [] };
+            }
+            const memberIds = members.map(m => m.id);
+            const { data: scores } = yield database_1.supabase
+                .from('league_scores')
+                .select('league_player_id, hole_number, strokes')
+                .eq('league_week_id', weekId)
+                .in('league_player_id', memberIds)
+                .order('hole_number');
+            if (!scores || scores.length === 0) {
+                return { teamGross: 0, teamNet: 0, memberScores: [] };
+            }
+            // Organize scores by hole and player
+            const scoresByHole = {};
+            for (const s of scores) {
+                if (!scoresByHole[s.hole_number]) {
+                    scoresByHole[s.hole_number] = {};
+                }
+                scoresByHole[s.hole_number][s.league_player_id] = s.strokes;
+            }
+            const format = league.team_scoring_format || 'best_ball';
+            let teamGross = 0;
+            if (format === 'best_ball') {
+                // Best score on each hole
+                for (const hole of Object.keys(scoresByHole).map(Number)) {
+                    const holeScores = Object.values(scoresByHole[hole]);
+                    if (holeScores.length > 0) {
+                        teamGross += Math.min(...holeScores);
+                    }
+                }
+            }
+            else if (format === 'combined') {
+                // Sum all member scores
+                teamGross = scores.reduce((sum, s) => sum + s.strokes, 0);
+            }
+            else if (format === 'scramble') {
+                // In a scramble, all players should have the same score per hole
+                // Use the first player's scores as the team score
+                const firstMemberId = memberIds[0];
+                const firstMemberScores = scores.filter(s => s.league_player_id === firstMemberId);
+                teamGross = firstMemberScores.reduce((sum, s) => sum + s.strokes, 0);
+            }
+            // For net: use average team handicap
+            const avgHandicap = members.reduce((sum, m) => sum + (m.current_handicap || 0), 0) / members.length;
+            const teamNet = teamGross - avgHandicap;
+            // Individual member scores for display
+            const memberScores = members.map(m => {
+                const playerScores = scores.filter(s => s.league_player_id === m.id);
+                const gross = playerScores.reduce((sum, s) => sum + s.strokes, 0);
+                return {
+                    playerId: m.id,
+                    displayName: m.display_name,
+                    handicap: m.current_handicap,
+                    gross,
+                    net: gross - (m.current_handicap || 0),
+                    holesCompleted: playerScores.length,
+                };
+            });
+            return { teamGross, teamNet: Math.round(teamNet * 10) / 10, memberScores };
+        });
     }
 }
 exports.LeagueService = LeagueService;

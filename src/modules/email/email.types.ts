@@ -65,4 +65,33 @@ export interface CreateNotificationParams {
   content: string;
   scheduledFor?: Date;
   metadata?: Record<string, any>;
+}
+
+// =====================================================
+// Team Invite Email Types
+// =====================================================
+
+export interface TeamInviteEmailData {
+  invitedUserName: string;
+  invitedEmail: string;
+  captainName: string;
+  teamName: string;
+  leagueName: string;
+  seasonFee: number;
+  weeklyPrizePot: number;
+  totalWeeks: number;
+  numHoles: number;
+  playersPerTeam: number;
+  acceptUrl: string;
+  declineUrl: string;
+}
+
+export interface TeamStatusEmailData {
+  recipientName: string;
+  recipientEmail: string;
+  teamName: string;
+  leagueName: string;
+  message: string;
+  actionUrl?: string;
+  actionLabel?: string;
 } 

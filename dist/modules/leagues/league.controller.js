@@ -350,6 +350,16 @@ class LeagueController {
                 res.status(500).json({ error: error.message });
             }
         });
+        this.getTeamLeaderboard = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            try {
+                const leaderboard = yield this.leagueService.getTeamLeaderboard(req.params.leagueId);
+                res.json(leaderboard);
+            }
+            catch (error) {
+                console.error('Error fetching team leaderboard:', error);
+                res.status(500).json({ error: error.message });
+            }
+        });
         // =====================================================
         // PAYMENT
         // =====================================================
@@ -455,6 +465,155 @@ class LeagueController {
             }
             catch (error) {
                 console.error('Error confirming payout:', error);
+                res.status(500).json({ error: error.message });
+            }
+        });
+        // =====================================================
+        // TEAM MANAGEMENT
+        // =====================================================
+        this.createTeam = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            try {
+                const { captainUserId, teamName } = req.body;
+                if (!captainUserId || !teamName) {
+                    return res.status(400).json({ error: 'captainUserId and teamName are required' });
+                }
+                const team = yield this.leagueService.createTeam(req.params.leagueId, captainUserId, teamName);
+                res.status(201).json(team);
+            }
+            catch (error) {
+                console.error('Error creating team:', error);
+                if (error.message.includes('already on a team') || error.message.includes('already exists')) {
+                    return res.status(409).json({ error: error.message });
+                }
+                if (error.message.includes('does not support') || error.message.includes('not accepting')) {
+                    return res.status(400).json({ error: error.message });
+                }
+                res.status(500).json({ error: error.message });
+            }
+        });
+        this.getTeams = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            try {
+                const teams = yield this.leagueService.getTeams(req.params.leagueId);
+                res.json(teams);
+            }
+            catch (error) {
+                console.error('Error fetching teams:', error);
+                res.status(500).json({ error: error.message });
+            }
+        });
+        this.getTeam = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            try {
+                const team = yield this.leagueService.getTeam(req.params.teamId);
+                res.json(team);
+            }
+            catch (error) {
+                console.error('Error fetching team:', error);
+                res.status(404).json({ error: error.message });
+            }
+        });
+        this.inviteTeammates = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            try {
+                const { emails, captainUserId } = req.body;
+                if (!emails || !Array.isArray(emails) || emails.length === 0) {
+                    return res.status(400).json({ error: 'emails array is required' });
+                }
+                if (!captainUserId) {
+                    return res.status(400).json({ error: 'captainUserId is required' });
+                }
+                const result = yield this.leagueService.inviteTeammates(req.params.teamId, captainUserId, emails);
+                res.json(result);
+            }
+            catch (error) {
+                console.error('Error inviting teammates:', error);
+                if (error.message.includes('Only the team captain') || error.message.includes('no longer accepting')) {
+                    return res.status(403).json({ error: error.message });
+                }
+                res.status(500).json({ error: error.message });
+            }
+        });
+        this.getInviteByToken = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            try {
+                const invite = yield this.leagueService.getInviteByToken(req.params.token);
+                res.json(invite);
+            }
+            catch (error) {
+                console.error('Error fetching invite:', error);
+                res.status(404).json({ error: error.message });
+            }
+        });
+        this.acceptInvite = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            try {
+                const { userId } = req.body;
+                if (!userId) {
+                    return res.status(400).json({ error: 'userId is required' });
+                }
+                const result = yield this.leagueService.acceptInvite(req.params.token, userId);
+                res.json(result);
+            }
+            catch (error) {
+                console.error('Error accepting invite:', error);
+                if (error.message.includes('not sent to you') || error.message.includes('already been')) {
+                    return res.status(400).json({ error: error.message });
+                }
+                res.status(500).json({ error: error.message });
+            }
+        });
+        this.declineInvite = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            try {
+                const { userId } = req.body;
+                if (!userId) {
+                    return res.status(400).json({ error: 'userId is required' });
+                }
+                yield this.leagueService.declineInvite(req.params.token, userId);
+                res.json({ success: true });
+            }
+            catch (error) {
+                console.error('Error declining invite:', error);
+                res.status(500).json({ error: error.message });
+            }
+        });
+        this.enrollTeamPlayer = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            try {
+                const { userId, displayName } = req.body;
+                if (!userId || !displayName) {
+                    return res.status(400).json({ error: 'userId and displayName are required' });
+                }
+                const result = yield this.leagueService.enrollTeamPlayer(req.params.leagueId, req.params.teamId, userId, displayName);
+                res.json(result);
+            }
+            catch (error) {
+                console.error('Error in team enroll-and-pay:', error);
+                if (error.message.includes('already paid')) {
+                    return res.status(409).json({ error: error.message });
+                }
+                if (error.message.includes('does not support') || error.message.includes('cannot accept')) {
+                    return res.status(400).json({ error: error.message });
+                }
+                res.status(500).json({ error: error.message });
+            }
+        });
+        this.disqualifyTeam = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            try {
+                const { reason } = req.body;
+                const result = yield this.leagueService.disqualifyTeam(req.params.teamId, reason || 'Disqualified by employee');
+                res.json(result);
+            }
+            catch (error) {
+                console.error('Error disqualifying team:', error);
+                res.status(500).json({ error: error.message });
+            }
+        });
+        this.getUserTeams = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            try {
+                const { userId } = req.params;
+                if (!userId) {
+                    return res.status(400).json({ error: 'userId is required' });
+                }
+                const teams = yield this.leagueService.getUserTeams(userId);
+                res.json(teams);
+            }
+            catch (error) {
+                console.error('Error fetching user teams:', error);
                 res.status(500).json({ error: error.message });
             }
         });

@@ -2,6 +2,7 @@ import { handleExpiredReservations } from './expired-reservations.job';
 import { dispatchNotifications } from './notifications.job';
 import { enqueueReminders } from './reminder.job';
 import { recalculateAllHandicaps } from './handicap.job';
+import { processTeamDeadlines } from './league-deadline.job';
 
 export function startScheduler() {
   // Run the expiration check every 2 minutes
@@ -17,6 +18,10 @@ export function startScheduler() {
   // (Primary trigger is on-demand via LeagueService.finalizeWeek)
   const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
   setInterval(recalculateAllHandicaps, TWENTY_FOUR_HOURS);
+
+  // Run team league deadline check every 5 minutes
+  // Disqualifies teams with unpaid members after the league start time
+  setInterval(processTeamDeadlines, 5 * 60 * 1000);
   
-  console.log('Background job scheduler started (expiration: 2min, notifications: 1min, reminders: 5min, handicaps: 24h)');
+  console.log('Background job scheduler started (expiration: 2min, notifications: 1min, reminders: 5min, handicaps: 24h, team-deadlines: 5min)');
 } 

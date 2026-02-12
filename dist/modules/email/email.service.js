@@ -198,5 +198,39 @@ class EmailService {
             }
         });
     }
+    // =====================================================
+    // Team League Emails (direct send, not booking-based)
+    // =====================================================
+    /**
+     * Send a team invite email directly (not through the notification queue).
+     */
+    static sendTeamInviteEmail(data) {
+        return __awaiter(this, void 0, void 0, function* () {
+            try {
+                const template = email_templates_1.EmailTemplates.teamInvite(data);
+                yield this.sendEmail(data.invitedEmail, template.subject, template.html);
+                console.log(`Sent team invite email to ${data.invitedEmail} for team "${data.teamName}"`);
+            }
+            catch (error) {
+                console.error(`Failed to send team invite email to ${data.invitedEmail}:`, error);
+                // Don't throw — invite record is already created, email is best-effort
+            }
+        });
+    }
+    /**
+     * Send a team status update email directly.
+     */
+    static sendTeamStatusEmail(data) {
+        return __awaiter(this, void 0, void 0, function* () {
+            try {
+                const template = email_templates_1.EmailTemplates.teamStatus(data);
+                yield this.sendEmail(data.recipientEmail, template.subject, template.html);
+                console.log(`Sent team status email to ${data.recipientEmail} for team "${data.teamName}"`);
+            }
+            catch (error) {
+                console.error(`Failed to send team status email to ${data.recipientEmail}:`, error);
+            }
+        });
+    }
 }
 exports.EmailService = EmailService;

@@ -180,6 +180,7 @@ exports.app.use('/', user_routes_1.userRoutes); // User routes at root level
 exports.app.use('/promotions', promotion_routes_1.default); // Promotions routes
 exports.app.use('/employee', employee_1.employeeRoutes); // Employee routes (reports, etc.)
 exports.app.use('/leagues', (0, league_routes_1.createLeagueRoutes)(socketService)); // League ecosystem routes
+exports.app.use('/team-invites', (0, league_routes_1.createTeamInviteRoutes)(socketService)); // Team invite routes (token-based)
 // Health check endpoint
 exports.app.get('/health', (req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
