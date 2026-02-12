@@ -1447,6 +1447,7 @@ class LeagueService {
                         handicap_enabled: league.handicap_enabled,
                         status: league.status,
                         created_at: league.created_at,
+                        attendance_required: league.attendance_required || false,
                     },
                     player: {
                         id: enrollment.id,
