@@ -1529,23 +1529,13 @@ class LeagueService {
             const courseData = activeWeek === null || activeWeek === void 0 ? void 0 : activeWeek.league_courses;
             // Build teammates array if the player is on a team
             let teammates = null;
-            console.log('[kiosk-state] teammates check:', {
-                hasPlayer: !!player,
-                leagueTeamId: player === null || player === void 0 ? void 0 : player.league_team_id,
-                hasActiveWeek: !!activeWeek,
-            });
             if (player && player.league_team_id && activeWeek) {
-                const { data: teamPlayers, error: teamError } = yield database_1.supabase
+                const { data: teamPlayers } = yield database_1.supabase
                     .from('league_players')
                     .select('id, display_name, current_handicap')
                     .eq('league_team_id', player.league_team_id)
                     .neq('enrollment_status', 'withdrawn')
-                    .order('created_at');
-                console.log('[kiosk-state] teamPlayers query:', {
-                    count: teamPlayers === null || teamPlayers === void 0 ? void 0 : teamPlayers.length,
-                    error: teamError === null || teamError === void 0 ? void 0 : teamError.message,
-                    ids: teamPlayers === null || teamPlayers === void 0 ? void 0 : teamPlayers.map((tp) => tp.id),
-                });
+                    .order('display_name');
                 if (teamPlayers && teamPlayers.length > 1) {
                     const playerIds = teamPlayers.map((tp) => tp.id);
                     const { data: allScores } = yield database_1.supabase
