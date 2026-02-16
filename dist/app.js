@@ -32,6 +32,7 @@ const user_routes_1 = require("./modules/user/user.routes");
 const promotion_routes_1 = __importDefault(require("./modules/promotions/promotion.routes"));
 const employee_1 = require("./modules/employee");
 const league_routes_1 = require("./modules/leagues/league.routes");
+const agreement_routes_1 = __importDefault(require("./modules/agreements/agreement.routes"));
 const booking_controller_1 = require("./modules/bookings/booking.controller");
 const socket_service_1 = require("./modules/sockets/socket.service");
 exports.app = (0, express_1.default)();
@@ -182,6 +183,7 @@ exports.app.use('/employee', employee_1.employeeRoutes); // Employee routes (rep
 exports.app.use('/leagues', (0, league_routes_1.createLeagueRoutes)(socketService)); // League ecosystem routes
 exports.app.use('/team-invites', (0, league_routes_1.createTeamInviteRoutes)(socketService)); // Team invite routes (token-based)
 exports.app.use('/attendance', (0, league_routes_1.createAttendanceRoutes)(socketService)); // Attendance confirmation routes (token-based)
+exports.app.use('/agreements', agreement_routes_1.default); // Legal agreement tracking routes
 // Health check endpoint
 exports.app.get('/health', (req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
