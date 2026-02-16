@@ -303,6 +303,144 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
       }
       break;
 
+    // Free booking: SetupIntent succeeded — confirm booking and save payment method
+    case 'setup_intent.succeeded': {
+      const setupIntent = event.data.object as Stripe.SetupIntent;
+      const setupMetadata = setupIntent.metadata || {};
+      const setupBookingId = setupMetadata.booking_id;
+
+      if (!setupBookingId) {
+        console.warn(`SetupIntent webhook received with no booking_id in metadata: ${setupIntent.id}`);
+        return res.status(200).send({ received: true, message: 'No booking_id found, ignoring.' });
+      }
+
+      console.log(`Setup intent succeeded for free booking ${setupBookingId}. Confirming booking...`);
+
+      // Update booking status to 'confirmed' and clear expiration
+      const { error: setupBookingError } = await supabase
+        .from('bookings')
+        .update({ status: 'confirmed', expires_at: null })
+        .eq('id', setupBookingId);
+
+      // Update payment record to 'succeeded' and extract card details
+      const setupPaymentUpdate: any = { status: 'succeeded', processed_at: new Date().toISOString() };
+
+      try {
+        if (setupIntent.payment_method) {
+          const pmId = typeof setupIntent.payment_method === 'string'
+            ? setupIntent.payment_method
+            : setupIntent.payment_method.id;
+          const pm = await stripe.paymentMethods.retrieve(pmId);
+          if (pm.card) {
+            setupPaymentUpdate.card_last_four = pm.card.last4;
+            setupPaymentUpdate.card_brand = pm.card.brand;
+            setupPaymentUpdate.payment_method = 'card';
+            console.log(`Extracted card details for free booking ${setupBookingId}: ${pm.card.brand} ending in ${pm.card.last4}`);
+          }
+        }
+      } catch (pmError: any) {
+        console.error(`Error retrieving payment method for free booking ${setupBookingId}:`, pmError.message);
+      }
+
+      const { error: setupPaymentError } = await supabase
+        .from('payments')
+        .update(setupPaymentUpdate)
+        .eq('stripe_payment_intent_id', setupIntent.id);
+
+      if (setupBookingError || setupPaymentError) {
+        console.error(`Error updating database after setup for booking ${setupBookingId}:`, setupBookingError || setupPaymentError);
+      } else {
+        console.log(`Successfully confirmed free booking ${setupBookingId}.`);
+
+        // Apply promotion if one was used
+        const setupPromotionId = setupMetadata.promotion_id;
+        const setupDiscountAmount = parseFloat(setupMetadata.discount_amount || '0');
+        const setupFreeMinutes = parseInt(setupMetadata.free_minutes || '0', 10);
+
+        if (setupPromotionId && setupDiscountAmount > 0) {
+          try {
+            await promotionService.applyPromotion({
+              userId: setupMetadata.user_id,
+              bookingId: setupBookingId,
+              promotionId: setupPromotionId,
+              discountAmount: setupDiscountAmount,
+              freeMinutes: setupFreeMinutes || undefined
+            });
+            console.log(`Applied promotion ${setupPromotionId} to free booking ${setupBookingId}`);
+          } catch (promoError) {
+            console.error(`Error applying promotion to free booking ${setupBookingId}:`, promoError);
+          }
+        }
+
+        // Send thank you email
+        try {
+          await EmailService.sendThankYouEmail(setupBookingId);
+          console.log(`Queued thank you email for free booking ${setupBookingId}`);
+        } catch (emailError) {
+          console.error(`Error queuing thank you email for free booking ${setupBookingId}:`, emailError);
+        }
+
+        // Trigger kiosk update
+        try {
+          const { data: setupBooking, error: setupFetchError } = await supabase
+            .from('bookings')
+            .select('location_id, bay_id')
+            .eq('id', setupBookingId)
+            .single();
+
+          if (!setupFetchError && setupBooking?.location_id && setupBooking?.bay_id) {
+            console.log(`Free booking confirmed for location ${setupBooking.location_id}, bay ${setupBooking.bay_id}. Triggering kiosk update.`);
+            await socketService.triggerBookingUpdate(setupBooking.location_id, setupBooking.bay_id, setupBookingId);
+          }
+        } catch (kioskError) {
+          console.error(`Error triggering kiosk update for free booking ${setupBookingId}:`, kioskError);
+        }
+
+        // Check if booking starts within 15 minutes — send reminder immediately
+        try {
+          const { data: setupBookingDetails, error: setupBookingFetchError } = await supabase
+            .from('bookings')
+            .select('start_time, end_time')
+            .eq('id', setupBookingId)
+            .single();
+
+          if (!setupBookingFetchError && setupBookingDetails) {
+            const now = new Date();
+            const bookingStart = new Date(setupBookingDetails.start_time);
+            const minutesUntilStart = (bookingStart.getTime() - now.getTime()) / (1000 * 60);
+
+            if (minutesUntilStart <= 15) {
+              console.log(`Free booking ${setupBookingId} starts soon (${minutesUntilStart.toFixed(1)} min), sending immediate reminder`);
+
+              const tokenData = {
+                bookingId: setupBookingId,
+                startTime: setupBookingDetails.start_time,
+                endTime: setupBookingDetails.end_time,
+                expires: new Date(setupBookingDetails.end_time).getTime()
+              };
+              const unlockToken = Buffer.from(JSON.stringify(tokenData)).toString('base64');
+              const unlockLink = `${process.env.FRONTEND_URL || 'https://golflabs.us'}/unlock?token=${unlockToken}`;
+
+              await supabase
+                .from('bookings')
+                .update({
+                  unlock_token: unlockToken,
+                  unlock_token_expires_at: setupBookingDetails.end_time
+                })
+                .eq('id', setupBookingId);
+
+              await EmailService.sendReminderEmail(setupBookingId, unlockToken, unlockLink);
+              console.log(`Sent immediate reminder email for free booking ${setupBookingId}`);
+            }
+          }
+        } catch (reminderError) {
+          console.error(`Error handling immediate reminder for free booking ${setupBookingId}:`, reminderError);
+        }
+      }
+
+      break;
+    }
+
     // Refund webhook handlers
     case 'charge.dispute.created':
       const dispute = event.data.object as Stripe.Dispute;

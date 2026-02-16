@@ -34,7 +34,7 @@ const handleValidationErrors = (req: any, res: any, next: any) => {
 paymentRoutes.post('/bookings/:bookingId/create-payment-intent', 
   paymentRateLimit,
   param('bookingId').isUUID().withMessage('Booking ID must be a valid UUID'),
-  body('amount').isInt({ min: 0 }).withMessage('Amount must be at least 0'),
+  body('amount').isInt({ min: 0 }).withMessage('Amount must be a non-negative integer'),
   handleValidationErrors,
   controller.createPaymentIntent
 );
@@ -55,6 +55,13 @@ paymentRoutes.get('/payment-intent-status',
   query('payment_intent').matches(/^pi_[a-zA-Z0-9_]+$/).withMessage('Invalid payment intent ID format'),
   handleValidationErrors,
   controller.getPaymentIntentStatus
+);
+
+paymentRoutes.get('/setup-intent-status',
+  paymentRateLimit,
+  query('setup_intent').matches(/^seti_[a-zA-Z0-9_]+$/).withMessage('Invalid setup intent ID format'),
+  handleValidationErrors,
+  controller.getSetupIntentStatus
 );
 
 paymentRoutes.post('/calculate-price', 

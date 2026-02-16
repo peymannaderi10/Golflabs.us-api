@@ -72,24 +72,39 @@ export class PaymentService {
       throw paymentCheckError;
     }
 
-    // If we found an existing pending/processing payment, retrieve the payment intent
+    // If we found an existing pending/processing payment, retrieve the intent
     if (existingPayment?.stripe_payment_intent_id) {
+      const existingId = existingPayment.stripe_payment_intent_id;
+      const isSetupIntent = existingId.startsWith('seti_');
+
       try {
-        const existingPaymentIntent = await stripe.paymentIntents.retrieve(existingPayment.stripe_payment_intent_id);
-        
-        // Check if the payment intent is still valid (not succeeded, canceled, or failed)
-        if (['requires_payment_method', 'requires_confirmation', 'requires_action', 'processing'].includes(existingPaymentIntent.status)) {
-          console.log(`Reusing existing payment intent ${existingPaymentIntent.id} for booking ${bookingId}`);
-          return {
-            clientSecret: existingPaymentIntent.client_secret,
-            bookingId: booking.id
-          };
+        if (isSetupIntent) {
+          const existingSetupIntent = await stripe.setupIntents.retrieve(existingId);
+          if (['requires_payment_method', 'requires_confirmation', 'requires_action'].includes(existingSetupIntent.status)) {
+            console.log(`Reusing existing setup intent ${existingSetupIntent.id} for booking ${bookingId}`);
+            return {
+              clientSecret: existingSetupIntent.client_secret,
+              bookingId: booking.id,
+              type: 'setup' as const
+            };
+          } else {
+            console.log(`Existing setup intent ${existingSetupIntent.id} has status ${existingSetupIntent.status}, creating new one`);
+          }
         } else {
-          console.log(`Existing payment intent ${existingPaymentIntent.id} has status ${existingPaymentIntent.status}, creating new one`);
+          const existingPaymentIntent = await stripe.paymentIntents.retrieve(existingId);
+          if (['requires_payment_method', 'requires_confirmation', 'requires_action', 'processing'].includes(existingPaymentIntent.status)) {
+            console.log(`Reusing existing payment intent ${existingPaymentIntent.id} for booking ${bookingId}`);
+            return {
+              clientSecret: existingPaymentIntent.client_secret,
+              bookingId: booking.id,
+              type: 'payment' as const
+            };
+          } else {
+            console.log(`Existing payment intent ${existingPaymentIntent.id} has status ${existingPaymentIntent.status}, creating new one`);
+          }
         }
       } catch (stripeError) {
-        console.error('Error retrieving existing payment intent from Stripe:', stripeError);
-        // Continue to create a new payment intent if we can't retrieve the existing one
+        console.error('Error retrieving existing Stripe intent from Stripe:', stripeError);
       }
     }
 
@@ -148,22 +163,64 @@ export class PaymentService {
       }
     }
 
-    // 5. Create new Stripe Payment Intent (with customer + save card for future use)
+    const intentMetadata = {
+      booking_id: booking.id,
+      user_id: booking.user_id,
+      bay_id: booking.bay_id,
+      location_id: booking.location_id,
+      promotion_id: promotionInfo?.promotionId || '',
+      discount_amount: promotionInfo?.discountAmount?.toString() || '0',
+      free_minutes: promotionInfo?.freeMinutes?.toString() || '0',
+      original_amount: promotionInfo?.originalAmount?.toString() || (amount / 100).toString()
+    };
+
+    // 5. Free booking (amount = 0): create SetupIntent to save card for future charges
+    if (amount === 0) {
+      if (!stripeCustomerId) {
+        throw new Error('A Stripe customer is required for free bookings to save payment method.');
+      }
+
+      const setupIntent = await stripe.setupIntents.create({
+        customer: stripeCustomerId,
+        payment_method_types: ['card'],
+        metadata: intentMetadata,
+        usage: 'off_session',
+      });
+
+      // Create a $0 payment record linked to the setup intent
+      const { error: paymentError } = await supabase
+        .from('payments')
+        .insert({
+          booking_id: booking.id,
+          amount: 0,
+          status: 'pending',
+          stripe_payment_intent_id: setupIntent.id,
+          currency: 'usd',
+          user_id: booking.user_id,
+          location_id: booking.location_id
+        });
+
+      if (paymentError) {
+        await stripe.setupIntents.cancel(setupIntent.id);
+        console.error('Error creating payment record for free booking, cancelling setup intent:', paymentError);
+        throw paymentError;
+      }
+
+      console.log(`Created setup intent ${setupIntent.id} for free booking ${bookingId} (discount: $${promotionInfo?.discountAmount || 0})`);
+
+      return {
+        clientSecret: setupIntent.client_secret,
+        bookingId: booking.id,
+        type: 'setup' as const
+      };
+    }
+
+    // 6. Paid booking: create Stripe Payment Intent (with customer + save card for future use)
     const paymentIntentParams: any = {
       amount,
       currency: 'usd',
       automatic_payment_methods: { enabled: true },
-      metadata: {
-        booking_id: booking.id,
-        user_id: booking.user_id,
-        bay_id: booking.bay_id,
-        location_id: booking.location_id,
-        // Include promotion info in metadata for webhook processing
-        promotion_id: promotionInfo?.promotionId || '',
-        discount_amount: promotionInfo?.discountAmount?.toString() || '0',
-        free_minutes: promotionInfo?.freeMinutes?.toString() || '0',
-        original_amount: promotionInfo?.originalAmount?.toString() || (amount / 100).toString()
-      }
+      metadata: intentMetadata
     };
 
     // Attach Stripe Customer and save card for future off-session charges (extensions)
@@ -174,12 +231,12 @@ export class PaymentService {
 
     const paymentIntent = await stripe.paymentIntents.create(paymentIntentParams);
 
-    // 6. Create a corresponding payment record
+    // 7. Create a corresponding payment record
     const { error: paymentError } = await supabase
       .from('payments')
       .insert({
         booking_id: booking.id,
-        amount: amount / 100, // convert cents to dollars (this is the discounted amount)
+        amount: amount / 100,
         status: 'pending',
         stripe_payment_intent_id: paymentIntent.id,
         currency: 'usd',
@@ -195,10 +252,11 @@ export class PaymentService {
 
     console.log(`Created new payment intent ${paymentIntent.id} for booking ${bookingId} (amount: $${amount / 100}, discount: $${promotionInfo?.discountAmount || 0})`);
 
-    // 7. Send the client secret back to the frontend
+    // 8. Send the client secret back to the frontend
     return {
       clientSecret: paymentIntent.client_secret,
-      bookingId: booking.id
+      bookingId: booking.id,
+      type: 'payment' as const
     };
   }
 
@@ -227,6 +285,19 @@ export class PaymentService {
       status: paymentIntent.status,
       amount: paymentIntent.amount,
       currency: paymentIntent.currency
+    };
+  }
+
+  async getSetupIntentStatus(setupIntentId: string) {
+    if (!setupIntentId) {
+      throw new Error('Setup Intent ID is required');
+    }
+
+    const setupIntent = await stripe.setupIntents.retrieve(setupIntentId);
+    return {
+      status: setupIntent.status,
+      amount: 0,
+      currency: 'usd'
     };
   }
 

@@ -65,6 +65,20 @@ export class PaymentController {
     }
   };
 
+  getSetupIntentStatus = async (req: Request, res: Response) => {
+    try {
+      const setupIntentId = req.query.setup_intent as string;
+      const result = await this.paymentService.getSetupIntentStatus(setupIntentId);
+      res.json(result);
+    } catch (error: any) {
+      console.error('Error retrieving setup intent:', error);
+      if (error.message === 'Setup Intent ID is required') {
+        return res.status(400).json({ error: error.message });
+      }
+      res.status(500).json({ error: 'Failed to retrieve setup intent status' });
+    }
+  };
+
   calculatePrice = async (req: Request, res: Response) => {
     try {
       const { locationId, startTime, endTime } = req.body;

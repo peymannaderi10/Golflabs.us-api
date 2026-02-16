@@ -66,25 +66,42 @@ class PaymentService {
                 console.error('Error checking existing payments:', paymentCheckError);
                 throw paymentCheckError;
             }
-            // If we found an existing pending/processing payment, retrieve the payment intent
+            // If we found an existing pending/processing payment, retrieve the intent
             if (existingPayment === null || existingPayment === void 0 ? void 0 : existingPayment.stripe_payment_intent_id) {
+                const existingId = existingPayment.stripe_payment_intent_id;
+                const isSetupIntent = existingId.startsWith('seti_');
                 try {
-                    const existingPaymentIntent = yield stripe_1.stripe.paymentIntents.retrieve(existingPayment.stripe_payment_intent_id);
-                    // Check if the payment intent is still valid (not succeeded, canceled, or failed)
-                    if (['requires_payment_method', 'requires_confirmation', 'requires_action', 'processing'].includes(existingPaymentIntent.status)) {
-                        console.log(`Reusing existing payment intent ${existingPaymentIntent.id} for booking ${bookingId}`);
-                        return {
-                            clientSecret: existingPaymentIntent.client_secret,
-                            bookingId: booking.id
-                        };
+                    if (isSetupIntent) {
+                        const existingSetupIntent = yield stripe_1.stripe.setupIntents.retrieve(existingId);
+                        if (['requires_payment_method', 'requires_confirmation', 'requires_action'].includes(existingSetupIntent.status)) {
+                            console.log(`Reusing existing setup intent ${existingSetupIntent.id} for booking ${bookingId}`);
+                            return {
+                                clientSecret: existingSetupIntent.client_secret,
+                                bookingId: booking.id,
+                                type: 'setup'
+                            };
+                        }
+                        else {
+                            console.log(`Existing setup intent ${existingSetupIntent.id} has status ${existingSetupIntent.status}, creating new one`);
+                        }
                     }
                     else {
-                        console.log(`Existing payment intent ${existingPaymentIntent.id} has status ${existingPaymentIntent.status}, creating new one`);
+                        const existingPaymentIntent = yield stripe_1.stripe.paymentIntents.retrieve(existingId);
+                        if (['requires_payment_method', 'requires_confirmation', 'requires_action', 'processing'].includes(existingPaymentIntent.status)) {
+                            console.log(`Reusing existing payment intent ${existingPaymentIntent.id} for booking ${bookingId}`);
+                            return {
+                                clientSecret: existingPaymentIntent.client_secret,
+                                bookingId: booking.id,
+                                type: 'payment'
+                            };
+                        }
+                        else {
+                            console.log(`Existing payment intent ${existingPaymentIntent.id} has status ${existingPaymentIntent.status}, creating new one`);
+                        }
                     }
                 }
                 catch (stripeError) {
-                    console.error('Error retrieving existing payment intent from Stripe:', stripeError);
-                    // Continue to create a new payment intent if we can't retrieve the existing one
+                    console.error('Error retrieving existing Stripe intent from Stripe:', stripeError);
                 }
             }
             // 3. Ensure user has a Stripe Customer (for saving cards for future off-session charges)
@@ -139,22 +156,57 @@ class PaymentService {
                     console.log(`Updated booking ${bookingId} with promotion discount: $${promotionInfo.discountAmount}`);
                 }
             }
-            // 5. Create new Stripe Payment Intent (with customer + save card for future use)
+            const intentMetadata = {
+                booking_id: booking.id,
+                user_id: booking.user_id,
+                bay_id: booking.bay_id,
+                location_id: booking.location_id,
+                promotion_id: (promotionInfo === null || promotionInfo === void 0 ? void 0 : promotionInfo.promotionId) || '',
+                discount_amount: ((_a = promotionInfo === null || promotionInfo === void 0 ? void 0 : promotionInfo.discountAmount) === null || _a === void 0 ? void 0 : _a.toString()) || '0',
+                free_minutes: ((_b = promotionInfo === null || promotionInfo === void 0 ? void 0 : promotionInfo.freeMinutes) === null || _b === void 0 ? void 0 : _b.toString()) || '0',
+                original_amount: ((_c = promotionInfo === null || promotionInfo === void 0 ? void 0 : promotionInfo.originalAmount) === null || _c === void 0 ? void 0 : _c.toString()) || (amount / 100).toString()
+            };
+            // 5. Free booking (amount = 0): create SetupIntent to save card for future charges
+            if (amount === 0) {
+                if (!stripeCustomerId) {
+                    throw new Error('A Stripe customer is required for free bookings to save payment method.');
+                }
+                const setupIntent = yield stripe_1.stripe.setupIntents.create({
+                    customer: stripeCustomerId,
+                    payment_method_types: ['card'],
+                    metadata: intentMetadata,
+                    usage: 'off_session',
+                });
+                // Create a $0 payment record linked to the setup intent
+                const { error: paymentError } = yield database_1.supabase
+                    .from('payments')
+                    .insert({
+                    booking_id: booking.id,
+                    amount: 0,
+                    status: 'pending',
+                    stripe_payment_intent_id: setupIntent.id,
+                    currency: 'usd',
+                    user_id: booking.user_id,
+                    location_id: booking.location_id
+                });
+                if (paymentError) {
+                    yield stripe_1.stripe.setupIntents.cancel(setupIntent.id);
+                    console.error('Error creating payment record for free booking, cancelling setup intent:', paymentError);
+                    throw paymentError;
+                }
+                console.log(`Created setup intent ${setupIntent.id} for free booking ${bookingId} (discount: $${(promotionInfo === null || promotionInfo === void 0 ? void 0 : promotionInfo.discountAmount) || 0})`);
+                return {
+                    clientSecret: setupIntent.client_secret,
+                    bookingId: booking.id,
+                    type: 'setup'
+                };
+            }
+            // 6. Paid booking: create Stripe Payment Intent (with customer + save card for future use)
             const paymentIntentParams = {
                 amount,
                 currency: 'usd',
                 automatic_payment_methods: { enabled: true },
-                metadata: {
-                    booking_id: booking.id,
-                    user_id: booking.user_id,
-                    bay_id: booking.bay_id,
-                    location_id: booking.location_id,
-                    // Include promotion info in metadata for webhook processing
-                    promotion_id: (promotionInfo === null || promotionInfo === void 0 ? void 0 : promotionInfo.promotionId) || '',
-                    discount_amount: ((_a = promotionInfo === null || promotionInfo === void 0 ? void 0 : promotionInfo.discountAmount) === null || _a === void 0 ? void 0 : _a.toString()) || '0',
-                    free_minutes: ((_b = promotionInfo === null || promotionInfo === void 0 ? void 0 : promotionInfo.freeMinutes) === null || _b === void 0 ? void 0 : _b.toString()) || '0',
-                    original_amount: ((_c = promotionInfo === null || promotionInfo === void 0 ? void 0 : promotionInfo.originalAmount) === null || _c === void 0 ? void 0 : _c.toString()) || (amount / 100).toString()
-                }
+                metadata: intentMetadata
             };
             // Attach Stripe Customer and save card for future off-session charges (extensions)
             if (stripeCustomerId) {
@@ -162,12 +214,12 @@ class PaymentService {
                 paymentIntentParams.setup_future_usage = 'off_session';
             }
             const paymentIntent = yield stripe_1.stripe.paymentIntents.create(paymentIntentParams);
-            // 6. Create a corresponding payment record
+            // 7. Create a corresponding payment record
             const { error: paymentError } = yield database_1.supabase
                 .from('payments')
                 .insert({
                 booking_id: booking.id,
-                amount: amount / 100, // convert cents to dollars (this is the discounted amount)
+                amount: amount / 100,
                 status: 'pending',
                 stripe_payment_intent_id: paymentIntent.id,
                 currency: 'usd',
@@ -180,10 +232,11 @@ class PaymentService {
                 throw paymentError;
             }
             console.log(`Created new payment intent ${paymentIntent.id} for booking ${bookingId} (amount: $${amount / 100}, discount: $${(promotionInfo === null || promotionInfo === void 0 ? void 0 : promotionInfo.discountAmount) || 0})`);
-            // 7. Send the client secret back to the frontend
+            // 8. Send the client secret back to the frontend
             return {
                 clientSecret: paymentIntent.client_secret,
-                bookingId: booking.id
+                bookingId: booking.id,
+                type: 'payment'
             };
         });
     }
@@ -211,6 +264,19 @@ class PaymentService {
                 status: paymentIntent.status,
                 amount: paymentIntent.amount,
                 currency: paymentIntent.currency
+            };
+        });
+    }
+    getSetupIntentStatus(setupIntentId) {
+        return __awaiter(this, void 0, void 0, function* () {
+            if (!setupIntentId) {
+                throw new Error('Setup Intent ID is required');
+            }
+            const setupIntent = yield stripe_1.stripe.setupIntents.retrieve(setupIntentId);
+            return {
+                status: setupIntent.status,
+                amount: 0,
+                currency: 'usd'
             };
         });
     }

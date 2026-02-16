@@ -68,6 +68,20 @@ class PaymentController {
                 res.status(500).json({ error: "Failed to retrieve payment intent status" });
             }
         });
+        this.getSetupIntentStatus = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            try {
+                const setupIntentId = req.query.setup_intent;
+                const result = yield this.paymentService.getSetupIntentStatus(setupIntentId);
+                res.json(result);
+            }
+            catch (error) {
+                console.error('Error retrieving setup intent:', error);
+                if (error.message === 'Setup Intent ID is required') {
+                    return res.status(400).json({ error: error.message });
+                }
+                res.status(500).json({ error: 'Failed to retrieve setup intent status' });
+            }
+        });
         this.calculatePrice = (req, res) => __awaiter(this, void 0, void 0, function* () {
             try {
                 const { locationId, startTime, endTime } = req.body;
