@@ -1715,13 +1715,25 @@ export class LeagueService {
     // Build teammates array if the player is on a team
     let teammates: any[] | null = null;
 
+    console.log('[kiosk-state] teammates check:', {
+      hasPlayer: !!player,
+      leagueTeamId: player?.league_team_id,
+      hasActiveWeek: !!activeWeek,
+    });
+
     if (player && player.league_team_id && activeWeek) {
-      const { data: teamPlayers } = await supabase
+      const { data: teamPlayers, error: teamError } = await supabase
         .from('league_players')
         .select('id, display_name, current_handicap')
         .eq('league_team_id', player.league_team_id)
         .neq('enrollment_status', 'withdrawn')
         .order('created_at');
+
+      console.log('[kiosk-state] teamPlayers query:', {
+        count: teamPlayers?.length,
+        error: teamError?.message,
+        ids: teamPlayers?.map((tp: any) => tp.id),
+      });
 
       if (teamPlayers && teamPlayers.length > 1) {
         const playerIds = teamPlayers.map((tp: any) => tp.id);
