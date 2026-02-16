@@ -34,7 +34,7 @@ const handleValidationErrors = (req: any, res: any, next: any) => {
 paymentRoutes.post('/bookings/:bookingId/create-payment-intent', 
   paymentRateLimit,
   param('bookingId').isUUID().withMessage('Booking ID must be a valid UUID'),
-  body('amount').isInt({ min: 50 }).withMessage('Amount must be at least 50 cents'),
+  body('amount').isInt({ min: 0 }).withMessage('Amount must be at least 0'),
   handleValidationErrors,
   controller.createPaymentIntent
 );
