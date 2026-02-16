@@ -1527,6 +1527,46 @@ class LeagueService {
             }
             // Extract course data
             const courseData = activeWeek === null || activeWeek === void 0 ? void 0 : activeWeek.league_courses;
+            // Build teammates array if the player is on a team
+            let teammates = null;
+            if (player && player.league_team_id && activeWeek) {
+                const { data: teamPlayers } = yield database_1.supabase
+                    .from('league_players')
+                    .select('id, display_name, current_handicap')
+                    .eq('league_team_id', player.league_team_id)
+                    .neq('enrollment_status', 'withdrawn')
+                    .order('created_at');
+                if (teamPlayers && teamPlayers.length > 1) {
+                    const playerIds = teamPlayers.map((tp) => tp.id);
+                    const { data: allScores } = yield database_1.supabase
+                        .from('league_scores')
+                        .select('league_player_id, hole_number, strokes')
+                        .eq('league_week_id', activeWeek.id)
+                        .in('league_player_id', playerIds)
+                        .order('hole_number');
+                    const scoresByPlayer = {};
+                    for (const s of (allScores || [])) {
+                        if (!scoresByPlayer[s.league_player_id]) {
+                            scoresByPlayer[s.league_player_id] = [];
+                        }
+                        scoresByPlayer[s.league_player_id].push({ hole_number: s.hole_number, strokes: s.strokes });
+                    }
+                    teammates = teamPlayers.map((tp) => {
+                        const tpScores = scoresByPlayer[tp.id] || [];
+                        const tpNextHole = tpScores.length > 0
+                            ? Math.max(...tpScores.map((s) => s.hole_number)) + 1
+                            : 1;
+                        return {
+                            id: tp.id,
+                            displayName: tp.display_name,
+                            handicap: tp.current_handicap,
+                            scores: tpScores,
+                            nextHole: Math.min(tpNextHole, league.num_holes),
+                            roundComplete: tpScores.length >= league.num_holes,
+                        };
+                    });
+                }
+            }
             return {
                 league: {
                     id: league.id,
@@ -1556,6 +1596,7 @@ class LeagueService {
                 scores,
                 nextHole: Math.min(nextHole, league.num_holes),
                 roundComplete: player ? scores.length >= league.num_holes : false,
+                teammates,
             };
         });
     }
