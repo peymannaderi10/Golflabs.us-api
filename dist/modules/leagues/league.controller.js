@@ -234,6 +234,13 @@ class LeagueController {
         // =====================================================
         this.submitScore = (req, res) => __awaiter(this, void 0, void 0, function* () {
             try {
+                const { leagueWeekId, leaguePlayerId, holeNumber, strokes } = req.body;
+                if (!leagueWeekId || !leaguePlayerId || !holeNumber || strokes === undefined) {
+                    return res.status(400).json({ error: 'leagueWeekId, leaguePlayerId, holeNumber, and strokes are required' });
+                }
+                if (!Number.isInteger(strokes) || strokes < 1 || strokes > 20) {
+                    return res.status(400).json({ error: 'Strokes must be an integer between 1 and 20' });
+                }
                 const result = yield this.leagueService.submitScore(req.body);
                 // Get player info for the broadcast payload
                 const league = yield this.leagueService.getLeague(req.params.leagueId);
@@ -263,7 +270,8 @@ class LeagueController {
             }
             catch (error) {
                 console.error('Error submitting score:', error);
-                res.status(500).json({ error: error.message });
+                const status = error.message.includes('not found') || error.message.includes('Must be active') || error.message.includes('Cannot submit') || error.message.includes('exceeds') ? 400 : 500;
+                res.status(status).json({ error: error.message });
             }
         });
         this.getWeekScores = (req, res) => __awaiter(this, void 0, void 0, function* () {

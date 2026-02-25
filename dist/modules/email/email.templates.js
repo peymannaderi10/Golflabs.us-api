@@ -1143,5 +1143,82 @@ class EmailTemplates {
       `
         };
     }
+    // =====================================================
+    // LEAGUE ENROLLMENT CONFIRMATION
+    // =====================================================
+    static enrollmentConfirmation(data) {
+        return {
+            subject: `You're in! League enrollment confirmed — ${data.leagueName}`,
+            html: `
+        <!DOCTYPE html>
+        <html>
+        <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+        <body style="margin: 0; padding: 0; background-color: #f8f9fa; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+          <div style="max-width: 560px; margin: 0 auto; padding: 32px 16px;">
+            <div style="background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+              <div style="background: linear-gradient(135deg, #00A36C, #008f5d); padding: 32px 24px; text-align: center;">
+                <h1 style="color: white; margin: 0; font-size: 22px; font-weight: 700;">You're In!</h1>
+                <p style="color: rgba(255,255,255,0.85); margin: 8px 0 0; font-size: 14px;">League enrollment confirmed</p>
+              </div>
+              <div style="padding: 24px;">
+                <p style="color: #333; font-size: 15px; margin: 0 0 20px;">Hey ${data.playerName},</p>
+                <p style="color: #333; font-size: 15px; margin: 0 0 20px;">You've successfully enrolled in <strong>${data.leagueName}</strong>. Here are your league details:</p>
+                <div style="background: #f8f9fa; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+                  <div style="padding: 8px 0; border-bottom: 1px solid #e0e0e0;">
+                    <span style="color: #4a7c59; font-weight: 600;">League:</span>
+                    <span style="color: #333; font-weight: 500; margin-left: 8px;">${data.leagueName}</span>
+                  </div>
+                  <div style="padding: 8px 0; border-bottom: 1px solid #e0e0e0;">
+                    <span style="color: #4a7c59; font-weight: 600;">Format:</span>
+                    <span style="color: #333; font-weight: 500; margin-left: 8px;">${data.format}</span>
+                  </div>
+                  <div style="padding: 8px 0; border-bottom: 1px solid #e0e0e0;">
+                    <span style="color: #4a7c59; font-weight: 600;">Schedule:</span>
+                    <span style="color: #333; font-weight: 500; margin-left: 8px;">${data.dayOfWeek}s at ${data.startTime}</span>
+                  </div>
+                  <div style="padding: 8px 0; border-bottom: 1px solid #e0e0e0;">
+                    <span style="color: #4a7c59; font-weight: 600;">Season:</span>
+                    <span style="color: #333; font-weight: 500; margin-left: 8px;">${data.totalWeeks} weeks starting ${data.startDate}</span>
+                  </div>
+                  ${data.totalPaid > 0 ? `
+                  <div style="padding: 8px 0; border-bottom: 1px solid #e0e0e0;">
+                    <span style="color: #4a7c59; font-weight: 600;">Amount Paid:</span>
+                    <span style="color: #333; font-weight: 500; margin-left: 8px;">$${data.totalPaid.toFixed(2)}</span>
+                  </div>
+                  ${data.seasonFee > 0 ? `
+                  <div style="padding: 4px 0 4px 16px;">
+                    <span style="color: #888; font-size: 13px;">Season Fee: $${data.seasonFee.toFixed(2)}</span>
+                  </div>` : ''}
+                  ${data.prizePotTotal > 0 ? `
+                  <div style="padding: 4px 0 4px 16px;">
+                    <span style="color: #888; font-size: 13px;">Prize Pool: $${data.prizePotTotal.toFixed(2)}</span>
+                  </div>` : ''}
+                  ` : ''}
+                </div>
+                <div style="text-align: center; margin: 24px 0;">
+                  <a href="${data.dashboardUrl}" style="display: inline-block; background: #00A36C; color: white; padding: 12px 32px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 15px;">View My Leagues</a>
+                </div>
+                <p style="color: #888; font-size: 13px; margin: 20px 0 0; text-align: center;">Good luck this season!</p>
+              </div>
+            </div>
+          </div>
+        </body>
+        </html>
+      `,
+            text: `
+        You're In! League enrollment confirmed.
+
+        Hey ${data.playerName},
+
+        You've enrolled in ${data.leagueName}.
+        Format: ${data.format}
+        Schedule: ${data.dayOfWeek}s at ${data.startTime}
+        Season: ${data.totalWeeks} weeks starting ${data.startDate}
+        ${data.totalPaid > 0 ? `Amount Paid: $${data.totalPaid.toFixed(2)}` : ''}
+
+        View your leagues: ${data.dashboardUrl}
+      `
+        };
+    }
 }
 exports.EmailTemplates = EmailTemplates;

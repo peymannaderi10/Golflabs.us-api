@@ -109,4 +109,23 @@ export interface AttendanceReminderEmailData {
   startTime: string;     // e.g. "7:00 PM"
   confirmUrl: string;
   declineUrl: string;
-} 
+}
+
+// =====================================================
+// League Enrollment Confirmation Email Types
+// =====================================================
+
+export interface LeagueEnrollmentEmailData {
+  playerName: string;
+  playerEmail: string;
+  leagueName: string;
+  format: string;
+  dayOfWeek: string;
+  startTime: string;
+  totalWeeks: number;
+  seasonFee: number;
+  prizePotTotal: number;
+  totalPaid: number;
+  startDate: string;
+  dashboardUrl: string;
+}

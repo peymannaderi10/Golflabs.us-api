@@ -1,7 +1,7 @@
 import { resend, resendConfig } from '../../config/resend';
 import { NotificationService } from './notification.service';
 import { EmailTemplates } from './email.templates';
-import { BookingEmailData, TeamInviteEmailData, TeamStatusEmailData, AttendanceReminderEmailData } from './email.types';
+import { BookingEmailData, TeamInviteEmailData, TeamStatusEmailData, AttendanceReminderEmailData, LeagueEnrollmentEmailData } from './email.types';
 
 export class EmailService {
   /**
@@ -260,7 +260,16 @@ export class EmailService {
       console.log(`Sent attendance reminder to ${data.playerEmail} for ${data.leagueName} Week ${data.weekNumber}`);
     } catch (error) {
       console.error(`Failed to send attendance reminder to ${data.playerEmail}:`, error);
-      // Don't throw — reminder is best-effort
+    }
+  }
+
+  static async sendLeagueEnrollmentEmail(data: LeagueEnrollmentEmailData): Promise<void> {
+    try {
+      const template = EmailTemplates.enrollmentConfirmation(data);
+      await this.sendEmail(data.playerEmail, template.subject, template.html);
+      console.log(`Sent league enrollment confirmation to ${data.playerEmail} for "${data.leagueName}"`);
+    } catch (error) {
+      console.error(`Failed to send league enrollment email to ${data.playerEmail}:`, error);
     }
   }
 } 

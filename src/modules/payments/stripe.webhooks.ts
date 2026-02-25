@@ -98,6 +98,70 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
                   console.error(`Error checking team payment status:`, teamError);
                 }
               }
+
+              // Send enrollment confirmation email
+              try {
+                const { data: player } = await supabase
+                  .from('league_players')
+                  .select('user_id, display_name')
+                  .eq('id', leaguePlayerId)
+                  .single();
+
+                const { data: league } = await supabase
+                  .from('leagues')
+                  .select('name, format, day_of_week, start_time, total_weeks, season_fee, weekly_prize_pot, status')
+                  .eq('id', leagueId)
+                  .single();
+
+                const { data: firstWeek } = await supabase
+                  .from('league_weeks')
+                  .select('date')
+                  .eq('league_id', leagueId)
+                  .order('week_number')
+                  .limit(1)
+                  .single();
+
+                if (player && league) {
+                  const { data: userProfile } = await supabase
+                    .from('user_profiles')
+                    .select('email')
+                    .eq('id', player.user_id)
+                    .single();
+
+                  if (userProfile?.email) {
+                    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+                    const formatLabels: Record<string, string> = { stroke_play: 'Individual (Stroke Play)', match_play: 'Individual (Match Play)', team: 'Team' };
+                    const prizePotTotal = parseFloat(paymentIntent.metadata.prize_pot_total || '0');
+                    const totalPaid = (paymentIntent.amount || 0) / 100;
+                    const startDate = firstWeek?.date
+                      ? new Date(firstWeek.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+                      : 'TBD';
+                    const [h, m] = (league.start_time || '19:00').split(':');
+                    const hour = parseInt(h, 10);
+                    const ampm = hour >= 12 ? 'PM' : 'AM';
+                    const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
+
+                    const frontendUrl = process.env.FRONTEND_URL || 'https://golflabs.us';
+
+                    EmailService.sendLeagueEnrollmentEmail({
+                      playerName: player.display_name,
+                      playerEmail: userProfile.email,
+                      leagueName: league.name,
+                      format: formatLabels[league.format] || league.format,
+                      dayOfWeek: dayNames[league.day_of_week] || 'TBD',
+                      startTime: `${displayHour}:${m} ${ampm}`,
+                      totalWeeks: league.total_weeks,
+                      seasonFee: league.season_fee || 0,
+                      prizePotTotal,
+                      totalPaid,
+                      startDate,
+                      dashboardUrl: `${frontendUrl}/dashboard`,
+                    });
+                  }
+                }
+              } catch (emailError) {
+                console.error(`Error sending enrollment confirmation email:`, emailError);
+              }
             }
           } catch (leagueError) {
             console.error(`Error processing league enrollment payment:`, leagueError);
@@ -458,21 +522,63 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
         const refundEvent = event as any; // Type assertion for refund events
         const refund = refundEvent.data.object as Stripe.Refund;
         const refundBookingId = refund.metadata?.booking_id;
-        
+        const refundLeaguePlayerId = refund.metadata?.league_player_id;
+        const refundLeagueId = refund.metadata?.league_id;
+
+        // League enrollment refund
+        if (refundLeaguePlayerId && refundLeagueId) {
+          if (event.type === 'refund.created') {
+            console.log(`League refund created for player ${refundLeaguePlayerId} in league ${refundLeagueId}, refund ID: ${refund.id}`);
+
+            const { error: leagueRefundError } = await supabase
+              .from('league_players')
+              .update({
+                season_paid: false,
+                prize_pot_paid: false,
+                enrollment_status: 'withdrawn',
+              })
+              .eq('id', refundLeaguePlayerId);
+
+            if (leagueRefundError) {
+              console.error(`Error updating league player ${refundLeaguePlayerId} on refund:`, leagueRefundError);
+            } else {
+              console.log(`League player ${refundLeaguePlayerId} marked as withdrawn (refund created).`);
+            }
+          } else if (event.type === 'refund.updated') {
+            console.log(`League refund updated for player ${refundLeaguePlayerId}, status: ${refund.status}`);
+
+            if (refund.status === 'succeeded') {
+              const { error } = await supabase
+                .from('league_players')
+                .update({ enrollment_status: 'withdrawn', season_paid: false, prize_pot_paid: false })
+                .eq('id', refundLeaguePlayerId);
+
+              if (error) {
+                console.error(`Error finalizing league refund for player ${refundLeaguePlayerId}:`, error);
+              } else {
+                console.log(`League refund succeeded for player ${refundLeaguePlayerId}. Status: withdrawn.`);
+              }
+            } else if (refund.status === 'failed') {
+              console.error(`League refund FAILED for player ${refundLeaguePlayerId}. Manual review required.`);
+            }
+          }
+          break;
+        }
+
+        // Booking refund
         if (!refundBookingId) {
-          console.warn(`Refund webhook received with no booking_id in metadata: ${refund.id}, event type: ${event.type}`);
+          console.warn(`Refund webhook received with no booking_id or league_player_id in metadata: ${refund.id}, event type: ${event.type}`);
           break;
         }
 
         if (event.type === 'refund.created') {
           console.log(`Refund created for booking ID: ${refundBookingId}, refund ID: ${refund.id}`);
 
-          // Update payment record with refund information
           const { error: refundCreateError } = await supabase
             .from('payments')
             .update({ 
               status: 'refunding',
-              refund_amount: refund.amount / 100, // convert cents to dollars
+              refund_amount: refund.amount / 100,
               refunded_at: new Date().toISOString()
             })
             .eq('booking_id', refundBookingId);
@@ -509,7 +615,6 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
         } else if (event.type.includes('refund') && event.type.includes('failed')) {
           console.log(`Refund failed for booking ID: ${refundBookingId}, refund ID: ${refund.id}`);
 
-          // Update payment status to indicate refund failed
           const { error: refundFailedError } = await supabase
             .from('payments')
             .update({ 
@@ -517,7 +622,6 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
             })
             .eq('booking_id', refundBookingId);
 
-          // Update the cancellation record with failure information
           const { error: cancellationUpdateError } = await supabase
             .from('bookings_cancellations')
             .update({ 

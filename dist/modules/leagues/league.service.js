@@ -580,9 +580,50 @@ class LeagueService {
     // =====================================================
     // SCORE ENTRY
     // =====================================================
+    validateScoreSubmission(data) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const { leagueWeekId, leaguePlayerId, holeNumber, strokes } = data;
+            if (!leagueWeekId || !leaguePlayerId || !holeNumber || strokes === undefined) {
+                throw new Error('Missing required fields: leagueWeekId, leaguePlayerId, holeNumber, strokes');
+            }
+            if (!Number.isInteger(strokes) || strokes < 1 || strokes > 20) {
+                throw new Error('Strokes must be an integer between 1 and 20');
+            }
+            if (!Number.isInteger(holeNumber) || holeNumber < 1) {
+                throw new Error('Hole number must be a positive integer');
+            }
+            const { data: week, error: weekError } = yield database_1.supabase
+                .from('league_weeks')
+                .select('id, status, league_id')
+                .eq('id', leagueWeekId)
+                .single();
+            if (weekError || !week) {
+                throw new Error('Week not found');
+            }
+            if (week.status !== 'active') {
+                throw new Error(`Cannot submit scores for a week with status '${week.status}'. Week must be active.`);
+            }
+            const league = yield this.getLeague(week.league_id);
+            if (holeNumber > league.num_holes) {
+                throw new Error(`Hole number ${holeNumber} exceeds league hole count (${league.num_holes})`);
+            }
+            const { data: player, error: playerError } = yield database_1.supabase
+                .from('league_players')
+                .select('id, enrollment_status')
+                .eq('id', leaguePlayerId)
+                .single();
+            if (playerError || !player) {
+                throw new Error('Player not found');
+            }
+            if (player.enrollment_status !== 'active') {
+                throw new Error(`Player enrollment status is '${player.enrollment_status}'. Must be active to submit scores.`);
+            }
+        });
+    }
     submitScore(data) {
         return __awaiter(this, void 0, void 0, function* () {
             const { leagueWeekId, leaguePlayerId, holeNumber, strokes, bayId, enteredVia = 'kiosk' } = data;
+            yield this.validateScoreSubmission(data);
             const { data: result, error } = yield database_1.supabase.rpc('submit_league_score', {
                 p_league_week_id: leagueWeekId,
                 p_league_player_id: leaguePlayerId,

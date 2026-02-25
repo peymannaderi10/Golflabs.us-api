@@ -253,6 +253,14 @@ export class LeagueController {
 
   submitScore = async (req: Request, res: Response) => {
     try {
+      const { leagueWeekId, leaguePlayerId, holeNumber, strokes } = req.body;
+      if (!leagueWeekId || !leaguePlayerId || !holeNumber || strokes === undefined) {
+        return res.status(400).json({ error: 'leagueWeekId, leaguePlayerId, holeNumber, and strokes are required' });
+      }
+      if (!Number.isInteger(strokes) || strokes < 1 || strokes > 20) {
+        return res.status(400).json({ error: 'Strokes must be an integer between 1 and 20' });
+      }
+
       const result = await this.leagueService.submitScore(req.body);
 
       // Get player info for the broadcast payload
@@ -285,7 +293,8 @@ export class LeagueController {
       res.json(result);
     } catch (error: any) {
       console.error('Error submitting score:', error);
-      res.status(500).json({ error: error.message });
+      const status = error.message.includes('not found') || error.message.includes('Must be active') || error.message.includes('Cannot submit') || error.message.includes('exceeds') ? 400 : 500;
+      res.status(status).json({ error: error.message });
     }
   };
 

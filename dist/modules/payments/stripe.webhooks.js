@@ -17,7 +17,7 @@ const promotion_service_1 = require("../promotions/promotion.service");
 const league_service_1 = require("../leagues/league.service");
 function handleStripeWebhook(req, res, socketService) {
     return __awaiter(this, void 0, void 0, function* () {
-        var _a;
+        var _a, _b, _c;
         const sig = req.headers['stripe-signature'];
         if (!stripe_1.webhookSecret) {
             console.error("Stripe webhook secret not found.");
@@ -94,6 +94,64 @@ function handleStripeWebhook(req, res, socketService) {
                                     catch (teamError) {
                                         console.error(`Error checking team payment status:`, teamError);
                                     }
+                                }
+                                // Send enrollment confirmation email
+                                try {
+                                    const { data: player } = yield database_1.supabase
+                                        .from('league_players')
+                                        .select('user_id, display_name')
+                                        .eq('id', leaguePlayerId)
+                                        .single();
+                                    const { data: league } = yield database_1.supabase
+                                        .from('leagues')
+                                        .select('name, format, day_of_week, start_time, total_weeks, season_fee, weekly_prize_pot, status')
+                                        .eq('id', leagueId)
+                                        .single();
+                                    const { data: firstWeek } = yield database_1.supabase
+                                        .from('league_weeks')
+                                        .select('date')
+                                        .eq('league_id', leagueId)
+                                        .order('week_number')
+                                        .limit(1)
+                                        .single();
+                                    if (player && league) {
+                                        const { data: userProfile } = yield database_1.supabase
+                                            .from('user_profiles')
+                                            .select('email')
+                                            .eq('id', player.user_id)
+                                            .single();
+                                        if (userProfile === null || userProfile === void 0 ? void 0 : userProfile.email) {
+                                            const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+                                            const formatLabels = { stroke_play: 'Individual (Stroke Play)', match_play: 'Individual (Match Play)', team: 'Team' };
+                                            const prizePotTotal = parseFloat(paymentIntent.metadata.prize_pot_total || '0');
+                                            const totalPaid = (paymentIntent.amount || 0) / 100;
+                                            const startDate = (firstWeek === null || firstWeek === void 0 ? void 0 : firstWeek.date)
+                                                ? new Date(firstWeek.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+                                                : 'TBD';
+                                            const [h, m] = (league.start_time || '19:00').split(':');
+                                            const hour = parseInt(h, 10);
+                                            const ampm = hour >= 12 ? 'PM' : 'AM';
+                                            const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
+                                            const frontendUrl = process.env.FRONTEND_URL || 'https://golflabs.us';
+                                            email_service_1.EmailService.sendLeagueEnrollmentEmail({
+                                                playerName: player.display_name,
+                                                playerEmail: userProfile.email,
+                                                leagueName: league.name,
+                                                format: formatLabels[league.format] || league.format,
+                                                dayOfWeek: dayNames[league.day_of_week] || 'TBD',
+                                                startTime: `${displayHour}:${m} ${ampm}`,
+                                                totalWeeks: league.total_weeks,
+                                                seasonFee: league.season_fee || 0,
+                                                prizePotTotal,
+                                                totalPaid,
+                                                startDate,
+                                                dashboardUrl: `${frontendUrl}/dashboard`,
+                                            });
+                                        }
+                                    }
+                                }
+                                catch (emailError) {
+                                    console.error(`Error sending enrollment confirmation email:`, emailError);
                                 }
                             }
                         }
@@ -426,18 +484,59 @@ function handleStripeWebhook(req, res, socketService) {
                     const refundEvent = event; // Type assertion for refund events
                     const refund = refundEvent.data.object;
                     const refundBookingId = (_a = refund.metadata) === null || _a === void 0 ? void 0 : _a.booking_id;
+                    const refundLeaguePlayerId = (_b = refund.metadata) === null || _b === void 0 ? void 0 : _b.league_player_id;
+                    const refundLeagueId = (_c = refund.metadata) === null || _c === void 0 ? void 0 : _c.league_id;
+                    // League enrollment refund
+                    if (refundLeaguePlayerId && refundLeagueId) {
+                        if (event.type === 'refund.created') {
+                            console.log(`League refund created for player ${refundLeaguePlayerId} in league ${refundLeagueId}, refund ID: ${refund.id}`);
+                            const { error: leagueRefundError } = yield database_1.supabase
+                                .from('league_players')
+                                .update({
+                                season_paid: false,
+                                prize_pot_paid: false,
+                                enrollment_status: 'withdrawn',
+                            })
+                                .eq('id', refundLeaguePlayerId);
+                            if (leagueRefundError) {
+                                console.error(`Error updating league player ${refundLeaguePlayerId} on refund:`, leagueRefundError);
+                            }
+                            else {
+                                console.log(`League player ${refundLeaguePlayerId} marked as withdrawn (refund created).`);
+                            }
+                        }
+                        else if (event.type === 'refund.updated') {
+                            console.log(`League refund updated for player ${refundLeaguePlayerId}, status: ${refund.status}`);
+                            if (refund.status === 'succeeded') {
+                                const { error } = yield database_1.supabase
+                                    .from('league_players')
+                                    .update({ enrollment_status: 'withdrawn', season_paid: false, prize_pot_paid: false })
+                                    .eq('id', refundLeaguePlayerId);
+                                if (error) {
+                                    console.error(`Error finalizing league refund for player ${refundLeaguePlayerId}:`, error);
+                                }
+                                else {
+                                    console.log(`League refund succeeded for player ${refundLeaguePlayerId}. Status: withdrawn.`);
+                                }
+                            }
+                            else if (refund.status === 'failed') {
+                                console.error(`League refund FAILED for player ${refundLeaguePlayerId}. Manual review required.`);
+                            }
+                        }
+                        break;
+                    }
+                    // Booking refund
                     if (!refundBookingId) {
-                        console.warn(`Refund webhook received with no booking_id in metadata: ${refund.id}, event type: ${event.type}`);
+                        console.warn(`Refund webhook received with no booking_id or league_player_id in metadata: ${refund.id}, event type: ${event.type}`);
                         break;
                     }
                     if (event.type === 'refund.created') {
                         console.log(`Refund created for booking ID: ${refundBookingId}, refund ID: ${refund.id}`);
-                        // Update payment record with refund information
                         const { error: refundCreateError } = yield database_1.supabase
                             .from('payments')
                             .update({
                             status: 'refunding',
-                            refund_amount: refund.amount / 100, // convert cents to dollars
+                            refund_amount: refund.amount / 100,
                             refunded_at: new Date().toISOString()
                         })
                             .eq('booking_id', refundBookingId);
@@ -474,14 +573,12 @@ function handleStripeWebhook(req, res, socketService) {
                     }
                     else if (event.type.includes('refund') && event.type.includes('failed')) {
                         console.log(`Refund failed for booking ID: ${refundBookingId}, refund ID: ${refund.id}`);
-                        // Update payment status to indicate refund failed
                         const { error: refundFailedError } = yield database_1.supabase
                             .from('payments')
                             .update({
                             status: 'refund_failed'
                         })
                             .eq('booking_id', refundBookingId);
-                        // Update the cancellation record with failure information
                         const { error: cancellationUpdateError } = yield database_1.supabase
                             .from('bookings_cancellations')
                             .update({

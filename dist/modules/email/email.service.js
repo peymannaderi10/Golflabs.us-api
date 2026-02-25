@@ -244,7 +244,18 @@ class EmailService {
             }
             catch (error) {
                 console.error(`Failed to send attendance reminder to ${data.playerEmail}:`, error);
-                // Don't throw — reminder is best-effort
+            }
+        });
+    }
+    static sendLeagueEnrollmentEmail(data) {
+        return __awaiter(this, void 0, void 0, function* () {
+            try {
+                const template = email_templates_1.EmailTemplates.enrollmentConfirmation(data);
+                yield this.sendEmail(data.playerEmail, template.subject, template.html);
+                console.log(`Sent league enrollment confirmation to ${data.playerEmail} for "${data.leagueName}"`);
+            }
+            catch (error) {
+                console.error(`Failed to send league enrollment email to ${data.playerEmail}:`, error);
             }
         });
     }
