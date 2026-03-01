@@ -3,8 +3,6 @@ import { EmailTemplate, BookingEmailData, TeamInviteEmailData, TeamStatusEmailDa
 
 export class EmailTemplates {
   static thankYou(data: BookingEmailData): EmailTemplate {
-    const formattedAmount = (data.totalAmount / 100).toFixed(2);
-    
     // Convert UTC times to location timezone
     const timezone = data.locationTimezone || 'America/New_York';
     const localStartTime = toZonedTime(new Date(data.startTime), timezone);
@@ -189,19 +187,9 @@ export class EmailTemplates {
                     <span class="text-tertiary" style="font-weight: 500;">${startDate}</span>
                   </div>
                   
-                  <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid;" class="border-light">
+                  <div style="display: flex; align-items: center; padding: 10px 0;">
                     <span style="color: #4a7c59; font-weight: 600; width: 120px; display: inline-block;">⏰ Time:</span>
                     <span class="text-tertiary" style="font-weight: 500;">${startTime} - ${endTime}</span>
-                  </div>
-                  
-                  <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid;" class="border-light">
-                    <span style="color: #4a7c59; font-weight: 600; width: 120px; display: inline-block;">💰 Total:</span>
-                    <span class="text-primary" style="font-weight: 700; font-size: 18px;">$${formattedAmount}</span>
-                  </div>
-                  
-                  <div style="display: flex; align-items: center; padding: 10px 0;">
-                    <span style="color: #4a7c59; font-weight: 600; width: 120px; display: inline-block;">🎫 Booking ID:</span>
-                    <span class="text-muted" style="font-family: monospace; font-size: 14px;">${data.bookingId}</span>
                   </div>
                 </div>
               </div>
@@ -248,8 +236,6 @@ export class EmailTemplates {
         🏌️ Bay: ${data.bayName}
         📅 Date: ${startDate}
         ⏰ Time: ${startTime} - ${endTime}
-        💰 Total: $${formattedAmount}
-        🎫 Booking ID: ${data.bookingId}
         
         📱 WHAT'S NEXT:
         You'll receive an email reminder 15 minutes before your session with your bay unlock link.
