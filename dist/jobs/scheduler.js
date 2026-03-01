@@ -14,8 +14,9 @@ function startScheduler() {
     setInterval(expired_reservations_job_1.handleExpiredReservations, 2 * 60 * 1000);
     // Run the notification dispatch every minute
     setInterval(notifications_job_1.dispatchNotifications, 60 * 1000);
-    // Run the reminder check every 5 minutes
-    setInterval(reminder_job_1.enqueueReminders, 5 * 60 * 1000);
+    // Run the reminder check every minute (and immediately on startup)
+    (0, reminder_job_1.enqueueReminders)(); // Run immediately so we don't miss reminders if server just started
+    setInterval(reminder_job_1.enqueueReminders, 60 * 1000);
     // Run handicap recalculation daily at 3 AM as a safety net
     // (Primary trigger is on-demand via LeagueService.finalizeWeek)
     const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
@@ -32,5 +33,5 @@ function startScheduler() {
     // Lock attendance and optionally adjust capacity holds at cutoff time
     // Checks every 5 minutes
     setInterval(attendance_cutoff_job_1.processAttendanceCutoffs, 5 * 60 * 1000);
-    console.log('Background job scheduler started (expiration: 2min, notifications: 1min, reminders: 5min, handicaps: 24h, team-deadlines: 5min, league-mode-deactivate: 5min, attendance-reminders: 5min, attendance-cutoffs: 5min)');
+    console.log('Background job scheduler started (expiration: 2min, notifications: 1min, reminders: 1min, handicaps: 24h, team-deadlines: 5min, league-mode-deactivate: 5min, attendance-reminders: 5min, attendance-cutoffs: 5min)');
 }

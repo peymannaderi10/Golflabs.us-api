@@ -21,15 +21,17 @@ function generateUnlockToken(bookingId: string, startTime: string, endTime: stri
 }
 
 /**
- * Process booking reminders for sessions starting in ~15 minutes
+ * Process booking reminders for sessions starting in the next 16 minutes.
+ * - Ideal: 14-16 min window sends ~15 min before booking
+ * - Fallback: 0-14 min window catches any we missed (e.g. server was down) - better late than never
  */
 export async function enqueueReminders(): Promise<void> {
   try {
     const now = Date.now();
-    const remindAt = new Date(now + 15 * 60 * 1000).toISOString(); // 15 minutes from now
-    const windowStart = new Date(now + 14 * 60 * 1000).toISOString(); // 14 minutes from now
+    const windowStart = new Date(now).toISOString(); // from now
+    const windowEnd = new Date(now + 16 * 60 * 1000).toISOString(); // up to 16 min from now
 
-    console.log(`[Reminder Job] Looking for bookings starting between ${windowStart} and ${remindAt}`);
+    console.log(`[Reminder Job] Looking for bookings starting between ${windowStart} and ${windowEnd}`);
 
     // Find confirmed bookings starting in ~15 minutes
     const { data: upcomingBookings, error } = await supabase
@@ -37,7 +39,7 @@ export async function enqueueReminders(): Promise<void> {
       .select('id, user_id, location_id, start_time, end_time')
       .eq('status', 'confirmed')
       .gte('start_time', windowStart)
-      .lte('start_time', remindAt);
+      .lte('start_time', windowEnd);
 
     if (error) {
       console.error('[Reminder Job] Error fetching upcoming bookings:', error);

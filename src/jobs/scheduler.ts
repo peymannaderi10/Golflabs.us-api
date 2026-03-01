@@ -14,8 +14,9 @@ export function startScheduler() {
   // Run the notification dispatch every minute
   setInterval(dispatchNotifications, 60 * 1000);
   
-  // Run the reminder check every 5 minutes
-  setInterval(enqueueReminders, 5 * 60 * 1000);
+  // Run the reminder check every minute (and immediately on startup)
+  enqueueReminders(); // Run immediately so we don't miss reminders if server just started
+  setInterval(enqueueReminders, 60 * 1000);
 
   // Run handicap recalculation daily at 3 AM as a safety net
   // (Primary trigger is on-demand via LeagueService.finalizeWeek)
@@ -38,5 +39,5 @@ export function startScheduler() {
   // Checks every 5 minutes
   setInterval(processAttendanceCutoffs, 5 * 60 * 1000);
   
-  console.log('Background job scheduler started (expiration: 2min, notifications: 1min, reminders: 5min, handicaps: 24h, team-deadlines: 5min, league-mode-deactivate: 5min, attendance-reminders: 5min, attendance-cutoffs: 5min)');
+  console.log('Background job scheduler started (expiration: 2min, notifications: 1min, reminders: 1min, handicaps: 24h, team-deadlines: 5min, league-mode-deactivate: 5min, attendance-reminders: 5min, attendance-cutoffs: 5min)');
 } 
