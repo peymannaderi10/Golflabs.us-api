@@ -741,19 +741,9 @@ export class EmailTemplates {
                     <span class="text-tertiary" style="font-weight: 500;">${startDate}</span>
                   </div>
                   
-                  <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid;" class="border-light">
+                  <div style="display: flex; align-items: center; padding: 10px 0;">
                     <span style="color: #dc3545; font-weight: 600; width: 120px; display: inline-block;">⏰ Time:</span>
                     <span class="text-tertiary" style="font-weight: 500;">${startTime} - ${endTime}</span>
-                  </div>
-                  
-                  <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid;" class="border-light">
-                    <span style="color: #dc3545; font-weight: 600; width: 120px; display: inline-block;">💰 Amount:</span>
-                    <span class="text-tertiary" style="font-weight: 500;">$${formattedAmount}</span>
-                  </div>
-                  
-                  <div style="display: flex; align-items: center; padding: 10px 0;">
-                    <span style="color: #dc3545; font-weight: 600; width: 120px; display: inline-block;">🎫 Booking ID:</span>
-                    <span class="text-muted" style="font-family: monospace; font-size: 14px;">${data.bookingId}</span>
                   </div>
                 </div>
               </div>
@@ -830,8 +820,6 @@ export class EmailTemplates {
         🏌️ Bay: ${data.bayName}
         📅 Date: ${startDate}
         ⏰ Time: ${startTime} - ${endTime}
-        💰 Amount: $${formattedAmount}
-        🎫 Booking ID: ${data.bookingId}
         
         ${data.refundProcessed ? `
         💳 REFUND INFORMATION:
