@@ -451,7 +451,7 @@ class BookingService {
         booking_cancellations(cancelled_by, cancellation_reason, refund_amount, cancelled_at)
       `)
                 .eq('location_id', locationId)
-                .neq('status', 'abandoned'); // Exclude abandoned bookings - they are incomplete/expired reservations
+                .in('status', ['confirmed', 'cancelled']); // Only show actual reservations; exclude expired/abandoned
             if (startDate || endDate) {
                 // Get the location's timezone first
                 const { data: location } = yield database_1.supabase
