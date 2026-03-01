@@ -82,37 +82,24 @@ export async function enqueueReminders(): Promise<void> {
 
     console.log(`[Reminder Job] Processing ${bookingsNeedingReminders.length} bookings without reminders`);
 
-    // BATCH OPERATION: Prepare all booking updates
-    const bookingUpdates = bookingsNeedingReminders.map(booking => {
-      const token = generateUnlockToken(booking.id, booking.start_time, booking.end_time);
-      return {
-        id: booking.id,
-        location_id: booking.location_id,
-        unlock_token: token,
-        unlock_token_expires_at: booking.end_time
-      };
-    });
-
-    // BATCH OPERATION: Update all bookings with unlock tokens at once
-    if (bookingUpdates.length > 0) {
-      const { error: updateError } = await supabase
-        .from('bookings')
-        .upsert(bookingUpdates, { 
-          onConflict: 'id',
-          ignoreDuplicates: false 
-        });
-
-      if (updateError) {
-        console.error('[Reminder Job] Error batch updating booking tokens:', updateError);
-        return;
-      }
-    }
-
-    // Process reminder emails (these need to be individual due to email service design)
     for (const booking of bookingsNeedingReminders) {
       try {
         const token = generateUnlockToken(booking.id, booking.start_time, booking.end_time);
         const unlockLink = `${resendConfig.frontendUrl}/unlock?token=${token}`;
+
+        // Update booking with unlock token (partial update - only these columns)
+        const { error: updateError } = await supabase
+          .from('bookings')
+          .update({
+            unlock_token: token,
+            unlock_token_expires_at: booking.end_time
+          })
+          .eq('id', booking.id);
+
+        if (updateError) {
+          console.error(`[Reminder Job] Error updating unlock token for booking ${booking.id}:`, updateError);
+          continue;
+        }
 
         // Queue the reminder email
         await EmailService.sendReminderEmail(booking.id, token, unlockLink);
