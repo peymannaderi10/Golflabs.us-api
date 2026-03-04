@@ -23,6 +23,7 @@ export const createBookingRoutes = (socketService: SocketService): Router => {
   bookingRoutes.get('/employee', authenticateEmployee, controller.getEmployeeBookings);
   bookingRoutes.get('/employee/customers/search', authenticateEmployee, controller.searchCustomers);
   bookingRoutes.post('/employee/create', authenticateEmployee, controller.employeeCreateBooking);
+  bookingRoutes.post('/employee/:bookingId/extend', authenticateEmployee, controller.employeeExtendBooking);
   bookingRoutes.post('/employee/:bookingId/cancel', authenticateEmployee, controller.employeeCancelBooking);
 
   return bookingRoutes;

@@ -20,6 +20,7 @@ const createBookingRoutes = (socketService) => {
     bookingRoutes.get('/employee', employee_middleware_1.authenticateEmployee, controller.getEmployeeBookings);
     bookingRoutes.get('/employee/customers/search', employee_middleware_1.authenticateEmployee, controller.searchCustomers);
     bookingRoutes.post('/employee/create', employee_middleware_1.authenticateEmployee, controller.employeeCreateBooking);
+    bookingRoutes.post('/employee/:bookingId/extend', employee_middleware_1.authenticateEmployee, controller.employeeExtendBooking);
     bookingRoutes.post('/employee/:bookingId/cancel', employee_middleware_1.authenticateEmployee, controller.employeeCancelBooking);
     return bookingRoutes;
 };

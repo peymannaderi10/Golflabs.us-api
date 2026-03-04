@@ -1240,5 +1240,212 @@ class BookingService {
             };
         });
     }
+    /**
+     * Employee-initiated booking extension.
+     * Validates availability, updates end_time, and optionally charges the saved card.
+     * When skipPayment is true the time is extended without a Stripe charge.
+     */
+    employeeExtendBooking(bookingId_1, extensionMinutes_1, locationId_1, bayId_1, employeeId_1) {
+        return __awaiter(this, arguments, void 0, function* (bookingId, extensionMinutes, locationId, bayId, employeeId, skipPayment = false) {
+            if (!bookingId || !extensionMinutes || !locationId || !bayId) {
+                throw new Error('bookingId, extensionMinutes, locationId, and bayId are required');
+            }
+            if (![15, 30, 45, 60].includes(extensionMinutes)) {
+                throw new Error('extensionMinutes must be 15, 30, 45, or 60');
+            }
+            // 1. Fetch and validate the booking
+            const { data: booking, error: bookingError } = yield database_1.supabase
+                .from('bookings')
+                .select('id, location_id, bay_id, user_id, start_time, end_time, status, total_amount')
+                .eq('id', bookingId)
+                .single();
+            if (bookingError || !booking) {
+                throw new Error('Booking not found');
+            }
+            if (booking.status !== 'confirmed') {
+                throw new Error('Booking is not confirmed');
+            }
+            if (booking.bay_id !== bayId || booking.location_id !== locationId) {
+                throw new Error('Booking does not match the specified bay/location');
+            }
+            const now = new Date();
+            const currentEndTime = new Date(booking.end_time);
+            if (now >= currentEndTime) {
+                throw new Error('Booking has already ended');
+            }
+            // 2. Check availability for the extension window
+            const newEndTime = new Date(currentEndTime.getTime() + extensionMinutes * 60 * 1000);
+            const { data: conflicts, error: conflictError } = yield database_1.supabase
+                .from('bookings')
+                .select('id')
+                .eq('bay_id', bayId)
+                .neq('id', bookingId)
+                .not('status', 'in', '("cancelled","expired","abandoned")')
+                .lt('start_time', newEndTime.toISOString())
+                .gt('end_time', currentEndTime.toISOString());
+            if (conflictError) {
+                throw new Error('Failed to check availability');
+            }
+            if (conflicts && conflicts.length > 0) {
+                throw new Error('Extension would conflict with another booking');
+            }
+            // 3. Calculate the extension price
+            const { data: location } = yield database_1.supabase
+                .from('locations')
+                .select('timezone')
+                .eq('id', locationId)
+                .single();
+            const timezone = (location === null || location === void 0 ? void 0 : location.timezone) || 'America/New_York';
+            const { data: allRules } = yield database_1.supabase
+                .from('pricing_rules')
+                .select('name, hourly_rate, is_extension_rate')
+                .eq('location_id', locationId)
+                .eq('is_active', true);
+            const extensionRules = (allRules === null || allRules === void 0 ? void 0 : allRules.filter(r => r.is_extension_rate)) || [];
+            const regularRules = (allRules === null || allRules === void 0 ? void 0 : allRules.filter(r => !r.is_extension_rate)) || [];
+            const rulesToUse = extensionRules.length > 0 ? extensionRules : regularRules;
+            if (rulesToUse.length === 0) {
+                throw new Error('No pricing rules found');
+            }
+            let totalCents = 0;
+            let cursor = new Date(currentEndTime);
+            while (cursor < newEndTime) {
+                const localHour = parseInt(cursor.toLocaleString('en-US', {
+                    hour: '2-digit',
+                    hour12: false,
+                    timeZone: timezone
+                }));
+                let rule;
+                if (localHour >= 9 || localHour < 2) {
+                    rule = rulesToUse.find(r => r.name.includes('Standard'));
+                }
+                else {
+                    rule = rulesToUse.find(r => r.name.includes('Off-Peak') || r.name.includes('Off Peak'));
+                }
+                if (!rule)
+                    rule = rulesToUse[0];
+                totalCents += (rule.hourly_rate * 100) / 4;
+                cursor.setUTCMinutes(cursor.getUTCMinutes() + 15);
+            }
+            totalCents = Math.round(totalCents);
+            // 4. Charge the saved card unless skipPayment is true
+            if (!skipPayment) {
+                const { data: userProfile, error: userError } = yield database_1.supabase
+                    .from('user_profiles')
+                    .select('stripe_customer_id')
+                    .eq('id', booking.user_id)
+                    .single();
+                if (userError || !(userProfile === null || userProfile === void 0 ? void 0 : userProfile.stripe_customer_id)) {
+                    throw new Error('No payment method on file for this customer');
+                }
+                const customerId = userProfile.stripe_customer_id;
+                const paymentMethods = yield stripe_1.stripe.paymentMethods.list({
+                    customer: customerId,
+                    type: 'card',
+                    limit: 1
+                });
+                if (!paymentMethods.data || paymentMethods.data.length === 0) {
+                    throw new Error('No saved card found for this customer');
+                }
+                const paymentMethodId = paymentMethods.data[0].id;
+                let paymentIntent;
+                try {
+                    paymentIntent = yield stripe_1.stripe.paymentIntents.create({
+                        amount: totalCents,
+                        currency: 'usd',
+                        customer: customerId,
+                        payment_method: paymentMethodId,
+                        off_session: true,
+                        confirm: true,
+                        metadata: {
+                            booking_id: bookingId,
+                            user_id: booking.user_id,
+                            bay_id: bayId,
+                            location_id: locationId,
+                            extension: 'true',
+                            extension_minutes: extensionMinutes.toString(),
+                            original_end_time: currentEndTime.toISOString(),
+                            initiated_by: 'employee',
+                            employee_id: employeeId
+                        }
+                    });
+                }
+                catch (stripeError) {
+                    console.error(`Employee extension payment failed for booking ${bookingId}:`, stripeError.message);
+                    yield database_1.supabase.from('access_logs').insert({
+                        location_id: locationId,
+                        bay_id: bayId,
+                        booking_id: bookingId,
+                        user_id: booking.user_id,
+                        action: 'extension_payment_failed',
+                        success: false,
+                        error_message: stripeError.message,
+                        user_agent: 'Employee Dashboard',
+                        metadata: { extension_minutes: extensionMinutes, amount_cents: totalCents, employee_id: employeeId }
+                    });
+                    throw new Error('Payment failed: ' + stripeError.message);
+                }
+                // Create payment record
+                const cardDetails = paymentMethods.data[0].card;
+                yield database_1.supabase.from('payments').insert({
+                    booking_id: bookingId,
+                    amount: totalCents / 100,
+                    status: 'succeeded',
+                    stripe_payment_intent_id: paymentIntent.id,
+                    currency: 'usd',
+                    user_id: booking.user_id,
+                    location_id: locationId,
+                    payment_method: 'card',
+                    card_last_four: (cardDetails === null || cardDetails === void 0 ? void 0 : cardDetails.last4) || null,
+                    card_brand: (cardDetails === null || cardDetails === void 0 ? void 0 : cardDetails.brand) || null,
+                    processed_at: new Date().toISOString()
+                });
+            }
+            // 5. Extend the booking end_time and update total_amount
+            const newTotalAmount = skipPayment
+                ? (booking.total_amount || 0)
+                : (booking.total_amount || 0) + (totalCents / 100);
+            const { error: updateError } = yield database_1.supabase
+                .from('bookings')
+                .update({
+                end_time: newEndTime.toISOString(),
+                total_amount: newTotalAmount
+            })
+                .eq('id', bookingId);
+            if (updateError) {
+                console.error(`Error extending booking ${bookingId}:`, updateError);
+                throw new Error('Failed to extend booking');
+            }
+            // 6. Log the successful extension
+            yield database_1.supabase.from('access_logs').insert({
+                location_id: locationId,
+                bay_id: bayId,
+                booking_id: bookingId,
+                user_id: booking.user_id,
+                action: 'extension_accepted',
+                success: true,
+                user_agent: 'Employee Dashboard',
+                metadata: {
+                    extension_minutes: extensionMinutes,
+                    amount_cents: skipPayment ? 0 : totalCents,
+                    original_end_time: currentEndTime.toISOString(),
+                    new_end_time: newEndTime.toISOString(),
+                    skip_payment: skipPayment,
+                    employee_id: employeeId
+                }
+            });
+            console.log(`Employee ${employeeId} extended booking ${bookingId} by ${extensionMinutes} min. New end: ${newEndTime.toISOString()}${skipPayment ? ' (no charge)' : `, charged $${(totalCents / 100).toFixed(2)}`}`);
+            return {
+                success: true,
+                bookingId,
+                locationId,
+                bayId,
+                newEndTime: newEndTime.toISOString(),
+                amountCharged: skipPayment ? 0 : totalCents / 100,
+                amountChargedFormatted: skipPayment ? '$0.00' : `$${(totalCents / 100).toFixed(2)}`,
+                paymentSkipped: skipPayment
+            };
+        });
+    }
 }
 exports.BookingService = BookingService;

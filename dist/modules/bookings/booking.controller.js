@@ -226,6 +226,37 @@ class BookingController {
                 res.status(500).json({ error: error.message || 'Failed to extend booking' });
             }
         });
+        this.employeeExtendBooking = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            try {
+                const { bookingId } = req.params;
+                const { extensionMinutes, locationId, bayId, skipPayment } = req.body;
+                const employeeProfile = req.employeeProfile;
+                if (!employeeProfile) {
+                    return res.status(403).json({ error: 'Employee authentication required' });
+                }
+                if (!extensionMinutes || !locationId || !bayId) {
+                    return res.status(400).json({ error: 'extensionMinutes, locationId, and bayId are required' });
+                }
+                const result = yield this.bookingService.employeeExtendBooking(bookingId, extensionMinutes, locationId, bayId, employeeProfile.id, skipPayment === true);
+                res.json(result);
+                if (result.locationId && result.bayId) {
+                    this.socketService.triggerBookingUpdate(result.locationId, result.bayId, bookingId);
+                }
+            }
+            catch (error) {
+                console.error(`Error in employee extend booking ${req.params.bookingId}:`, error);
+                if (error.message === 'Booking not found') {
+                    return res.status(404).json({ error: error.message });
+                }
+                if (error.message.includes('conflict') || error.message.includes('already ended') || error.message.includes('not confirmed')) {
+                    return res.status(409).json({ error: error.message });
+                }
+                if (error.message.includes('Payment failed') || error.message.includes('No payment method') || error.message.includes('No saved card')) {
+                    return res.status(402).json({ error: error.message });
+                }
+                res.status(500).json({ error: error.message || 'Failed to extend booking' });
+            }
+        });
         // Employee create booking - bypasses Stripe payment
         this.employeeCreateBooking = (req, res) => __awaiter(this, void 0, void 0, function* () {
             try {
