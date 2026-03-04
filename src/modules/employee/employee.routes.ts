@@ -3,7 +3,7 @@ import { employeeController } from './employee.controller';
 import { LocationController } from '../locations/location.controller';
 import { PricingController } from '../pricing/pricing.controller';
 import { LogController } from '../logs/log.controller';
-import { authenticateEmployee } from '../bookings/employee.middleware';
+import { authenticateEmployee } from '../auth';
 
 const router = Router();
 const locationController = new LocationController();
@@ -17,55 +17,55 @@ const logController = new LogController();
  * GET /employee/reports/overview
  * Combined dashboard summary with key metrics
  */
-router.get('/reports/overview', (req, res) => employeeController.getOverview(req, res));
+router.get('/reports/overview', authenticateEmployee, (req, res) => employeeController.getOverview(req, res));
 
 /**
  * GET /employee/reports/revenue
  * Detailed revenue statistics with daily breakdown
  */
-router.get('/reports/revenue', (req, res) => employeeController.getRevenueStats(req, res));
+router.get('/reports/revenue', authenticateEmployee, (req, res) => employeeController.getRevenueStats(req, res));
 
 /**
  * GET /employee/reports/bookings
  * Booking analytics including hourly distribution for heatmap
  */
-router.get('/reports/bookings', (req, res) => employeeController.getBookingStats(req, res));
+router.get('/reports/bookings', authenticateEmployee, (req, res) => employeeController.getBookingStats(req, res));
 
 /**
  * GET /employee/reports/bays
  * Bay performance and utilization statistics
  */
-router.get('/reports/bays', (req, res) => employeeController.getBayStats(req, res));
+router.get('/reports/bays', authenticateEmployee, (req, res) => employeeController.getBayStats(req, res));
 
 /**
  * GET /employee/reports/access-logs
  * Access log statistics including success rates and common errors
  */
-router.get('/reports/access-logs', (req, res) => employeeController.getAccessLogStats(req, res));
+router.get('/reports/access-logs', authenticateEmployee, (req, res) => employeeController.getAccessLogStats(req, res));
 
 /**
  * GET /employee/reports/export
  * Export reports as CSV
  */
-router.get('/reports/export', (req, res) => employeeController.exportReport(req, res));
+router.get('/reports/export', authenticateEmployee, (req, res) => employeeController.exportReport(req, res));
 
 /**
  * GET /employee/customers
  * List customers (paginated)
  */
-router.get('/customers', (req, res) => employeeController.getCustomers(req, res));
+router.get('/customers', authenticateEmployee, (req, res) => employeeController.getCustomers(req, res));
 
 /**
  * GET /employee/customers/:id
  * Get customer details
  */
-router.get('/customers/:id', (req, res) => employeeController.getCustomerDetails(req, res));
+router.get('/customers/:id', authenticateEmployee, (req, res) => employeeController.getCustomerDetails(req, res));
 
 /**
  * PUT /employee/customers/:id
  * Update customer details
  */
-router.put('/customers/:id', (req, res) => employeeController.updateCustomer(req, res));
+router.put('/customers/:id', authenticateEmployee, (req, res) => employeeController.updateCustomer(req, res));
 
 /**
  * PUT /employee/locations/:locationId

@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { SocketService } from '../sockets/socket.service';
 import { UnlockController } from './unlock.controller';
-import { authenticateEmployee } from '../bookings/employee.middleware';
+import { authenticateEmployee } from '../auth';
 
 export const unlockRoutes = (socketService: SocketService) => {
   const router = Router();

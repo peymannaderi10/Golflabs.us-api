@@ -122,7 +122,7 @@ function handleStripeWebhook(req, res, socketService) {
                                             .single();
                                         if (userProfile === null || userProfile === void 0 ? void 0 : userProfile.email) {
                                             const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-                                            const formatLabels = { stroke_play: 'Individual (Stroke Play)', match_play: 'Individual (Match Play)', team: 'Team' };
+                                            const formatLabels = { stroke_play: 'Individual (Stroke Play)', team: 'Team' };
                                             const prizePotTotal = parseFloat(paymentIntent.metadata.prize_pot_total || '0');
                                             const totalPaid = (paymentIntent.amount || 0) / 100;
                                             const startDate = (firstWeek === null || firstWeek === void 0 ? void 0 : firstWeek.date)

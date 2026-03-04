@@ -20,6 +20,7 @@ import { createLeagueRoutes, createTeamInviteRoutes, createAttendanceRoutes } fr
 import agreementRoutes from './modules/agreements/agreement.routes';
 import { BookingController } from './modules/bookings/booking.controller';
 import { SocketService } from './modules/sockets/socket.service';
+import { authenticateUser } from './modules/auth';
 
 export const app = express();
 export const httpServer = createServer(app);
@@ -175,11 +176,11 @@ app.post('/validate-phone', async (req, res) => {
 const bookingController = new BookingController(socketService);
 
 // Backwards compatibility: User-specific booking routes at root level
-app.get('/users/:userId/bookings/reserved', bookingController.getUserReservedBookings);
-app.get('/users/:userId/bookings/future', bookingController.getUserFutureBookings);
-app.get('/users/:userId/bookings/past', bookingController.getUserPastBookings);
-app.post('/bookings/:bookingId/cancel', bookingController.cancelBooking);
-app.post('/bookings/:bookingId/cancel-reservation', bookingController.cancelReservedBooking);
+app.get('/users/:userId/bookings/reserved', authenticateUser, bookingController.getUserReservedBookings);
+app.get('/users/:userId/bookings/future', authenticateUser, bookingController.getUserFutureBookings);
+app.get('/users/:userId/bookings/past', authenticateUser, bookingController.getUserPastBookings);
+app.post('/bookings/:bookingId/cancel', authenticateUser, bookingController.cancelBooking);
+app.post('/bookings/:bookingId/cancel-reservation', authenticateUser, bookingController.cancelReservedBooking);
 
 // Module routes
 app.use('/bookings', createBookingRoutes(socketService));

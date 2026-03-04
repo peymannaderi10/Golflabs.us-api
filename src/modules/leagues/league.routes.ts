@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { LeagueController } from './league.controller';
 import { SocketService } from '../sockets/socket.service';
-import { authenticateEmployee } from '../bookings/employee.middleware';
+import { authenticateEmployee, authenticateUser } from '../auth';
 
 export const createLeagueRoutes = (socketService: SocketService): Router => {
   const router = Router();
@@ -12,7 +12,7 @@ export const createLeagueRoutes = (socketService: SocketService): Router => {
   router.get('/', controller.getLeaguesByLocation);                                 // ?locationId=
 
   // --- User-facing: my leagues (must be before /:leagueId to avoid capture) ---
-  router.get('/user/:userId', controller.getUserLeagues);
+  router.get('/user/:userId', authenticateUser, controller.getUserLeagues);
 
   router.get('/:leagueId', controller.getLeague);
   router.put('/:leagueId', authenticateEmployee, controller.updateLeague);
@@ -51,8 +51,8 @@ export const createLeagueRoutes = (socketService: SocketService): Router => {
   router.get('/:leagueId/leaderboard', controller.getLiveLeaderboard);
   router.get('/:leagueId/team-leaderboard', controller.getTeamLeaderboard);
 
-  // --- Payments ---
-  router.post('/:leagueId/enroll-and-pay', controller.enrollAndPay);
+  // --- Payments (authenticated user) ---
+  router.post('/:leagueId/enroll-and-pay', authenticateUser, controller.enrollAndPay);
 
   // --- Prize pool ledger ---
   router.get('/:leagueId/prize-pool', controller.getPrizePoolSummary);
@@ -63,12 +63,12 @@ export const createLeagueRoutes = (socketService: SocketService): Router => {
   // --- Kiosk state ---
   router.get('/:leagueId/kiosk-state', controller.getLeagueStateForKiosk);           // ?playerId= or ?userId=
 
-  // --- Team management ---
-  router.post('/:leagueId/teams', controller.createTeam);
+  // --- Team management (authenticated user for create/invite/pay) ---
+  router.post('/:leagueId/teams', authenticateUser, controller.createTeam);
   router.get('/:leagueId/teams', controller.getTeams);
   router.get('/:leagueId/teams/:teamId', controller.getTeam);
-  router.post('/:leagueId/teams/:teamId/invites', controller.inviteTeammates);
-  router.post('/:leagueId/teams/:teamId/pay', controller.enrollTeamPlayer);
+  router.post('/:leagueId/teams/:teamId/invites', authenticateUser, controller.inviteTeammates);
+  router.post('/:leagueId/teams/:teamId/pay', authenticateUser, controller.enrollTeamPlayer);
   router.post('/:leagueId/teams/:teamId/disqualify', authenticateEmployee, controller.disqualifyTeam);
 
   // --- Week management (employee-only) ---
@@ -76,11 +76,11 @@ export const createLeagueRoutes = (socketService: SocketService): Router => {
   router.post('/:leagueId/weeks/:weekId/skip', authenticateEmployee, controller.skipWeek);
   router.post('/:leagueId/weeks/:weekId/unskip', authenticateEmployee, controller.unskipWeek);
 
-  // --- Attendance confirmation (authenticated) ---
+  // --- Attendance confirmation ---
   router.get('/:leagueId/weeks/:weekId/attendance', controller.getWeekAttendance);
   router.get('/:leagueId/weeks/:weekId/attendance/summary', controller.getWeekAttendanceSummary);
-  router.put('/:leagueId/weeks/:weekId/attendance', controller.updateAttendance);
-  router.get('/:leagueId/attendance/me', controller.getMyAttendance);
+  router.put('/:leagueId/weeks/:weekId/attendance', authenticateUser, controller.updateAttendance);
+  router.get('/:leagueId/attendance/me', authenticateUser, controller.getMyAttendance);
   router.post('/:leagueId/weeks/:weekId/attendance/adjust', authenticateEmployee, controller.manualAdjustCapacity);
 
   // --- Team invites (public - token-based) ---
@@ -97,11 +97,11 @@ export const createTeamInviteRoutes = (socketService: SocketService): Router => 
   const controller = new LeagueController(socketService);
 
   router.get('/:token', controller.getInviteByToken);
-  router.post('/:token/accept', controller.acceptInvite);
-  router.post('/:token/decline', controller.declineInvite);
+  router.post('/:token/accept', authenticateUser, controller.acceptInvite);
+  router.post('/:token/decline', authenticateUser, controller.declineInvite);
 
   // User's teams
-  router.get('/user/:userId/teams', controller.getUserTeams);
+  router.get('/user/:userId/teams', authenticateUser, controller.getUserTeams);
 
   return router;
 };

@@ -130,7 +130,7 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
 
                   if (userProfile?.email) {
                     const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-                    const formatLabels: Record<string, string> = { stroke_play: 'Individual (Stroke Play)', match_play: 'Individual (Match Play)', team: 'Team' };
+                    const formatLabels: Record<string, string> = { stroke_play: 'Individual (Stroke Play)', team: 'Team' };
                     const prizePotTotal = parseFloat(paymentIntent.metadata.prize_pot_total || '0');
                     const totalPaid = (paymentIntent.amount || 0) / 100;
                     const startDate = firstWeek?.date

@@ -96,7 +96,7 @@ function sendAttendanceReminders() {
                         try {
                             // Get user info for the email
                             const { data: user } = yield database_1.supabase
-                                .from('users')
+                                .from('user_profiles')
                                 .select('full_name, email')
                                 .eq('id', row.user_id)
                                 .single();

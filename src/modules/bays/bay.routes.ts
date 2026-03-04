@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { BayController } from './bay.controller';
 import { SocketService } from '../sockets/socket.service';
-import { authenticateEmployee } from '../bookings/employee.middleware';
+import { authenticateEmployee } from '../auth';
 
 export const createBayRoutes = (socketService: SocketService): Router => {
   const bayRoutes = Router();

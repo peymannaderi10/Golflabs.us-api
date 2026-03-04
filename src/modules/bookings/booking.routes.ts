@@ -1,14 +1,14 @@
 import { Router } from 'express';
 import { BookingController } from './booking.controller';
 import { SocketService } from '../sockets/socket.service';
-import { authenticateEmployee } from './employee.middleware';
+import { authenticateEmployee, authenticateUser } from '../auth';
 
 export const createBookingRoutes = (socketService: SocketService): Router => {
   const bookingRoutes = Router();
   const controller = new BookingController(socketService);
 
   // Booking management routes
-  bookingRoutes.post('/reserve', controller.reserveBooking);
+  bookingRoutes.post('/reserve', authenticateUser, controller.reserveBooking);
   bookingRoutes.get('/', controller.getBookings);
 
   // Capacity holds (public, no auth - needed by booking page)

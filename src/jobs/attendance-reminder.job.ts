@@ -97,7 +97,7 @@ export async function sendAttendanceReminders(): Promise<void> {
           try {
             // Get user info for the email
             const { data: user } = await supabase
-              .from('users')
+              .from('user_profiles')
               .select('full_name, email')
               .eq('id', row.user_id)
               .single();

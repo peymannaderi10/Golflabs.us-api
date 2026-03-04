@@ -35,6 +35,7 @@ const league_routes_1 = require("./modules/leagues/league.routes");
 const agreement_routes_1 = __importDefault(require("./modules/agreements/agreement.routes"));
 const booking_controller_1 = require("./modules/bookings/booking.controller");
 const socket_service_1 = require("./modules/sockets/socket.service");
+const auth_1 = require("./modules/auth");
 exports.app = (0, express_1.default)();
 exports.httpServer = (0, http_1.createServer)(exports.app);
 // Trust proxy - required for Render, Heroku, and other PaaS providers
@@ -164,11 +165,11 @@ exports.app.post('/validate-phone', (req, res) => __awaiter(void 0, void 0, void
 // Create booking controller instance, now with socket service
 const bookingController = new booking_controller_1.BookingController(socketService);
 // Backwards compatibility: User-specific booking routes at root level
-exports.app.get('/users/:userId/bookings/reserved', bookingController.getUserReservedBookings);
-exports.app.get('/users/:userId/bookings/future', bookingController.getUserFutureBookings);
-exports.app.get('/users/:userId/bookings/past', bookingController.getUserPastBookings);
-exports.app.post('/bookings/:bookingId/cancel', bookingController.cancelBooking);
-exports.app.post('/bookings/:bookingId/cancel-reservation', bookingController.cancelReservedBooking);
+exports.app.get('/users/:userId/bookings/reserved', auth_1.authenticateUser, bookingController.getUserReservedBookings);
+exports.app.get('/users/:userId/bookings/future', auth_1.authenticateUser, bookingController.getUserFutureBookings);
+exports.app.get('/users/:userId/bookings/past', auth_1.authenticateUser, bookingController.getUserPastBookings);
+exports.app.post('/bookings/:bookingId/cancel', auth_1.authenticateUser, bookingController.cancelBooking);
+exports.app.post('/bookings/:bookingId/cancel-reservation', auth_1.authenticateUser, bookingController.cancelReservedBooking);
 // Module routes
 exports.app.use('/bookings', (0, booking_routes_1.createBookingRoutes)(socketService));
 exports.app.use('/', payment_routes_1.paymentRoutes); // Payment routes are at root level for backwards compatibility

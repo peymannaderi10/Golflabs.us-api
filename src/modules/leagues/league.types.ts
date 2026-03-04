@@ -8,7 +8,7 @@ export interface League {
   id: string;
   location_id: string;
   name: string;
-  format: 'stroke_play' | 'match_play' | 'team';
+  format: 'stroke_play' | 'team';
   num_holes: number;
   par_per_hole: number;
   total_weeks: number;
@@ -240,7 +240,7 @@ export interface LeagueTeamInvite {
 export interface CreateLeagueRequest {
   locationId: string;
   name: string;
-  format?: 'stroke_play' | 'match_play' | 'team';
+  format?: 'stroke_play' | 'team';
   numHoles?: number;
   parPerHole?: number;
   totalWeeks: number;
@@ -276,7 +276,7 @@ export interface CreateLeagueRequest {
 
 export interface UpdateLeagueRequest {
   name?: string;
-  format?: 'stroke_play' | 'match_play' | 'team';
+  format?: 'stroke_play' | 'team';
   numHoles?: number;
   parPerHole?: number;
   seasonFee?: number;
