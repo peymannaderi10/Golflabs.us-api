@@ -651,19 +651,20 @@ export class MembershipService {
   // LOCATION SETTINGS HELPERS
   // =====================================================
 
-  async getLocationMembershipSettings(locationId: string): Promise<LocationMembershipSettings> {
+  async getLocationMembershipSettings(locationId: string): Promise<LocationMembershipSettings & { leaguesEnabled: boolean }> {
     const { data, error } = await supabase
       .from('location_settings')
-      .select('memberships_enabled, default_booking_window_days, default_booking_hours_start, default_booking_hours_end')
+      .select('memberships_enabled, leagues_enabled, default_booking_window_days, default_booking_hours_start, default_booking_hours_end')
       .eq('location_id', locationId)
       .single();
 
     if (error || !data) {
-      return { membershipsEnabled: false, defaultBookingWindowDays: 7, defaultBookingHours: null };
+      return { membershipsEnabled: false, leaguesEnabled: true, defaultBookingWindowDays: 7, defaultBookingHours: null };
     }
 
     return {
       membershipsEnabled: data.memberships_enabled,
+      leaguesEnabled: data.leagues_enabled,
       defaultBookingWindowDays: data.default_booking_window_days,
       defaultBookingHours: data.default_booking_hours_start && data.default_booking_hours_end
         ? { start: data.default_booking_hours_start, end: data.default_booking_hours_end }
@@ -673,11 +674,13 @@ export class MembershipService {
 
   async updateLocationMembershipSettings(locationId: string, updates: {
     membershipsEnabled?: boolean;
+    leaguesEnabled?: boolean;
     defaultBookingWindowDays?: number;
     defaultBookingHours?: { start: string; end: string } | null;
   }): Promise<void> {
     const updateFields: any = {};
     if (updates.membershipsEnabled !== undefined) updateFields.memberships_enabled = updates.membershipsEnabled;
+    if (updates.leaguesEnabled !== undefined) updateFields.leagues_enabled = updates.leaguesEnabled;
     if (updates.defaultBookingWindowDays !== undefined) updateFields.default_booking_window_days = updates.defaultBookingWindowDays;
     if (updates.defaultBookingHours !== undefined) {
       updateFields.default_booking_hours_start = updates.defaultBookingHours?.start ?? null;

@@ -619,14 +619,15 @@ class MembershipService {
         return __awaiter(this, void 0, void 0, function* () {
             const { data, error } = yield database_1.supabase
                 .from('location_settings')
-                .select('memberships_enabled, default_booking_window_days, default_booking_hours_start, default_booking_hours_end')
+                .select('memberships_enabled, leagues_enabled, default_booking_window_days, default_booking_hours_start, default_booking_hours_end')
                 .eq('location_id', locationId)
                 .single();
             if (error || !data) {
-                return { membershipsEnabled: false, defaultBookingWindowDays: 7, defaultBookingHours: null };
+                return { membershipsEnabled: false, leaguesEnabled: true, defaultBookingWindowDays: 7, defaultBookingHours: null };
             }
             return {
                 membershipsEnabled: data.memberships_enabled,
+                leaguesEnabled: data.leagues_enabled,
                 defaultBookingWindowDays: data.default_booking_window_days,
                 defaultBookingHours: data.default_booking_hours_start && data.default_booking_hours_end
                     ? { start: data.default_booking_hours_start, end: data.default_booking_hours_end }
@@ -640,6 +641,8 @@ class MembershipService {
             const updateFields = {};
             if (updates.membershipsEnabled !== undefined)
                 updateFields.memberships_enabled = updates.membershipsEnabled;
+            if (updates.leaguesEnabled !== undefined)
+                updateFields.leagues_enabled = updates.leaguesEnabled;
             if (updates.defaultBookingWindowDays !== undefined)
                 updateFields.default_booking_window_days = updates.defaultBookingWindowDays;
             if (updates.defaultBookingHours !== undefined) {
