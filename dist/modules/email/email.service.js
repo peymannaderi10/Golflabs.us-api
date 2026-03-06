@@ -259,5 +259,32 @@ class EmailService {
             }
         });
     }
+    // =====================================================
+    // Membership Emails (direct send)
+    // =====================================================
+    static sendMembershipWelcomeEmail(data) {
+        return __awaiter(this, void 0, void 0, function* () {
+            try {
+                const template = email_templates_1.EmailTemplates.membershipWelcome(data);
+                yield this.sendEmail(data.userEmail, template.subject, template.html);
+                console.log(`Sent membership welcome email to ${data.userEmail} for plan "${data.planName}"`);
+            }
+            catch (error) {
+                console.error(`Failed to send membership welcome email to ${data.userEmail}:`, error);
+            }
+        });
+    }
+    static sendMembershipCanceledEmail(data) {
+        return __awaiter(this, void 0, void 0, function* () {
+            try {
+                const template = email_templates_1.EmailTemplates.membershipCanceled(data);
+                yield this.sendEmail(data.userEmail, template.subject, template.html);
+                console.log(`Sent membership cancellation email to ${data.userEmail} for plan "${data.planName}"`);
+            }
+            catch (error) {
+                console.error(`Failed to send membership cancellation email to ${data.userEmail}:`, error);
+            }
+        });
+    }
 }
 exports.EmailService = EmailService;

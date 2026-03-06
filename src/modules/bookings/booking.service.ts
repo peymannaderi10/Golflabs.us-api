@@ -7,6 +7,7 @@ import { EmailService } from '../email/email.service';
 import { promotionService } from '../promotions/promotion.service';
 import { resendConfig } from '../../config/resend';
 import { CapacityHoldService } from './capacity-hold.service';
+import { MembershipService } from '../memberships/membership.service';
 
 export class BookingService {
   private capacityHoldService = new CapacityHoldService();
@@ -59,6 +60,53 @@ export class BookingService {
       input: { date, startTime, endTime },
       output: { p_start_time, p_end_time }
     });
+
+    // Enforce booking window and available hours based on membership
+    try {
+      const membershipService = new MembershipService();
+      const locationSettings = await membershipService.getLocationMembershipSettings(locationId);
+
+      if (locationSettings.membershipsEnabled) {
+        const membership = await membershipService.getActiveMembershipForUser(userId, locationId);
+        const benefits = membership?.benefits;
+
+        // Booking window enforcement: how far in advance can this user book?
+        const bookingWindowDays = benefits?.bookingWindowDays ?? locationSettings.defaultBookingWindowDays;
+        const bookingStartDate = new Date(p_start_time);
+        const maxBookableDate = new Date();
+        maxBookableDate.setDate(maxBookableDate.getDate() + bookingWindowDays);
+
+        if (bookingStartDate > maxBookableDate) {
+          const windowLabel = membership ? `${bookingWindowDays} days (member)` : `${bookingWindowDays} days`;
+          throw new Error(`Bookings can only be made up to ${windowLabel} in advance.`);
+        }
+
+        // Available hours enforcement: is this user allowed to book at this time?
+        if (locationSettings.defaultBookingHours && !membership) {
+          const { start: allowedStart, end: allowedEnd } = locationSettings.defaultBookingHours;
+          const [allowedStartH] = allowedStart.split(':').map(Number);
+          const [allowedEndH] = allowedEnd.split(':').map(Number);
+
+          const bookingLocalHour = parseInt(
+            bookingStartDate.toLocaleString('en-US', { hour: '2-digit', hour12: false, timeZone: timezone })
+          );
+
+          const isOutsideHours = allowedEndH > allowedStartH
+            ? (bookingLocalHour < allowedStartH || bookingLocalHour >= allowedEndH)
+            : (bookingLocalHour < allowedStartH && bookingLocalHour >= allowedEndH);
+
+          if (isOutsideHours) {
+            throw new Error(`Non-member bookings are only available between ${allowedStart} and ${allowedEnd}. Become a member for extended hours.`);
+          }
+        }
+      }
+    } catch (membershipErr: any) {
+      if (membershipErr.message?.includes('Bookings can only') || membershipErr.message?.includes('Non-member bookings')) {
+        throw membershipErr;
+      }
+      console.error('Error checking membership for booking rules:', membershipErr);
+      // Non-fatal for other errors: allow the booking to proceed
+    }
 
     // Check capacity holds before proceeding
     // Convert 12h time (e.g. "6:00 PM") to 24h (e.g. "18:00") for hold comparison

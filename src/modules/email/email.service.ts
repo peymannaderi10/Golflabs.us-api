@@ -1,7 +1,7 @@
 import { resend, resendConfig } from '../../config/resend';
 import { NotificationService } from './notification.service';
 import { EmailTemplates } from './email.templates';
-import { BookingEmailData, TeamInviteEmailData, TeamStatusEmailData, AttendanceReminderEmailData, LeagueEnrollmentEmailData } from './email.types';
+import { BookingEmailData, TeamInviteEmailData, TeamStatusEmailData, AttendanceReminderEmailData, LeagueEnrollmentEmailData, MembershipEmailData } from './email.types';
 
 export class EmailService {
   /**
@@ -270,6 +270,30 @@ export class EmailService {
       console.log(`Sent league enrollment confirmation to ${data.playerEmail} for "${data.leagueName}"`);
     } catch (error) {
       console.error(`Failed to send league enrollment email to ${data.playerEmail}:`, error);
+    }
+  }
+
+  // =====================================================
+  // Membership Emails (direct send)
+  // =====================================================
+
+  static async sendMembershipWelcomeEmail(data: MembershipEmailData): Promise<void> {
+    try {
+      const template = EmailTemplates.membershipWelcome(data);
+      await this.sendEmail(data.userEmail, template.subject, template.html);
+      console.log(`Sent membership welcome email to ${data.userEmail} for plan "${data.planName}"`);
+    } catch (error) {
+      console.error(`Failed to send membership welcome email to ${data.userEmail}:`, error);
+    }
+  }
+
+  static async sendMembershipCanceledEmail(data: MembershipEmailData): Promise<void> {
+    try {
+      const template = EmailTemplates.membershipCanceled(data);
+      await this.sendEmail(data.userEmail, template.subject, template.html);
+      console.log(`Sent membership cancellation email to ${data.userEmail} for plan "${data.planName}"`);
+    } catch (error) {
+      console.error(`Failed to send membership cancellation email to ${data.userEmail}:`, error);
     }
   }
 } 

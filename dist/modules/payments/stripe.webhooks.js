@@ -15,6 +15,7 @@ const database_1 = require("../../config/database");
 const email_service_1 = require("../email/email.service");
 const promotion_service_1 = require("../promotions/promotion.service");
 const league_service_1 = require("../leagues/league.service");
+const membership_service_1 = require("../memberships/membership.service");
 function handleStripeWebhook(req, res, socketService) {
     return __awaiter(this, void 0, void 0, function* () {
         var _a, _b, _c;
@@ -237,7 +238,30 @@ function handleStripeWebhook(req, res, socketService) {
                             }
                             catch (promoError) {
                                 console.error(`Error applying promotion to booking ${bookingId}:`, promoError);
-                                // Don't fail the webhook if promotion application fails - booking is still confirmed
+                            }
+                        }
+                        // Deduct membership free minutes if used
+                        const membershipIdMeta = paymentIntent.metadata.membership_id;
+                        const memberFreeMinutes = parseFloat(paymentIntent.metadata.member_free_minutes_applied || '0');
+                        if (membershipIdMeta && memberFreeMinutes > 0) {
+                            try {
+                                const membershipService = new membership_service_1.MembershipService();
+                                const { data: mem } = yield database_1.supabase
+                                    .from('memberships')
+                                    .select('free_minutes_used')
+                                    .eq('id', membershipIdMeta)
+                                    .single();
+                                if (mem) {
+                                    yield database_1.supabase
+                                        .from('memberships')
+                                        .update({ free_minutes_used: (mem.free_minutes_used || 0) + memberFreeMinutes })
+                                        .eq('id', membershipIdMeta);
+                                }
+                                yield membershipService.logUsage(membershipIdMeta, bookingId, 'free_minutes', memberFreeMinutes);
+                                console.log(`Deducted ${memberFreeMinutes} free minutes from membership ${membershipIdMeta} for booking ${bookingId}`);
+                            }
+                            catch (memberErr) {
+                                console.error(`Error deducting membership free minutes for booking ${bookingId}:`, memberErr);
                             }
                         }
                         // Send thank you email notification
@@ -407,6 +431,30 @@ function handleStripeWebhook(req, res, socketService) {
                             console.error(`Error applying promotion to free booking ${setupBookingId}:`, promoError);
                         }
                     }
+                    // Deduct membership free minutes if used (free booking covered entirely by member hours)
+                    const setupMembershipId = setupMetadata.membership_id;
+                    const setupMemberFreeMinutes = parseFloat(setupMetadata.member_free_minutes_applied || '0');
+                    if (setupMembershipId && setupMemberFreeMinutes > 0) {
+                        try {
+                            const membershipService = new membership_service_1.MembershipService();
+                            const { data: mem } = yield database_1.supabase
+                                .from('memberships')
+                                .select('free_minutes_used')
+                                .eq('id', setupMembershipId)
+                                .single();
+                            if (mem) {
+                                yield database_1.supabase
+                                    .from('memberships')
+                                    .update({ free_minutes_used: (mem.free_minutes_used || 0) + setupMemberFreeMinutes })
+                                    .eq('id', setupMembershipId);
+                            }
+                            yield membershipService.logUsage(setupMembershipId, setupBookingId, 'free_minutes', setupMemberFreeMinutes);
+                            console.log(`Deducted ${setupMemberFreeMinutes} free minutes from membership ${setupMembershipId} for free booking ${setupBookingId}`);
+                        }
+                        catch (memberErr) {
+                            console.error(`Error deducting membership free minutes for free booking ${setupBookingId}:`, memberErr);
+                        }
+                    }
                     // Send thank you email
                     try {
                         yield email_service_1.EmailService.sendThankYouEmail(setupBookingId);
@@ -468,6 +516,133 @@ function handleStripeWebhook(req, res, socketService) {
                     }
                 }
                 break;
+            }
+            // =====================================================
+            // MEMBERSHIP SUBSCRIPTION WEBHOOKS
+            // =====================================================
+            case 'customer.subscription.created':
+            case 'customer.subscription.updated':
+            case 'customer.subscription.deleted': {
+                const subscription = event.data.object;
+                const subMeta = subscription.metadata || {};
+                const subUserId = subMeta.user_id;
+                const subPlanId = subMeta.plan_id;
+                const subLocationId = subMeta.location_id;
+                if (!subUserId) {
+                    console.warn(`Subscription webhook ${event.type} has no user_id metadata, ignoring.`);
+                    return res.json({ received: true });
+                }
+                // Map Stripe subscription status to our status
+                let membershipStatus = subscription.status;
+                if (subscription.status === 'active' && subscription.cancel_at_period_end) {
+                    membershipStatus = 'active'; // still active until period ends
+                }
+                const safeTimestamp = (ts) => {
+                    if (!ts || typeof ts !== 'number')
+                        return null;
+                    const d = new Date(ts * 1000);
+                    return isNaN(d.getTime()) ? null : d.toISOString();
+                };
+                if (event.type === 'customer.subscription.created') {
+                    console.log(`Subscription created for user ${subUserId}, plan ${subPlanId}`);
+                    if (subscription.status === 'active') {
+                        const updateFields = { status: 'active' };
+                        const periodStart = safeTimestamp(subscription.current_period_start);
+                        const periodEnd = safeTimestamp(subscription.current_period_end);
+                        if (periodStart)
+                            updateFields.current_period_start = periodStart;
+                        if (periodEnd)
+                            updateFields.current_period_end = periodEnd;
+                        yield database_1.supabase
+                            .from('memberships')
+                            .update(updateFields)
+                            .eq('stripe_subscription_id', subscription.id);
+                        // Send welcome email
+                        sendMembershipWelcomeEmailFromWebhook(subscription, subUserId, subPlanId, subLocationId);
+                    }
+                }
+                else if (event.type === 'customer.subscription.updated') {
+                    console.log(`Subscription updated for user ${subUserId}: status=${subscription.status}`);
+                    const previousAttributes = event.data.previous_attributes;
+                    const wasIncomplete = (previousAttributes === null || previousAttributes === void 0 ? void 0 : previousAttributes.status) && previousAttributes.status !== 'active' && subscription.status === 'active';
+                    const updateData = {
+                        status: membershipStatus,
+                    };
+                    const periodStart = safeTimestamp(subscription.current_period_start);
+                    const periodEnd = safeTimestamp(subscription.current_period_end);
+                    if (periodStart)
+                        updateData.current_period_start = periodStart;
+                    if (periodEnd)
+                        updateData.current_period_end = periodEnd;
+                    if (subPlanId) {
+                        updateData.plan_id = subPlanId;
+                    }
+                    if (subscription.cancel_at_period_end) {
+                        updateData.canceled_at = new Date().toISOString();
+                    }
+                    else {
+                        updateData.canceled_at = null;
+                    }
+                    yield database_1.supabase
+                        .from('memberships')
+                        .update(updateData)
+                        .eq('stripe_subscription_id', subscription.id);
+                    // Send welcome email when transitioning to active (e.g. from incomplete)
+                    if (wasIncomplete) {
+                        sendMembershipWelcomeEmailFromWebhook(subscription, subUserId, subPlanId, subLocationId);
+                    }
+                }
+                else if (event.type === 'customer.subscription.deleted') {
+                    console.log(`Subscription deleted for user ${subUserId}`);
+                    yield database_1.supabase
+                        .from('memberships')
+                        .update({
+                        status: 'canceled',
+                        canceled_at: new Date().toISOString(),
+                    })
+                        .eq('stripe_subscription_id', subscription.id);
+                }
+                return res.json({ received: true });
+            }
+            case 'invoice.paid': {
+                const paidInvoice = event.data.object;
+                const invoiceSubId = paidInvoice.subscription;
+                if (invoiceSubId && paidInvoice.billing_reason === 'subscription_cycle') {
+                    // Only reset usage on actual renewals, not the initial subscription invoice
+                    console.log(`Subscription renewal invoice paid for ${invoiceSubId}, resetting usage counters`);
+                    const { error: resetErr } = yield database_1.supabase
+                        .from('memberships')
+                        .update({
+                        status: 'active',
+                        free_minutes_used: 0,
+                        guest_passes_used: 0,
+                    })
+                        .eq('stripe_subscription_id', invoiceSubId);
+                    if (resetErr) {
+                        console.error(`Error resetting usage for subscription ${invoiceSubId}:`, resetErr);
+                    }
+                }
+                else if (invoiceSubId) {
+                    // First invoice or other billing reason — just ensure active status
+                    console.log(`Invoice paid for subscription ${invoiceSubId} (reason: ${paidInvoice.billing_reason})`);
+                    yield database_1.supabase
+                        .from('memberships')
+                        .update({ status: 'active' })
+                        .eq('stripe_subscription_id', invoiceSubId);
+                }
+                return res.json({ received: true });
+            }
+            case 'invoice.payment_failed': {
+                const failedInvoice = event.data.object;
+                const failedSubId = failedInvoice.subscription;
+                if (failedSubId) {
+                    console.log(`Invoice payment failed for subscription ${failedSubId}`);
+                    yield database_1.supabase
+                        .from('memberships')
+                        .update({ status: 'past_due' })
+                        .eq('stripe_subscription_id', failedSubId);
+                }
+                return res.json({ received: true });
             }
             // Refund webhook handlers
             case 'charge.dispute.created':
@@ -599,5 +774,51 @@ function handleStripeWebhook(req, res, socketService) {
                 break;
         }
         res.json({ received: true });
+    });
+}
+function sendMembershipWelcomeEmailFromWebhook(subscription, userId, planId, locationId) {
+    return __awaiter(this, void 0, void 0, function* () {
+        try {
+            if (!planId || !locationId)
+                return;
+            const { data: membership } = yield database_1.supabase
+                .from('memberships')
+                .select('*, membership_plans(*)')
+                .eq('stripe_subscription_id', subscription.id)
+                .single();
+            if (!membership)
+                return;
+            const { data: profile } = yield database_1.supabase
+                .from('user_profiles')
+                .select('full_name, email')
+                .eq('id', userId)
+                .single();
+            const { data: location } = yield database_1.supabase
+                .from('locations')
+                .select('name')
+                .eq('id', locationId)
+                .single();
+            if (!(profile === null || profile === void 0 ? void 0 : profile.email) || !location)
+                return;
+            const plan = membership.membership_plans;
+            const benefits = plan.benefits || {};
+            yield email_service_1.EmailService.sendMembershipWelcomeEmail({
+                userFullName: profile.full_name || 'Member',
+                userEmail: profile.email,
+                planName: plan.name,
+                billingInterval: membership.billing_interval,
+                price: membership.billing_interval === 'annual' ? Number(plan.annual_price || plan.monthly_price) : Number(plan.monthly_price),
+                locationName: location.name,
+                freeHoursPerMonth: benefits.freeMinutesPerMonth ? benefits.freeMinutesPerMonth / 60 : undefined,
+                bookingWindowDays: benefits.bookingWindowDays,
+                guestPassesPerMonth: benefits.guestPassesPerMonth,
+                renewalDate: membership.current_period_end
+                    ? new Date(membership.current_period_end).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+                    : undefined,
+            });
+        }
+        catch (err) {
+            console.error('Failed to send membership welcome email:', err);
+        }
     });
 }

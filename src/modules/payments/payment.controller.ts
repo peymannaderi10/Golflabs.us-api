@@ -11,7 +11,7 @@ export class PaymentController {
   createPaymentIntent = async (req: Request, res: Response) => {
     try {
       const { bookingId } = req.params;
-      const { amount, promotionId, discountAmount, freeMinutes, originalAmount } = req.body;
+      const { amount, promotionId, discountAmount, freeMinutes, originalAmount, membershipId, memberFreeMinutesApplied } = req.body;
       
       // Build promotion info if a promotion is being applied
       const promotionInfo = promotionId ? {
@@ -20,8 +20,13 @@ export class PaymentController {
         freeMinutes: freeMinutes || 0,
         originalAmount: originalAmount || (amount / 100)
       } : undefined;
+
+      const memberPricingInfo = membershipId ? {
+        membershipId,
+        freeMinutesApplied: memberFreeMinutesApplied || 0,
+      } : undefined;
       
-      const result = await this.paymentService.createPaymentIntent(bookingId, amount, promotionInfo);
+      const result = await this.paymentService.createPaymentIntent(bookingId, amount, promotionInfo, memberPricingInfo);
       res.json(result);
     } catch (error: any) {
       console.error(`Error in /bookings/${req.params.bookingId}/create-payment-intent:`, error);
@@ -81,8 +86,8 @@ export class PaymentController {
 
   calculatePrice = async (req: Request, res: Response) => {
     try {
-      const { locationId, startTime, endTime } = req.body;
-      const result = await this.paymentService.calculatePrice(locationId, startTime, endTime);
+      const { locationId, startTime, endTime, userId } = req.body;
+      const result = await this.paymentService.calculatePrice(locationId, startTime, endTime, userId);
       res.json(result);
     } catch (error: any) {
       console.error('Error in /calculate-price:', error);

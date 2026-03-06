@@ -16,7 +16,7 @@ class PaymentController {
         this.createPaymentIntent = (req, res) => __awaiter(this, void 0, void 0, function* () {
             try {
                 const { bookingId } = req.params;
-                const { amount, promotionId, discountAmount, freeMinutes, originalAmount } = req.body;
+                const { amount, promotionId, discountAmount, freeMinutes, originalAmount, membershipId, memberFreeMinutesApplied } = req.body;
                 // Build promotion info if a promotion is being applied
                 const promotionInfo = promotionId ? {
                     promotionId,
@@ -24,7 +24,11 @@ class PaymentController {
                     freeMinutes: freeMinutes || 0,
                     originalAmount: originalAmount || (amount / 100)
                 } : undefined;
-                const result = yield this.paymentService.createPaymentIntent(bookingId, amount, promotionInfo);
+                const memberPricingInfo = membershipId ? {
+                    membershipId,
+                    freeMinutesApplied: memberFreeMinutesApplied || 0,
+                } : undefined;
+                const result = yield this.paymentService.createPaymentIntent(bookingId, amount, promotionInfo, memberPricingInfo);
                 res.json(result);
             }
             catch (error) {
@@ -84,8 +88,8 @@ class PaymentController {
         });
         this.calculatePrice = (req, res) => __awaiter(this, void 0, void 0, function* () {
             try {
-                const { locationId, startTime, endTime } = req.body;
-                const result = yield this.paymentService.calculatePrice(locationId, startTime, endTime);
+                const { locationId, startTime, endTime, userId } = req.body;
+                const result = yield this.paymentService.calculatePrice(locationId, startTime, endTime, userId);
                 res.json(result);
             }
             catch (error) {

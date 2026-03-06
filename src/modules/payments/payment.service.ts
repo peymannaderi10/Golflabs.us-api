@@ -2,6 +2,7 @@ import { stripe } from '../../config/stripe';
 import { supabase } from '../../config/database';
 import { CreatePaymentForBookingBody, UpdatePaymentIntentRequest } from './payment.types';
 import { promotionService } from '../promotions/promotion.service';
+import { MembershipService } from '../memberships/membership.service';
 
 export class PaymentService {
   async createPaymentIntent(
@@ -12,6 +13,10 @@ export class PaymentService {
       discountAmount: number;
       freeMinutes?: number;
       originalAmount: number;
+    },
+    memberPricingInfo?: {
+      membershipId: string;
+      freeMinutesApplied: number;
     }
   ) {
     if (amount === undefined) {
@@ -119,9 +124,19 @@ export class PaymentService {
 
       if (!userError && userProfile) {
         if (userProfile.stripe_customer_id) {
-          stripeCustomerId = userProfile.stripe_customer_id;
-          console.log(`Using existing Stripe customer ${stripeCustomerId} for user ${booking.user_id}`);
-        } else if (userProfile.email) {
+          try {
+            await stripe.customers.retrieve(userProfile.stripe_customer_id);
+            stripeCustomerId = userProfile.stripe_customer_id;
+            console.log(`Using existing Stripe customer ${stripeCustomerId} for user ${booking.user_id}`);
+          } catch (err: any) {
+            if (err.code === 'resource_missing') {
+              console.warn(`Stored Stripe customer ${userProfile.stripe_customer_id} not found, will create new one`);
+            } else {
+              throw err;
+            }
+          }
+        }
+        if (!stripeCustomerId && userProfile.email) {
           // Create a new Stripe Customer
           const customer = await stripe.customers.create({
             email: userProfile.email,
@@ -163,7 +178,7 @@ export class PaymentService {
       }
     }
 
-    const intentMetadata = {
+    const intentMetadata: Record<string, string> = {
       booking_id: booking.id,
       user_id: booking.user_id,
       bay_id: booking.bay_id,
@@ -173,6 +188,11 @@ export class PaymentService {
       free_minutes: promotionInfo?.freeMinutes?.toString() || '0',
       original_amount: promotionInfo?.originalAmount?.toString() || (amount / 100).toString()
     };
+
+    if (memberPricingInfo?.membershipId) {
+      intentMetadata.membership_id = memberPricingInfo.membershipId;
+      intentMetadata.member_free_minutes_applied = memberPricingInfo.freeMinutesApplied.toString();
+    }
 
     // 5. Free booking (amount = 0): create SetupIntent to save card for future charges
     if (amount === 0) {
@@ -263,13 +283,11 @@ export class PaymentService {
   async updatePaymentIntent(data: UpdatePaymentIntentRequest) {
     const { paymentIntentId, email, firstName, lastName, phone } = data;
 
+    const existing = await stripe.paymentIntents.retrieve(paymentIntentId);
+
     const paymentIntent = await stripe.paymentIntents.update(paymentIntentId, {
       receipt_email: email,
-      metadata: {
-        firstName,
-        lastName,
-        phone,
-      },
+      metadata: { ...existing.metadata, firstName, lastName, phone },
     });
 
     return { success: true, paymentIntent };
@@ -301,7 +319,7 @@ export class PaymentService {
     };
   }
 
-  async calculatePrice(locationId: string, startTime: string, endTime: string) {
+  async calculatePrice(locationId: string, startTime: string, endTime: string, userId?: string) {
     if (!locationId || !startTime || !endTime) {
       throw new Error('locationId, startTime, and endTime are required');
     }
@@ -396,11 +414,66 @@ export class PaymentService {
         end: endDate.toISOString(),
       });
     }
+
+    // Apply membership benefits if user is a member
+    let memberDiscount = 0;
+    let freeMinutesApplied = 0;
+    let membershipId: string | null = null;
+    const regularTotal = total;
+
+    if (userId) {
+      try {
+        const membershipService = new MembershipService();
+        const membership = await membershipService.getActiveMembershipForUser(userId, locationId);
+
+        if (membership) {
+          membershipId = membership.id;
+          const benefits = membership.benefits;
+          const totalMinutes = (endDate.getTime() - startDate.getTime()) / (1000 * 60);
+
+          // 1. Apply free minutes first
+          if (benefits.freeMinutesPerMonth && benefits.freeMinutesPerMonth > 0) {
+            const remainingFreeMinutes = benefits.freeMinutesPerMonth - (membership.free_minutes_used || 0);
+            if (remainingFreeMinutes > 0) {
+              const minutesToApply = Math.min(remainingFreeMinutes, totalMinutes);
+              const slotsToCredit = Math.floor(minutesToApply / 15);
+              if (slotsToCredit > 0) {
+                // Calculate the value of free slots using average slot price
+                const avgSlotPrice = total / (totalMinutes / 15);
+                const freeCredit = Math.round(slotsToCredit * avgSlotPrice);
+                freeMinutesApplied = slotsToCredit * 15;
+                total = Math.max(0, total - freeCredit);
+              }
+            }
+          }
+
+          // 2. Apply discount on remaining amount
+          if (benefits.discountType && benefits.discountValue && benefits.discountValue > 0 && total > 0) {
+            if (benefits.discountType === 'fixed') {
+              memberDiscount = Math.min(Math.round(benefits.discountValue * 100), total);
+            } else if (benefits.discountType === 'percentage') {
+              memberDiscount = Math.round(total * (benefits.discountValue / 100));
+            }
+            total = Math.max(0, total - memberDiscount);
+          }
+        }
+      } catch (memberErr) {
+        console.error('Error checking membership for price calculation:', memberErr);
+        // Non-fatal: proceed with regular pricing
+      }
+    }
     
     return {
-      total: total,
+      total,
       currency: 'usd',
-      breakdown: breakdown,
+      breakdown,
+      memberPricing: membershipId ? {
+        membershipId,
+        regularTotal,
+        memberDiscount,
+        freeMinutesApplied,
+        finalTotal: total,
+      } : null,
     };
   }
 } 

@@ -18,6 +18,7 @@ import promotionRoutes from './modules/promotions/promotion.routes';
 import { employeeRoutes } from './modules/employee';
 import { createLeagueRoutes, createTeamInviteRoutes, createAttendanceRoutes } from './modules/leagues/league.routes';
 import agreementRoutes from './modules/agreements/agreement.routes';
+import { membershipRoutes } from './modules/memberships/membership.routes';
 import { BookingController } from './modules/bookings/booking.controller';
 import { SocketService } from './modules/sockets/socket.service';
 import { authenticateUser } from './modules/auth';
@@ -197,6 +198,7 @@ app.use('/leagues', createLeagueRoutes(socketService)); // League ecosystem rout
 app.use('/team-invites', createTeamInviteRoutes(socketService)); // Team invite routes (token-based)
 app.use('/attendance', createAttendanceRoutes(socketService)); // Attendance confirmation routes (token-based)
 app.use('/agreements', agreementRoutes); // Legal agreement tracking routes
+app.use('/memberships', membershipRoutes); // Membership subscription routes
 
 // Health check endpoint
 app.get('/health', (req, res) => {

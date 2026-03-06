@@ -1,5 +1,5 @@
 import { format, toZonedTime } from 'date-fns-tz';
-import { EmailTemplate, BookingEmailData, TeamInviteEmailData, TeamStatusEmailData, AttendanceReminderEmailData, LeagueEnrollmentEmailData } from './email.types';
+import { EmailTemplate, BookingEmailData, TeamInviteEmailData, TeamStatusEmailData, AttendanceReminderEmailData, LeagueEnrollmentEmailData, MembershipEmailData } from './email.types';
 
 export class EmailTemplates {
   static thankYou(data: BookingEmailData): EmailTemplate {
@@ -1138,6 +1138,260 @@ export class EmailTemplates {
   // =====================================================
   // LEAGUE ENROLLMENT CONFIRMATION
   // =====================================================
+
+  // =====================================================
+  // MEMBERSHIP EMAIL TEMPLATES
+  // =====================================================
+
+  static membershipWelcome(data: MembershipEmailData): EmailTemplate {
+    const benefitsHtml: string[] = [];
+    if (data.freeHoursPerMonth) benefitsHtml.push(`<li style="padding: 6px 0;">${data.freeHoursPerMonth} free hours per month</li>`);
+    if (data.bookingWindowDays) benefitsHtml.push(`<li style="padding: 6px 0;">Book up to ${data.bookingWindowDays} days in advance</li>`);
+    if (data.guestPassesPerMonth) benefitsHtml.push(`<li style="padding: 6px 0;">${data.guestPassesPerMonth} guest passes per month</li>`);
+
+    return {
+      subject: `Welcome to Golf Labs US — ${data.planName} Membership!`,
+      html: `
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <meta name="color-scheme" content="light dark">
+          <meta name="supported-color-schemes" content="light dark">
+          <title>Membership Welcome - Golf Labs US</title>
+          <style>
+            :root { color-scheme: light dark; supported-color-schemes: light dark; }
+            .email-body { background-color: #f5f7fa !important; }
+            .email-container { background-color: #ffffff !important; }
+            .text-primary { color: #2c5530 !important; }
+            .text-secondary { color: #666 !important; }
+            .text-tertiary { color: #333 !important; }
+            .border-light { border-color: #e0e0e0 !important; }
+            .bg-card { background: linear-gradient(135deg, #f8fffe 0%, #e8f5e8 100%) !important; border: 2px solid #4a7c59 !important; }
+            .brand-heading { color: #000000 !important; }
+            @media (prefers-color-scheme: dark) {
+              .email-body { background-color: #1a1a1a !important; }
+              .email-container { background-color: #2d2d2d !important; }
+              .text-primary { color: #6bb96e !important; }
+              .text-secondary { color: #b0b0b0 !important; }
+              .text-tertiary { color: #e0e0e0 !important; }
+              .border-light { border-color: #4a4a4a !important; }
+              .bg-card { background: linear-gradient(135deg, #3a4a3d 0%, #2d3a2f 100%) !important; border: 2px solid #6bb96e !important; }
+              .brand-heading { color: #ffffff !important; }
+            }
+          </style>
+        </head>
+        <body class="email-body" style="margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+          <div class="email-container" style="max-width: 600px; margin: 0 auto;">
+            <div style="background: linear-gradient(135deg, #2c5530 0%, #4a7c59 100%); padding: 40px 30px; text-align: center;">
+              <h1 class="brand-heading" style="margin: 0; font-size: 28px; font-weight: 600; letter-spacing: 1px;">GOLF LABS US</h1>
+            </div>
+            <div style="padding: 40px 30px;">
+              <div style="text-align: center; margin-bottom: 30px;">
+                <h2 class="text-primary" style="margin: 0 0 10px 0; font-size: 24px; font-weight: 600;">Welcome, ${data.userFullName}!</h2>
+                <p class="text-secondary" style="margin: 0; font-size: 16px;">You're now a <strong>${data.planName}</strong> member</p>
+              </div>
+              <div class="bg-card" style="border-radius: 12px; padding: 30px; margin: 30px 0;">
+                <h3 class="text-primary" style="margin: 0 0 20px 0; font-size: 20px; font-weight: 600; text-align: center;">Membership Details</h3>
+                <div style="display: grid; gap: 12px;">
+                  <div style="padding: 8px 0; border-bottom: 1px solid;" class="border-light">
+                    <span style="color: #4a7c59; font-weight: 600; width: 120px; display: inline-block;">Plan:</span>
+                    <span class="text-tertiary" style="font-weight: 500;">${data.planName}</span>
+                  </div>
+                  <div style="padding: 8px 0; border-bottom: 1px solid;" class="border-light">
+                    <span style="color: #4a7c59; font-weight: 600; width: 120px; display: inline-block;">Location:</span>
+                    <span class="text-tertiary" style="font-weight: 500;">${data.locationName}</span>
+                  </div>
+                  <div style="padding: 8px 0; border-bottom: 1px solid;" class="border-light">
+                    <span style="color: #4a7c59; font-weight: 600; width: 120px; display: inline-block;">Billing:</span>
+                    <span class="text-tertiary" style="font-weight: 500;">$${data.price.toFixed(2)}/${data.billingInterval === 'annual' ? 'year' : 'month'}</span>
+                  </div>
+                  ${data.renewalDate ? `
+                  <div style="padding: 8px 0;">
+                    <span style="color: #4a7c59; font-weight: 600; width: 120px; display: inline-block;">Next Renewal:</span>
+                    <span class="text-tertiary" style="font-weight: 500;">${data.renewalDate}</span>
+                  </div>` : ''}
+                </div>
+              </div>
+              ${benefitsHtml.length > 0 ? `
+              <div style="margin: 30px 0;">
+                <h3 class="text-primary" style="margin: 0 0 15px 0; font-size: 18px; font-weight: 600; text-align: center;">Your Benefits</h3>
+                <ul style="list-style: none; padding: 0; margin: 0;">
+                  ${benefitsHtml.map(b => `<li style="padding: 6px 0; display: flex; align-items: center;"><span style="color: #4a7c59; margin-right: 8px; font-size: 16px;">&#10003;</span> <span class="text-tertiary">${b.replace(/<\/?li[^>]*>/g, '')}</span></li>`).join('')}
+                </ul>
+              </div>` : ''}
+              <div style="text-align: center; margin-top: 40px;">
+                <h3 class="text-primary" style="margin-bottom: 15px; font-size: 18px;">Ready to book your first session?</h3>
+                <p class="text-secondary" style="margin: 0 0 20px 0; line-height: 1.6;">
+                  Head to your dashboard to start using your membership benefits.
+                </p>
+              </div>
+            </div>
+            <div style="background-color: #2c5530; padding: 30px; text-align: center;">
+              <p style="color: #ffffff; margin: 0 0 10px 0; font-size: 16px; font-weight: 600;">Welcome to the club!</p>
+              <p style="color: #a8d5aa; margin: 0; font-size: 14px;">Golf Labs US - Where Technology Meets Golf</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `,
+      text: `
+        GOLF LABS US - Welcome, ${data.userFullName}!
+
+        You're now a ${data.planName} member at ${data.locationName}.
+
+        MEMBERSHIP DETAILS:
+        Plan: ${data.planName}
+        Billing: $${data.price.toFixed(2)}/${data.billingInterval === 'annual' ? 'year' : 'month'}
+        ${data.renewalDate ? `Next Renewal: ${data.renewalDate}` : ''}
+
+        YOUR BENEFITS:
+        ${data.freeHoursPerMonth ? `- ${data.freeHoursPerMonth} free hours per month` : ''}
+        ${data.bookingWindowDays ? `- Book up to ${data.bookingWindowDays} days in advance` : ''}
+        ${data.guestPassesPerMonth ? `- ${data.guestPassesPerMonth} guest passes per month` : ''}
+
+        Ready to book your first session? Head to your dashboard!
+
+        Golf Labs US - Where Technology Meets Golf
+      `
+    };
+  }
+
+  static membershipCanceled(data: MembershipEmailData): EmailTemplate {
+    const isImmediate = data.cancelType === 'immediate';
+
+    return {
+      subject: `Your Golf Labs US ${data.planName} membership has been canceled`,
+      html: `
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <meta name="color-scheme" content="light dark">
+          <meta name="supported-color-schemes" content="light dark">
+          <title>Membership Canceled - Golf Labs US</title>
+          <style>
+            :root { color-scheme: light dark; supported-color-schemes: light dark; }
+            .email-body { background-color: #f5f7fa !important; }
+            .email-container { background-color: #ffffff !important; }
+            .text-primary { color: #2c5530 !important; }
+            .text-secondary { color: #666 !important; }
+            .text-tertiary { color: #333 !important; }
+            .text-danger { color: #dc3545 !important; }
+            .border-light { border-color: #e0e0e0 !important; }
+            .bg-card { background: linear-gradient(135deg, #fff8f8 0%, #ffe8e8 100%) !important; border: 2px solid #dc3545 !important; }
+            .bg-refund { background-color: #d4edda !important; border-color: #c3e6cb !important; }
+            .text-refund { color: #155724 !important; }
+            .bg-notice { background-color: #fff3cd !important; border-color: #ffeaa7 !important; }
+            .text-notice { color: #8a6d3b !important; }
+            .brand-heading { color: #000000 !important; }
+            @media (prefers-color-scheme: dark) {
+              .email-body { background-color: #1a1a1a !important; }
+              .email-container { background-color: #2d2d2d !important; }
+              .text-primary { color: #6bb96e !important; }
+              .text-secondary { color: #b0b0b0 !important; }
+              .text-tertiary { color: #e0e0e0 !important; }
+              .text-danger { color: #f56565 !important; }
+              .border-light { border-color: #4a4a4a !important; }
+              .bg-card { background: linear-gradient(135deg, #4a3d3d 0%, #3d2f2f 100%) !important; border: 2px solid #f56565 !important; }
+              .bg-refund { background-color: #1a4a2f !important; border-color: #2a6b45 !important; }
+              .text-refund { color: #6bb96e !important; }
+              .bg-notice { background-color: #4a3c1a !important; border-color: #6b5b2a !important; }
+              .text-notice { color: #d4b85a !important; }
+              .brand-heading { color: #ffffff !important; }
+            }
+          </style>
+        </head>
+        <body class="email-body" style="margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+          <div class="email-container" style="max-width: 600px; margin: 0 auto;">
+            <div style="background: linear-gradient(135deg, #2c5530 0%, #4a7c59 100%); padding: 40px 30px; text-align: center;">
+              <h1 class="brand-heading" style="margin: 0; font-size: 28px; font-weight: 600; letter-spacing: 1px;">GOLF LABS US</h1>
+            </div>
+            <div style="padding: 40px 30px;">
+              <div style="text-align: center; margin-bottom: 30px;">
+                <h2 class="text-danger" style="margin: 0 0 10px 0; font-size: 24px; font-weight: 600;">Membership Canceled</h2>
+                <p class="text-secondary" style="margin: 0; font-size: 16px;">
+                  ${isImmediate
+                    ? `Your ${data.planName} membership has been canceled effective immediately.`
+                    : `Your ${data.planName} membership has been set to cancel at the end of your billing period.`}
+                </p>
+              </div>
+              <div class="bg-card" style="border-radius: 12px; padding: 30px; margin: 30px 0;">
+                <h3 class="text-danger" style="margin: 0 0 20px 0; font-size: 20px; font-weight: 600; text-align: center;">Cancellation Details</h3>
+                <div style="display: grid; gap: 12px;">
+                  <div style="padding: 8px 0; border-bottom: 1px solid;" class="border-light">
+                    <span style="color: #dc3545; font-weight: 600; width: 120px; display: inline-block;">Plan:</span>
+                    <span class="text-tertiary" style="font-weight: 500;">${data.planName}</span>
+                  </div>
+                  <div style="padding: 8px 0; border-bottom: 1px solid;" class="border-light">
+                    <span style="color: #dc3545; font-weight: 600; width: 120px; display: inline-block;">Location:</span>
+                    <span class="text-tertiary" style="font-weight: 500;">${data.locationName}</span>
+                  </div>
+                  <div style="padding: 8px 0;">
+                    <span style="color: #dc3545; font-weight: 600; width: 120px; display: inline-block;">Type:</span>
+                    <span class="text-tertiary" style="font-weight: 500;">${isImmediate ? 'Immediate cancellation' : 'Cancel at end of period'}</span>
+                  </div>
+                </div>
+              </div>
+              ${isImmediate && data.refundAmount && data.refundAmount > 0 ? `
+              <div class="bg-refund" style="border: 1px solid; border-radius: 8px; padding: 20px; margin: 30px 0;">
+                <h4 class="text-refund" style="margin: 0 0 10px 0; font-size: 16px;">Refund Information</h4>
+                <p class="text-refund" style="margin: 0 0 10px 0; font-size: 14px; line-height: 1.5;">
+                  A prorated refund of <strong>$${(data.refundAmount / 100).toFixed(2)}</strong> has been issued to your original payment method.
+                </p>
+                <p class="text-refund" style="margin: 0; font-size: 14px; line-height: 1.5;">
+                  Please allow 3-5 business days for the refund to appear on your statement.
+                </p>
+              </div>` : ''}
+              ${!isImmediate && data.accessUntil ? `
+              <div class="bg-notice" style="border: 1px solid; border-radius: 8px; padding: 20px; margin: 30px 0; text-align: center;">
+                <h4 class="text-notice" style="margin: 0 0 10px 0; font-size: 16px;">You Still Have Access</h4>
+                <p class="text-notice" style="margin: 0; font-size: 14px; line-height: 1.5;">
+                  Your membership benefits remain active until <strong>${data.accessUntil}</strong>. You can continue to use your free hours and book sessions until then.
+                </p>
+              </div>` : ''}
+              <div style="text-align: center; margin-top: 40px;">
+                <h3 class="text-primary" style="margin-bottom: 15px; font-size: 18px;">We'll miss you!</h3>
+                <p class="text-secondary" style="margin: 0 0 20px 0; line-height: 1.6;">
+                  You can re-subscribe anytime from the memberships page. We'd love to have you back.
+                </p>
+              </div>
+            </div>
+            <div style="background-color: #2c5530; padding: 30px; text-align: center;">
+              <p style="color: #ffffff; margin: 0 0 10px 0; font-size: 16px; font-weight: 600;">Thank you for being a member</p>
+              <p style="color: #a8d5aa; margin: 0; font-size: 14px;">Golf Labs US - Where Technology Meets Golf</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `,
+      text: `
+        GOLF LABS US - Membership Canceled
+
+        ${isImmediate
+          ? `Your ${data.planName} membership has been canceled effective immediately.`
+          : `Your ${data.planName} membership has been set to cancel at the end of your billing period.`}
+
+        CANCELLATION DETAILS:
+        Plan: ${data.planName}
+        Location: ${data.locationName}
+        Type: ${isImmediate ? 'Immediate cancellation' : 'Cancel at end of period'}
+
+        ${isImmediate && data.refundAmount && data.refundAmount > 0
+          ? `REFUND: A prorated refund of $${(data.refundAmount / 100).toFixed(2)} has been issued. Please allow 3-5 business days.`
+          : ''}
+        ${!isImmediate && data.accessUntil
+          ? `Your membership benefits remain active until ${data.accessUntil}.`
+          : ''}
+
+        You can re-subscribe anytime from the memberships page.
+
+        Golf Labs US - Where Technology Meets Golf
+      `
+    };
+  }
 
   static enrollmentConfirmation(data: LeagueEnrollmentEmailData): EmailTemplate {
     return {

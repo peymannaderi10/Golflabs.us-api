@@ -12,8 +12,9 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.PaymentService = void 0;
 const stripe_1 = require("../../config/stripe");
 const database_1 = require("../../config/database");
+const membership_service_1 = require("../memberships/membership.service");
 class PaymentService {
-    createPaymentIntent(bookingId, amount, promotionInfo) {
+    createPaymentIntent(bookingId, amount, promotionInfo, memberPricingInfo) {
         return __awaiter(this, void 0, void 0, function* () {
             var _a, _b, _c;
             if (amount === undefined) {
@@ -114,10 +115,21 @@ class PaymentService {
                     .single();
                 if (!userError && userProfile) {
                     if (userProfile.stripe_customer_id) {
-                        stripeCustomerId = userProfile.stripe_customer_id;
-                        console.log(`Using existing Stripe customer ${stripeCustomerId} for user ${booking.user_id}`);
+                        try {
+                            yield stripe_1.stripe.customers.retrieve(userProfile.stripe_customer_id);
+                            stripeCustomerId = userProfile.stripe_customer_id;
+                            console.log(`Using existing Stripe customer ${stripeCustomerId} for user ${booking.user_id}`);
+                        }
+                        catch (err) {
+                            if (err.code === 'resource_missing') {
+                                console.warn(`Stored Stripe customer ${userProfile.stripe_customer_id} not found, will create new one`);
+                            }
+                            else {
+                                throw err;
+                            }
+                        }
                     }
-                    else if (userProfile.email) {
+                    if (!stripeCustomerId && userProfile.email) {
                         // Create a new Stripe Customer
                         const customer = yield stripe_1.stripe.customers.create({
                             email: userProfile.email,
@@ -166,6 +178,10 @@ class PaymentService {
                 free_minutes: ((_b = promotionInfo === null || promotionInfo === void 0 ? void 0 : promotionInfo.freeMinutes) === null || _b === void 0 ? void 0 : _b.toString()) || '0',
                 original_amount: ((_c = promotionInfo === null || promotionInfo === void 0 ? void 0 : promotionInfo.originalAmount) === null || _c === void 0 ? void 0 : _c.toString()) || (amount / 100).toString()
             };
+            if (memberPricingInfo === null || memberPricingInfo === void 0 ? void 0 : memberPricingInfo.membershipId) {
+                intentMetadata.membership_id = memberPricingInfo.membershipId;
+                intentMetadata.member_free_minutes_applied = memberPricingInfo.freeMinutesApplied.toString();
+            }
             // 5. Free booking (amount = 0): create SetupIntent to save card for future charges
             if (amount === 0) {
                 if (!stripeCustomerId) {
@@ -243,13 +259,10 @@ class PaymentService {
     updatePaymentIntent(data) {
         return __awaiter(this, void 0, void 0, function* () {
             const { paymentIntentId, email, firstName, lastName, phone } = data;
+            const existing = yield stripe_1.stripe.paymentIntents.retrieve(paymentIntentId);
             const paymentIntent = yield stripe_1.stripe.paymentIntents.update(paymentIntentId, {
                 receipt_email: email,
-                metadata: {
-                    firstName,
-                    lastName,
-                    phone,
-                },
+                metadata: Object.assign(Object.assign({}, existing.metadata), { firstName, lastName, phone }),
             });
             return { success: true, paymentIntent };
         });
@@ -280,7 +293,7 @@ class PaymentService {
             };
         });
     }
-    calculatePrice(locationId, startTime, endTime) {
+    calculatePrice(locationId, startTime, endTime, userId) {
         return __awaiter(this, void 0, void 0, function* () {
             if (!locationId || !startTime || !endTime) {
                 throw new Error('locationId, startTime, and endTime are required');
@@ -361,10 +374,62 @@ class PaymentService {
                     end: endDate.toISOString(),
                 });
             }
+            // Apply membership benefits if user is a member
+            let memberDiscount = 0;
+            let freeMinutesApplied = 0;
+            let membershipId = null;
+            const regularTotal = total;
+            if (userId) {
+                try {
+                    const membershipService = new membership_service_1.MembershipService();
+                    const membership = yield membershipService.getActiveMembershipForUser(userId, locationId);
+                    if (membership) {
+                        membershipId = membership.id;
+                        const benefits = membership.benefits;
+                        const totalMinutes = (endDate.getTime() - startDate.getTime()) / (1000 * 60);
+                        // 1. Apply free minutes first
+                        if (benefits.freeMinutesPerMonth && benefits.freeMinutesPerMonth > 0) {
+                            const remainingFreeMinutes = benefits.freeMinutesPerMonth - (membership.free_minutes_used || 0);
+                            if (remainingFreeMinutes > 0) {
+                                const minutesToApply = Math.min(remainingFreeMinutes, totalMinutes);
+                                const slotsToCredit = Math.floor(minutesToApply / 15);
+                                if (slotsToCredit > 0) {
+                                    // Calculate the value of free slots using average slot price
+                                    const avgSlotPrice = total / (totalMinutes / 15);
+                                    const freeCredit = Math.round(slotsToCredit * avgSlotPrice);
+                                    freeMinutesApplied = slotsToCredit * 15;
+                                    total = Math.max(0, total - freeCredit);
+                                }
+                            }
+                        }
+                        // 2. Apply discount on remaining amount
+                        if (benefits.discountType && benefits.discountValue && benefits.discountValue > 0 && total > 0) {
+                            if (benefits.discountType === 'fixed') {
+                                memberDiscount = Math.min(Math.round(benefits.discountValue * 100), total);
+                            }
+                            else if (benefits.discountType === 'percentage') {
+                                memberDiscount = Math.round(total * (benefits.discountValue / 100));
+                            }
+                            total = Math.max(0, total - memberDiscount);
+                        }
+                    }
+                }
+                catch (memberErr) {
+                    console.error('Error checking membership for price calculation:', memberErr);
+                    // Non-fatal: proceed with regular pricing
+                }
+            }
             return {
-                total: total,
+                total,
                 currency: 'usd',
-                breakdown: breakdown,
+                breakdown,
+                memberPricing: membershipId ? {
+                    membershipId,
+                    regularTotal,
+                    memberDiscount,
+                    freeMinutesApplied,
+                    finalTotal: total,
+                } : null,
             };
         });
     }

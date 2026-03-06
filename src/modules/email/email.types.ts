@@ -129,3 +129,23 @@ export interface LeagueEnrollmentEmailData {
   startDate: string;
   dashboardUrl: string;
 }
+
+// =====================================================
+// Membership Email Types
+// =====================================================
+
+export interface MembershipEmailData {
+  userFullName: string;
+  userEmail: string;
+  planName: string;
+  billingInterval: 'monthly' | 'annual';
+  price: number;
+  locationName: string;
+  freeHoursPerMonth?: number;
+  bookingWindowDays?: number;
+  guestPassesPerMonth?: number;
+  renewalDate?: string;
+  refundAmount?: number;
+  cancelType?: 'immediate' | 'end_of_period';
+  accessUntil?: string;
+}

@@ -17,13 +17,14 @@ const email_service_1 = require("../email/email.service");
 const promotion_service_1 = require("../promotions/promotion.service");
 const resend_1 = require("../../config/resend");
 const capacity_hold_service_1 = require("./capacity-hold.service");
+const membership_service_1 = require("../memberships/membership.service");
 class BookingService {
     constructor() {
         this.capacityHoldService = new capacity_hold_service_1.CapacityHoldService();
     }
     reserveBooking(bookingData) {
         return __awaiter(this, void 0, void 0, function* () {
-            var _a, _b, _c;
+            var _a, _b, _c, _d, _e, _f;
             const { locationId, userId, bayId, date, startTime, endTime, partySize, totalAmount } = bookingData;
             // Basic validation
             if (!locationId || !userId || !bayId || !date || !startTime || !endTime || !partySize || !totalAmount) {
@@ -54,6 +55,44 @@ class BookingService {
                 input: { date, startTime, endTime },
                 output: { p_start_time, p_end_time }
             });
+            // Enforce booking window and available hours based on membership
+            try {
+                const membershipService = new membership_service_1.MembershipService();
+                const locationSettings = yield membershipService.getLocationMembershipSettings(locationId);
+                if (locationSettings.membershipsEnabled) {
+                    const membership = yield membershipService.getActiveMembershipForUser(userId, locationId);
+                    const benefits = membership === null || membership === void 0 ? void 0 : membership.benefits;
+                    // Booking window enforcement: how far in advance can this user book?
+                    const bookingWindowDays = (_a = benefits === null || benefits === void 0 ? void 0 : benefits.bookingWindowDays) !== null && _a !== void 0 ? _a : locationSettings.defaultBookingWindowDays;
+                    const bookingStartDate = new Date(p_start_time);
+                    const maxBookableDate = new Date();
+                    maxBookableDate.setDate(maxBookableDate.getDate() + bookingWindowDays);
+                    if (bookingStartDate > maxBookableDate) {
+                        const windowLabel = membership ? `${bookingWindowDays} days (member)` : `${bookingWindowDays} days`;
+                        throw new Error(`Bookings can only be made up to ${windowLabel} in advance.`);
+                    }
+                    // Available hours enforcement: is this user allowed to book at this time?
+                    if (locationSettings.defaultBookingHours && !membership) {
+                        const { start: allowedStart, end: allowedEnd } = locationSettings.defaultBookingHours;
+                        const [allowedStartH] = allowedStart.split(':').map(Number);
+                        const [allowedEndH] = allowedEnd.split(':').map(Number);
+                        const bookingLocalHour = parseInt(bookingStartDate.toLocaleString('en-US', { hour: '2-digit', hour12: false, timeZone: timezone }));
+                        const isOutsideHours = allowedEndH > allowedStartH
+                            ? (bookingLocalHour < allowedStartH || bookingLocalHour >= allowedEndH)
+                            : (bookingLocalHour < allowedStartH && bookingLocalHour >= allowedEndH);
+                        if (isOutsideHours) {
+                            throw new Error(`Non-member bookings are only available between ${allowedStart} and ${allowedEnd}. Become a member for extended hours.`);
+                        }
+                    }
+                }
+            }
+            catch (membershipErr) {
+                if (((_b = membershipErr.message) === null || _b === void 0 ? void 0 : _b.includes('Bookings can only')) || ((_c = membershipErr.message) === null || _c === void 0 ? void 0 : _c.includes('Non-member bookings'))) {
+                    throw membershipErr;
+                }
+                console.error('Error checking membership for booking rules:', membershipErr);
+                // Non-fatal for other errors: allow the booking to proceed
+            }
             // Check capacity holds before proceeding
             // Convert 12h time (e.g. "6:00 PM") to 24h (e.g. "18:00") for hold comparison
             const start24 = `${String(startTimeParsed.hours).padStart(2, '0')}:${String(startTimeParsed.minutes).padStart(2, '0')}`;
@@ -90,10 +129,10 @@ class BookingService {
             if (error) {
                 console.error('Error calling create_booking_and_payment_record function:', error);
                 // Handle common database errors
-                if (((_a = error.message) === null || _a === void 0 ? void 0 : _a.includes('duplicate key')) || ((_b = error.message) === null || _b === void 0 ? void 0 : _b.includes('already exists'))) {
+                if (((_d = error.message) === null || _d === void 0 ? void 0 : _d.includes('duplicate key')) || ((_e = error.message) === null || _e === void 0 ? void 0 : _e.includes('already exists'))) {
                     throw new Error('This time slot is no longer available.');
                 }
-                if ((_c = error.message) === null || _c === void 0 ? void 0 : _c.includes('Time slot is already booked')) {
+                if ((_f = error.message) === null || _f === void 0 ? void 0 : _f.includes('Time slot is already booked')) {
                     throw new Error('This time slot is no longer available.');
                 }
                 throw error;
