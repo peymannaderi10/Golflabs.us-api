@@ -1,10 +1,53 @@
 import { supabase } from '../../config/database';
 
+interface LocationSettingsRow {
+  memberships_enabled: boolean;
+  leagues_enabled: boolean;
+  default_booking_window_days: number;
+  default_booking_hours_start: string | null;
+  default_booking_hours_end: string | null;
+  cancellation_policy_hours: number;
+  brand_primary_color: string;
+  brand_logo_url: string | null;
+  custom_domain: string | null;
+}
+
+function formatSettings(ls: Partial<LocationSettingsRow>) {
+  return {
+    membershipsEnabled: ls.memberships_enabled ?? false,
+    leaguesEnabled: ls.leagues_enabled ?? true,
+    defaultBookingWindowDays: ls.default_booking_window_days ?? 7,
+    defaultBookingHoursStart: ls.default_booking_hours_start ?? null,
+    defaultBookingHoursEnd: ls.default_booking_hours_end ?? null,
+    cancellationPolicyHours: ls.cancellation_policy_hours ?? 24,
+    brandPrimaryColor: ls.brand_primary_color ?? '#00A36C',
+    brandLogoUrl: ls.brand_logo_url ?? null,
+    customDomain: ls.custom_domain ?? null,
+  };
+}
+
+function formatLocation(location: any, settings: Partial<LocationSettingsRow>) {
+  return {
+    id: location.id,
+    name: location.name,
+    slug: location.slug,
+    address: location.address,
+    city: location.city,
+    state: location.state,
+    zipCode: location.zip_code,
+    phone: location.phone,
+    timezone: location.timezone,
+    status: location.status,
+    salesTaxRate: parseFloat(location.sales_tax_rate) || 0,
+    settings: formatSettings(settings),
+  };
+}
+
 export class LocationService {
   async getAllLocations() {
-    const { data, error } = await supabase
+    const { data: locations, error } = await supabase
       .from('locations')
-      .select('id, name, slug, address, city, state, zip_code, phone, timezone, status, sales_tax_rate, location_settings(*)')
+      .select('id, name, slug, address, city, state, zip_code, phone, timezone, status, sales_tax_rate')
       .eq('status', 'active')
       .is('deleted_at', null)
       .order('name', { ascending: true });
@@ -14,35 +57,22 @@ export class LocationService {
       throw new Error('Failed to fetch locations');
     }
 
-    const formattedLocations = data.map(location => {
-      const ls = (location as any).location_settings?.[0] || {};
-      return {
-        id: location.id,
-        name: location.name,
-        slug: location.slug,
-        address: location.address,
-        city: location.city,
-        state: location.state,
-        zipCode: location.zip_code,
-        phone: location.phone,
-        timezone: location.timezone,
-        status: location.status,
-        salesTaxRate: parseFloat(location.sales_tax_rate) || 0,
-        settings: {
-          membershipsEnabled: ls.memberships_enabled ?? false,
-          leaguesEnabled: ls.leagues_enabled ?? true,
-          defaultBookingWindowDays: ls.default_booking_window_days ?? 7,
-          defaultBookingHoursStart: ls.default_booking_hours_start ?? null,
-          defaultBookingHoursEnd: ls.default_booking_hours_end ?? null,
-          cancellationPolicyHours: ls.cancellation_policy_hours ?? 24,
-          brandPrimaryColor: ls.brand_primary_color ?? '#00A36C',
-          brandLogoUrl: ls.brand_logo_url ?? null,
-          customDomain: ls.custom_domain ?? null,
-        },
-      };
-    });
+    const locationIds = locations.map(l => l.id);
+    const { data: settingsRows } = await supabase
+      .from('location_settings')
+      .select('*')
+      .in('location_id', locationIds);
 
-    return formattedLocations;
+    const settingsMap = new Map<string, LocationSettingsRow>();
+    if (settingsRows) {
+      for (const row of settingsRows) {
+        settingsMap.set(row.location_id, row);
+      }
+    }
+
+    return locations.map(location =>
+      formatLocation(location, settingsMap.get(location.id) || {})
+    );
   }
 
   async getLocationById(locationId: string) {
@@ -52,7 +82,7 @@ export class LocationService {
 
     const { data, error } = await supabase
       .from('locations')
-      .select('id, name, slug, address, city, state, zip_code, phone, timezone, status, sales_tax_rate, location_settings(*)')
+      .select('id, name, slug, address, city, state, zip_code, phone, timezone, status, sales_tax_rate')
       .eq('id', locationId)
       .eq('status', 'active')
       .is('deleted_at', null)
@@ -63,32 +93,13 @@ export class LocationService {
       throw new Error('Location not found');
     }
 
-    const ls = (data as any).location_settings?.[0] || {};
+    const { data: settingsRow } = await supabase
+      .from('location_settings')
+      .select('*')
+      .eq('location_id', locationId)
+      .single();
 
-    return {
-      id: data.id,
-      name: data.name,
-      slug: data.slug,
-      address: data.address,
-      city: data.city,
-      state: data.state,
-      zipCode: data.zip_code,
-      phone: data.phone,
-      timezone: data.timezone,
-      status: data.status,
-      salesTaxRate: parseFloat(data.sales_tax_rate) || 0,
-      settings: {
-        membershipsEnabled: ls.memberships_enabled ?? false,
-        leaguesEnabled: ls.leagues_enabled ?? true,
-        defaultBookingWindowDays: ls.default_booking_window_days ?? 7,
-        defaultBookingHoursStart: ls.default_booking_hours_start ?? null,
-        defaultBookingHoursEnd: ls.default_booking_hours_end ?? null,
-        cancellationPolicyHours: ls.cancellation_policy_hours ?? 24,
-        brandPrimaryColor: ls.brand_primary_color ?? '#00A36C',
-        brandLogoUrl: ls.brand_logo_url ?? null,
-        customDomain: ls.custom_domain ?? null,
-      },
-    };
+    return formatLocation(data, settingsRow || {});
   }
 
   async updateLocation(locationId: string, updates: {
@@ -122,7 +133,7 @@ export class LocationService {
       .from('locations')
       .update(updateData)
       .eq('id', locationId)
-      .select('id, name, slug, address, city, state, zip_code, phone, timezone, status, sales_tax_rate, location_settings(*)')
+      .select('id, name, slug, address, city, state, zip_code, phone, timezone, status, sales_tax_rate')
       .single();
 
     if (error || !data) {
@@ -130,31 +141,12 @@ export class LocationService {
       throw new Error('Failed to update location');
     }
 
-    const ls = (data as any).location_settings?.[0] || {};
+    const { data: settingsRow } = await supabase
+      .from('location_settings')
+      .select('*')
+      .eq('location_id', locationId)
+      .single();
 
-    return {
-      id: data.id,
-      name: data.name,
-      slug: data.slug,
-      address: data.address,
-      city: data.city,
-      state: data.state,
-      zipCode: data.zip_code,
-      phone: data.phone,
-      timezone: data.timezone,
-      status: data.status,
-      salesTaxRate: parseFloat(data.sales_tax_rate) || 0,
-      settings: {
-        membershipsEnabled: ls.memberships_enabled ?? false,
-        leaguesEnabled: ls.leagues_enabled ?? true,
-        defaultBookingWindowDays: ls.default_booking_window_days ?? 7,
-        defaultBookingHoursStart: ls.default_booking_hours_start ?? null,
-        defaultBookingHoursEnd: ls.default_booking_hours_end ?? null,
-        cancellationPolicyHours: ls.cancellation_policy_hours ?? 24,
-        brandPrimaryColor: ls.brand_primary_color ?? '#00A36C',
-        brandLogoUrl: ls.brand_logo_url ?? null,
-        customDomain: ls.custom_domain ?? null,
-      },
-    };
+    return formatLocation(data, settingsRow || {});
   }
-} 
+}
