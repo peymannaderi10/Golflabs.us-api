@@ -953,4 +953,66 @@ You can re-subscribe anytime from the memberships page.
 {{brandName}} - Where Technology Meets Golf`,
         variables: ['userFullName', 'planName', 'locationName', 'isImmediate', 'formattedRefundAmount', 'accessUntil', 'hasRefund', 'brandName', 'brandColor', 'brandTagline'],
     },
+    marketing_campaign: {
+        name: 'Marketing Campaign (Default)',
+        subject: '{{subject}}',
+        html: `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
+  <meta name="supported-color-schemes" content="light dark">
+  <title>{{subject}}</title>
+  <style>
+  :root { color-scheme: light dark; supported-color-schemes: light dark; }
+  .email-body { background-color: #f5f7fa !important; }
+  .email-container { background-color: #ffffff !important; }
+  .text-primary { color: #2c5530 !important; }
+  .text-secondary { color: #666 !important; }
+  .text-tertiary { color: #333 !important; }
+  .brand-heading { color: #000000 !important; }
+  @media (prefers-color-scheme: dark) {
+    .email-body { background-color: #1a1a1a !important; }
+    .email-container { background-color: #2d2d2d !important; }
+    .text-primary { color: #6bb96e !important; }
+    .text-secondary { color: #b0b0b0 !important; }
+    .text-tertiary { color: #e0e0e0 !important; }
+    .brand-heading { color: #ffffff !important; }
+  }
+  [data-ogsc] .email-body { background-color: #1a1a1a !important; }
+  [data-ogsc] .email-container { background-color: #2d2d2d !important; }
+  [data-ogsc] .text-primary { color: #6bb96e !important; }
+  [data-ogsc] .text-secondary { color: #b0b0b0 !important; }
+  [data-ogsc] .text-tertiary { color: #e0e0e0 !important; }
+  [data-ogsc] .brand-heading { color: #ffffff !important; }
+  </style>
+</head>
+<body class="email-body" style="margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+  <div class="email-container" style="max-width: 600px; margin: 0 auto;">
+    <div style="background: linear-gradient(135deg, #2c5530 0%, #4a7c59 100%); padding: 40px 30px; text-align: center;">
+      <h1 class="brand-heading" style="margin: 0; font-size: 28px; font-weight: 600; letter-spacing: 1px;">{{locationName}}</h1>
+    </div>
+    <div style="padding: 40px 30px;">
+      <h2 class="text-primary" style="margin: 0 0 24px 0; font-size: 22px; font-weight: 600;">{{subject}}</h2>
+      {{{body}}}
+    </div>
+    <div style="background-color: #2c5530; padding: 30px; text-align: center;">
+      <p style="color: #a8d5aa; margin: 0 0 15px 0; font-size: 14px;">{{locationName}} - Where Technology Meets Golf</p>
+      <p style="margin: 0;">
+        <a href="{{unsubscribeLink}}" style="color: #78b87c; font-size: 12px; text-decoration: underline;">Unsubscribe from marketing emails</a>
+      </p>
+    </div>
+  </div>
+</body>
+</html>`,
+        text: `{{subject}}
+
+{{textBody}}
+
+{{locationName}} - Where Technology Meets Golf
+
+To unsubscribe: {{unsubscribeLink}}`,
+        variables: ['subject', 'body', 'textBody', 'locationName', 'unsubscribeLink'],
+    },
 };

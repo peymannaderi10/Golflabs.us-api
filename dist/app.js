@@ -34,6 +34,8 @@ const employee_1 = require("./modules/employee");
 const league_routes_1 = require("./modules/leagues/league.routes");
 const agreement_routes_1 = __importDefault(require("./modules/agreements/agreement.routes"));
 const membership_routes_1 = require("./modules/memberships/membership.routes");
+const marketing_routes_1 = require("./modules/marketing/marketing.routes");
+const marketing_controller_1 = require("./modules/marketing/marketing.controller");
 const booking_controller_1 = require("./modules/bookings/booking.controller");
 const socket_service_1 = require("./modules/sockets/socket.service");
 const auth_1 = require("./modules/auth");
@@ -187,6 +189,8 @@ exports.app.use('/team-invites', (0, league_routes_1.createTeamInviteRoutes)(soc
 exports.app.use('/attendance', (0, league_routes_1.createAttendanceRoutes)(socketService)); // Attendance confirmation routes (token-based)
 exports.app.use('/agreements', agreement_routes_1.default); // Legal agreement tracking routes
 exports.app.use('/memberships', membership_routes_1.membershipRoutes); // Membership subscription routes
+exports.app.use('/employee/marketing', marketing_routes_1.marketingRoutes); // Marketing campaigns (employee-auth)
+exports.app.get('/marketing/unsubscribe', (req, res) => marketing_controller_1.marketingController.unsubscribe(req, res)); // Public unsubscribe
 // Health check endpoint
 exports.app.get('/health', (req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });

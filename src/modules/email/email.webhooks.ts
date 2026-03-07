@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import crypto from 'crypto';
 import { resendConfig } from '../../config/resend';
 import { NotificationService } from './notification.service';
+import { MarketingService } from '../marketing/marketing.service';
 import { ResendWebhookEvent } from './email.types';
 
 export async function handleResendWebhook(req: Request, res: Response) {
@@ -35,8 +36,10 @@ export async function handleResendWebhook(req: Request, res: Response) {
       .update(payload)
       .digest('hex');
 
-    // Verify signature
-    if (sig !== expectedSignature) {
+    // Verify signature (timing-safe comparison)
+    const sigBuf = Buffer.from(sig, 'utf8');
+    const expectedBuf = Buffer.from(expectedSignature, 'utf8');
+    if (sigBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(sigBuf, expectedBuf)) {
       console.error('Invalid webhook signature');
       return res.status(400).send('Invalid signature');
     }
@@ -69,25 +72,30 @@ async function processWebhookEvent(event: ResendWebhookEvent) {
       break;
 
     case 'email.delivered':
-      // Email was delivered to recipient's inbox
       await NotificationService.updateFromWebhook(
         messageId,
         'delivered',
         new Date(event.created_at)
       );
+      await MarketingService.processTrackingWebhook(messageId, event.type);
       console.log(`Email ${messageId} delivered`);
       break;
 
     case 'email.bounced':
-      // Email bounced (invalid email address, etc.)
       await NotificationService.updateFromWebhook(messageId, 'bounced');
+      await MarketingService.processTrackingWebhook(messageId, event.type);
       console.log(`Email ${messageId} bounced`);
       break;
 
     case 'email.complained':
-      // Recipient marked email as spam
       await NotificationService.updateFromWebhook(messageId, 'complained');
       console.log(`Email ${messageId} marked as spam`);
+      break;
+
+    case 'email.opened':
+    case 'email.clicked':
+      await MarketingService.processTrackingWebhook(messageId, event.type);
+      console.log(`Email ${messageId} ${event.type === 'email.opened' ? 'opened' : 'clicked'}`);
       break;
 
     default:

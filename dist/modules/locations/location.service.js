@@ -12,18 +12,19 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.LocationService = void 0;
 const database_1 = require("../../config/database");
 function formatSettings(ls) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l;
     return {
         membershipsEnabled: (_a = ls.memberships_enabled) !== null && _a !== void 0 ? _a : false,
         leaguesEnabled: (_b = ls.leagues_enabled) !== null && _b !== void 0 ? _b : true,
-        defaultBookingWindowDays: (_c = ls.default_booking_window_days) !== null && _c !== void 0 ? _c : 7,
-        defaultBookingHoursStart: (_d = ls.default_booking_hours_start) !== null && _d !== void 0 ? _d : null,
-        defaultBookingHoursEnd: (_e = ls.default_booking_hours_end) !== null && _e !== void 0 ? _e : null,
-        cancellationPolicyHours: (_f = ls.cancellation_policy_hours) !== null && _f !== void 0 ? _f : 24,
-        bookingBufferMinutes: (_g = ls.booking_buffer_minutes) !== null && _g !== void 0 ? _g : 0,
-        brandPrimaryColor: (_h = ls.brand_primary_color) !== null && _h !== void 0 ? _h : '#00A36C',
-        brandLogoUrl: (_j = ls.brand_logo_url) !== null && _j !== void 0 ? _j : null,
-        customDomain: (_k = ls.custom_domain) !== null && _k !== void 0 ? _k : null,
+        marketingEnabled: (_c = ls.marketing_enabled) !== null && _c !== void 0 ? _c : false,
+        defaultBookingWindowDays: (_d = ls.default_booking_window_days) !== null && _d !== void 0 ? _d : 7,
+        defaultBookingHoursStart: (_e = ls.default_booking_hours_start) !== null && _e !== void 0 ? _e : null,
+        defaultBookingHoursEnd: (_f = ls.default_booking_hours_end) !== null && _f !== void 0 ? _f : null,
+        cancellationPolicyHours: (_g = ls.cancellation_policy_hours) !== null && _g !== void 0 ? _g : 24,
+        bookingBufferMinutes: (_h = ls.booking_buffer_minutes) !== null && _h !== void 0 ? _h : 0,
+        brandPrimaryColor: (_j = ls.brand_primary_color) !== null && _j !== void 0 ? _j : '#00A36C',
+        brandLogoUrl: (_k = ls.brand_logo_url) !== null && _k !== void 0 ? _k : null,
+        customDomain: (_l = ls.custom_domain) !== null && _l !== void 0 ? _l : null,
     };
 }
 function formatLocation(location, settings) {

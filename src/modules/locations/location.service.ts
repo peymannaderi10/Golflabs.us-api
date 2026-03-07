@@ -3,6 +3,7 @@ import { supabase } from '../../config/database';
 interface LocationSettingsRow {
   memberships_enabled: boolean;
   leagues_enabled: boolean;
+  marketing_enabled: boolean;
   default_booking_window_days: number;
   default_booking_hours_start: string | null;
   default_booking_hours_end: string | null;
@@ -17,6 +18,7 @@ function formatSettings(ls: Partial<LocationSettingsRow>) {
   return {
     membershipsEnabled: ls.memberships_enabled ?? false,
     leaguesEnabled: ls.leagues_enabled ?? true,
+    marketingEnabled: ls.marketing_enabled ?? false,
     defaultBookingWindowDays: ls.default_booking_window_days ?? 7,
     defaultBookingHoursStart: ls.default_booking_hours_start ?? null,
     defaultBookingHoursEnd: ls.default_booking_hours_end ?? null,

@@ -6,6 +6,7 @@ import { processTeamDeadlines } from './league-deadline.job';
 import { autoDeactivateLeagueMode } from './league-mode-deactivate.job';
 import { sendAttendanceReminders } from './attendance-reminder.job';
 import { processAttendanceCutoffs } from './attendance-cutoff.job';
+import { processScheduledCampaigns } from './marketing-scheduler.job';
 
 export function startScheduler() {
   // Run the expiration check every 2 minutes
@@ -38,6 +39,9 @@ export function startScheduler() {
   // Lock attendance and optionally adjust capacity holds at cutoff time
   // Checks every 5 minutes
   setInterval(processAttendanceCutoffs, 5 * 60 * 1000);
+
+  // Send scheduled marketing campaigns every 60 seconds
+  setInterval(processScheduledCampaigns, 60 * 1000);
   
-  console.log('Background job scheduler started (expiration: 2min, notifications: 1min, reminders: 1min, handicaps: 24h, team-deadlines: 5min, league-mode-deactivate: 5min, attendance-reminders: 5min, attendance-cutoffs: 5min)');
+  console.log('Background job scheduler started (expiration: 2min, notifications: 1min, reminders: 1min, handicaps: 24h, team-deadlines: 5min, league-mode-deactivate: 5min, attendance-reminders: 5min, attendance-cutoffs: 5min, marketing-scheduler: 1min)');
 } 

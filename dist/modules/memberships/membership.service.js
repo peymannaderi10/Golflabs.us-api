@@ -621,23 +621,24 @@ class MembershipService {
     // =====================================================
     getLocationMembershipSettings(locationId) {
         return __awaiter(this, void 0, void 0, function* () {
-            var _a;
+            var _a, _b;
             const { data, error } = yield database_1.supabase
                 .from('location_settings')
-                .select('memberships_enabled, leagues_enabled, default_booking_window_days, default_booking_hours_start, default_booking_hours_end, booking_buffer_minutes')
+                .select('memberships_enabled, leagues_enabled, marketing_enabled, default_booking_window_days, default_booking_hours_start, default_booking_hours_end, booking_buffer_minutes')
                 .eq('location_id', locationId)
                 .single();
             if (error || !data) {
-                return { membershipsEnabled: false, leaguesEnabled: true, defaultBookingWindowDays: 7, defaultBookingHours: null, bookingBufferMinutes: 0 };
+                return { membershipsEnabled: false, leaguesEnabled: true, marketingEnabled: false, defaultBookingWindowDays: 7, defaultBookingHours: null, bookingBufferMinutes: 0 };
             }
             return {
                 membershipsEnabled: data.memberships_enabled,
                 leaguesEnabled: data.leagues_enabled,
+                marketingEnabled: (_a = data.marketing_enabled) !== null && _a !== void 0 ? _a : false,
                 defaultBookingWindowDays: data.default_booking_window_days,
                 defaultBookingHours: data.default_booking_hours_start && data.default_booking_hours_end
                     ? { start: data.default_booking_hours_start, end: data.default_booking_hours_end }
                     : null,
-                bookingBufferMinutes: (_a = data.booking_buffer_minutes) !== null && _a !== void 0 ? _a : 0,
+                bookingBufferMinutes: (_b = data.booking_buffer_minutes) !== null && _b !== void 0 ? _b : 0,
             };
         });
     }
@@ -649,6 +650,8 @@ class MembershipService {
                 updateFields.memberships_enabled = updates.membershipsEnabled;
             if (updates.leaguesEnabled !== undefined)
                 updateFields.leagues_enabled = updates.leaguesEnabled;
+            if (updates.marketingEnabled !== undefined)
+                updateFields.marketing_enabled = updates.marketingEnabled;
             if (updates.defaultBookingWindowDays !== undefined)
                 updateFields.default_booking_window_days = updates.defaultBookingWindowDays;
             if (updates.defaultBookingHours !== undefined) {

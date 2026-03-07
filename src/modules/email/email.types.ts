@@ -43,7 +43,7 @@ export interface NotificationRecord {
 }
 
 export interface ResendWebhookEvent {
-  type: 'email.sent' | 'email.delivered' | 'email.bounced' | 'email.complained';
+  type: 'email.sent' | 'email.delivered' | 'email.bounced' | 'email.complained' | 'email.opened' | 'email.clicked';
   created_at: string;
   data: {
     message_id: string;
@@ -163,7 +163,8 @@ export type EmailTemplateType =
   | 'attendance_reminder'
   | 'enrollment_confirmation'
   | 'membership_welcome'
-  | 'membership_canceled';
+  | 'membership_canceled'
+  | 'marketing_campaign';
 
 export interface EmailTemplateRecord {
   id: string;

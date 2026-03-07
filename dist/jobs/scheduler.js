@@ -9,6 +9,7 @@ const league_deadline_job_1 = require("./league-deadline.job");
 const league_mode_deactivate_job_1 = require("./league-mode-deactivate.job");
 const attendance_reminder_job_1 = require("./attendance-reminder.job");
 const attendance_cutoff_job_1 = require("./attendance-cutoff.job");
+const marketing_scheduler_job_1 = require("./marketing-scheduler.job");
 function startScheduler() {
     // Run the expiration check every 2 minutes
     setInterval(expired_reservations_job_1.handleExpiredReservations, 2 * 60 * 1000);
@@ -33,5 +34,7 @@ function startScheduler() {
     // Lock attendance and optionally adjust capacity holds at cutoff time
     // Checks every 5 minutes
     setInterval(attendance_cutoff_job_1.processAttendanceCutoffs, 5 * 60 * 1000);
-    console.log('Background job scheduler started (expiration: 2min, notifications: 1min, reminders: 1min, handicaps: 24h, team-deadlines: 5min, league-mode-deactivate: 5min, attendance-reminders: 5min, attendance-cutoffs: 5min)');
+    // Send scheduled marketing campaigns every 60 seconds
+    setInterval(marketing_scheduler_job_1.processScheduledCampaigns, 60 * 1000);
+    console.log('Background job scheduler started (expiration: 2min, notifications: 1min, reminders: 1min, handicaps: 24h, team-deadlines: 5min, league-mode-deactivate: 5min, attendance-reminders: 5min, attendance-cutoffs: 5min, marketing-scheduler: 1min)');
 }
