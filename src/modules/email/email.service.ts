@@ -1,6 +1,6 @@
 import { resend, resendConfig } from '../../config/resend';
 import { NotificationService } from './notification.service';
-import { EmailTemplates } from './email.templates';
+import { EmailTemplateService } from './email-template.service';
 import { BookingEmailData, TeamInviteEmailData, TeamStatusEmailData, AttendanceReminderEmailData, LeagueEnrollmentEmailData, MembershipEmailData } from './email.types';
 
 export class EmailService {
@@ -9,32 +9,31 @@ export class EmailService {
    */
   static async sendThankYouEmail(bookingId: string): Promise<void> {
     try {
-      // Check if thank you email already sent
       const exists = await NotificationService.notificationExists(bookingId, 'thank_you');
       if (exists) {
         console.log(`Thank you email already exists for booking ${bookingId}`);
         return;
       }
 
-      // Get booking data
       const bookingData = await NotificationService.getBookingEmailData(bookingId);
       if (!bookingData) {
         console.error(`Could not get booking data for thank you email: ${bookingId}`);
         return;
       }
 
-      // Generate email template
-      const template = EmailTemplates.thankYou(bookingData);
+      const rendered = await EmailTemplateService.renderBookingConfirmation(
+        bookingData.locationId,
+        bookingData
+      );
 
-      // Create notification record
       const notificationId = await NotificationService.createNotification({
         locationId: bookingData.locationId,
         userId: bookingData.userId,
         bookingId: bookingId,
         type: 'thank_you',
         recipient: bookingData.userEmail,
-        subject: template.subject,
-        content: template.html
+        subject: rendered.subject,
+        content: rendered.html
       });
 
       console.log(`Created thank you notification ${notificationId} for booking ${bookingId}`);
@@ -47,44 +46,42 @@ export class EmailService {
    * Send a reminder email with unlock token
    */
   static async sendReminderEmail(
-    bookingId: string, 
-    unlockToken: string, 
+    bookingId: string,
+    unlockToken: string,
     unlockLink: string
   ): Promise<void> {
     try {
-      // Check if reminder email already sent
       const exists = await NotificationService.notificationExists(bookingId, 'reminder');
       if (exists) {
         console.log(`Reminder email already exists for booking ${bookingId}`);
         return;
       }
 
-      // Get booking data
       const bookingData = await NotificationService.getBookingEmailData(bookingId);
       if (!bookingData) {
         console.error(`Could not get booking data for reminder email: ${bookingId}`);
         return;
       }
 
-      // Add unlock data
       const emailData: BookingEmailData = {
         ...bookingData,
         unlockToken,
         unlockLink
       };
 
-      // Generate email template
-      const template = EmailTemplates.reminder(emailData);
+      const rendered = await EmailTemplateService.renderBookingReminder(
+        bookingData.locationId,
+        emailData
+      );
 
-      // Create notification record
       const notificationId = await NotificationService.createNotification({
         locationId: bookingData.locationId,
         userId: bookingData.userId,
         bookingId: bookingId,
         type: 'reminder',
         recipient: bookingData.userEmail,
-        subject: template.subject,
-        content: template.html
+        subject: rendered.subject,
+        content: rendered.html
       });
 
       console.log(`Created reminder notification ${notificationId} for booking ${bookingId}`);
@@ -104,21 +101,18 @@ export class EmailService {
     refundProcessed: boolean = false
   ): Promise<void> {
     try {
-      // Check if cancellation email already sent
       const exists = await NotificationService.notificationExists(bookingId, 'cancellation');
       if (exists) {
         console.log(`Cancellation email already exists for booking ${bookingId}`);
         return;
       }
 
-      // Get booking data
       const bookingData = await NotificationService.getBookingEmailData(bookingId);
       if (!bookingData) {
         console.error(`Could not get booking data for cancellation email: ${bookingId}`);
         return;
       }
 
-      // Add cancellation-specific data
       const emailData: BookingEmailData = {
         ...bookingData,
         cancellationReason,
@@ -127,18 +121,19 @@ export class EmailService {
         refundProcessed
       };
 
-      // Generate email template
-      const template = EmailTemplates.cancellation(emailData);
+      const rendered = await EmailTemplateService.renderBookingCancellation(
+        bookingData.locationId,
+        emailData
+      );
 
-      // Create notification record
       const notificationId = await NotificationService.createNotification({
         locationId: bookingData.locationId,
         userId: bookingData.userId,
         bookingId: bookingId,
         type: 'cancellation',
         recipient: bookingData.userEmail,
-        subject: template.subject,
-        content: template.html,
+        subject: rendered.subject,
+        content: rendered.html,
         metadata: {
           cancellationReason,
           cancelledBy,
@@ -182,7 +177,7 @@ export class EmailService {
   static async dispatchPendingNotifications(): Promise<number> {
     try {
       const pendingNotifications = await NotificationService.getPendingNotifications(50);
-      
+
       if (pendingNotifications.length === 0) {
         return 0;
       }
@@ -200,14 +195,13 @@ export class EmailService {
 
           await NotificationService.markAsSent(notification.id, messageId);
           dispatched++;
-          
+
           console.log(`Sent notification ${notification.id} (${notification.type}) to ${notification.recipient}`);
         } catch (error: any) {
           console.error(`Failed to send notification ${notification.id}:`, error);
           await NotificationService.markAsFailed(notification.id, error.message);
         }
 
-        // Add a delay to respect API rate limits (e.g., 1 second)
         await new Promise(res => setTimeout(res, 1000));
       }
 
@@ -223,50 +217,40 @@ export class EmailService {
   // Team League Emails (direct send, not booking-based)
   // =====================================================
 
-  /**
-   * Send a team invite email directly (not through the notification queue).
-   */
-  static async sendTeamInviteEmail(data: TeamInviteEmailData): Promise<void> {
+  static async sendTeamInviteEmail(locationId: string, data: TeamInviteEmailData): Promise<void> {
     try {
-      const template = EmailTemplates.teamInvite(data);
-      await this.sendEmail(data.invitedEmail, template.subject, template.html);
+      const rendered = await EmailTemplateService.renderTeamInvite(locationId, data);
+      await this.sendEmail(data.invitedEmail, rendered.subject, rendered.html);
       console.log(`Sent team invite email to ${data.invitedEmail} for team "${data.teamName}"`);
     } catch (error) {
       console.error(`Failed to send team invite email to ${data.invitedEmail}:`, error);
-      // Don't throw — invite record is already created, email is best-effort
     }
   }
 
-  /**
-   * Send a team status update email directly.
-   */
-  static async sendTeamStatusEmail(data: TeamStatusEmailData): Promise<void> {
+  static async sendTeamStatusEmail(locationId: string, data: TeamStatusEmailData): Promise<void> {
     try {
-      const template = EmailTemplates.teamStatus(data);
-      await this.sendEmail(data.recipientEmail, template.subject, template.html);
+      const rendered = await EmailTemplateService.renderTeamStatus(locationId, data);
+      await this.sendEmail(data.recipientEmail, rendered.subject, rendered.html);
       console.log(`Sent team status email to ${data.recipientEmail} for team "${data.teamName}"`);
     } catch (error) {
       console.error(`Failed to send team status email to ${data.recipientEmail}:`, error);
     }
   }
 
-  /**
-   * Send an attendance reminder email.
-   */
-  static async sendAttendanceReminderEmail(data: AttendanceReminderEmailData): Promise<void> {
+  static async sendAttendanceReminderEmail(locationId: string, data: AttendanceReminderEmailData): Promise<void> {
     try {
-      const template = EmailTemplates.attendanceReminder(data);
-      await this.sendEmail(data.playerEmail, template.subject, template.html);
+      const rendered = await EmailTemplateService.renderAttendanceReminder(locationId, data);
+      await this.sendEmail(data.playerEmail, rendered.subject, rendered.html);
       console.log(`Sent attendance reminder to ${data.playerEmail} for ${data.leagueName} Week ${data.weekNumber}`);
     } catch (error) {
       console.error(`Failed to send attendance reminder to ${data.playerEmail}:`, error);
     }
   }
 
-  static async sendLeagueEnrollmentEmail(data: LeagueEnrollmentEmailData): Promise<void> {
+  static async sendLeagueEnrollmentEmail(locationId: string, data: LeagueEnrollmentEmailData): Promise<void> {
     try {
-      const template = EmailTemplates.enrollmentConfirmation(data);
-      await this.sendEmail(data.playerEmail, template.subject, template.html);
+      const rendered = await EmailTemplateService.renderEnrollmentConfirmation(locationId, data);
+      await this.sendEmail(data.playerEmail, rendered.subject, rendered.html);
       console.log(`Sent league enrollment confirmation to ${data.playerEmail} for "${data.leagueName}"`);
     } catch (error) {
       console.error(`Failed to send league enrollment email to ${data.playerEmail}:`, error);
@@ -277,23 +261,23 @@ export class EmailService {
   // Membership Emails (direct send)
   // =====================================================
 
-  static async sendMembershipWelcomeEmail(data: MembershipEmailData): Promise<void> {
+  static async sendMembershipWelcomeEmail(locationId: string, data: MembershipEmailData): Promise<void> {
     try {
-      const template = EmailTemplates.membershipWelcome(data);
-      await this.sendEmail(data.userEmail, template.subject, template.html);
+      const rendered = await EmailTemplateService.renderMembershipWelcome(locationId, data);
+      await this.sendEmail(data.userEmail, rendered.subject, rendered.html);
       console.log(`Sent membership welcome email to ${data.userEmail} for plan "${data.planName}"`);
     } catch (error) {
       console.error(`Failed to send membership welcome email to ${data.userEmail}:`, error);
     }
   }
 
-  static async sendMembershipCanceledEmail(data: MembershipEmailData): Promise<void> {
+  static async sendMembershipCanceledEmail(locationId: string, data: MembershipEmailData): Promise<void> {
     try {
-      const template = EmailTemplates.membershipCanceled(data);
-      await this.sendEmail(data.userEmail, template.subject, template.html);
+      const rendered = await EmailTemplateService.renderMembershipCanceled(locationId, data);
+      await this.sendEmail(data.userEmail, rendered.subject, rendered.html);
       console.log(`Sent membership cancellation email to ${data.userEmail} for plan "${data.planName}"`);
     } catch (error) {
       console.error(`Failed to send membership cancellation email to ${data.userEmail}:`, error);
     }
   }
-} 
+}

@@ -19,7 +19,7 @@ export async function sendAttendanceReminders(): Promise<void> {
     // 1. Get all active leagues with attendance enabled
     const { data: leagues, error } = await supabase
       .from('leagues')
-      .select('id, name, start_time, attendance_reminder_hours, attendance_cutoff_hours')
+      .select('id, name, start_time, attendance_reminder_hours, attendance_cutoff_hours, location_id')
       .eq('attendance_required', true)
       .in('status', ['active', 'registration']);
 
@@ -106,7 +106,7 @@ export async function sendAttendanceReminders(): Promise<void> {
 
             const playerName = user.full_name || 'Golfer';
 
-            await EmailService.sendAttendanceReminderEmail({
+            await EmailService.sendAttendanceReminderEmail(league.location_id, {
               playerName,
               playerEmail: user.email,
               leagueName: league.name,

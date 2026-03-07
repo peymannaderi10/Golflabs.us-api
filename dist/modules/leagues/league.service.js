@@ -2110,7 +2110,7 @@ class LeagueService {
             // Verify team exists and user is captain
             const { data: team, error: teamError } = yield database_1.supabase
                 .from('league_teams')
-                .select('*, leagues(id, name, players_per_team, total_weeks, season_fee, weekly_prize_pot, num_holes)')
+                .select('*, leagues(id, name, players_per_team, total_weeks, season_fee, weekly_prize_pot, num_holes, location_id)')
                 .eq('id', teamId)
                 .single();
             if (teamError || !team) {
@@ -2205,7 +2205,7 @@ class LeagueService {
                     .select('full_name')
                     .eq('id', captainUserId)
                     .single();
-                email_service_1.EmailService.sendTeamInviteEmail({
+                email_service_1.EmailService.sendTeamInviteEmail(league.location_id, {
                     invitedUserName: user.full_name || user.email,
                     invitedEmail: normalizedEmail,
                     captainName: ((_a = captainProfile.data) === null || _a === void 0 ? void 0 : _a.full_name) || 'Your teammate',

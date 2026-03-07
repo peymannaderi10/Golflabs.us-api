@@ -30,7 +30,7 @@ function sendAttendanceReminders() {
             // 1. Get all active leagues with attendance enabled
             const { data: leagues, error } = yield database_1.supabase
                 .from('leagues')
-                .select('id, name, start_time, attendance_reminder_hours, attendance_cutoff_hours')
+                .select('id, name, start_time, attendance_reminder_hours, attendance_cutoff_hours, location_id')
                 .eq('attendance_required', true)
                 .in('status', ['active', 'registration']);
             if (error || !leagues || leagues.length === 0)
@@ -103,7 +103,7 @@ function sendAttendanceReminders() {
                             if (!user || !user.email)
                                 continue;
                             const playerName = user.full_name || 'Golfer';
-                            yield email_service_1.EmailService.sendAttendanceReminderEmail({
+                            yield email_service_1.EmailService.sendAttendanceReminderEmail(league.location_id, {
                                 playerName,
                                 playerEmail: user.email,
                                 leagueName: league.name,

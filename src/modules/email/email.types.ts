@@ -149,3 +149,39 @@ export interface MembershipEmailData {
   cancelType?: 'immediate' | 'end_of_period';
   accessUntil?: string;
 }
+
+// =====================================================
+// DB-Driven Email Template Types
+// =====================================================
+
+export type EmailTemplateType =
+  | 'booking_confirmation'
+  | 'booking_reminder'
+  | 'booking_cancellation'
+  | 'team_invite'
+  | 'team_status'
+  | 'attendance_reminder'
+  | 'enrollment_confirmation'
+  | 'membership_welcome'
+  | 'membership_canceled';
+
+export interface EmailTemplateRecord {
+  id: string;
+  location_id: string | null;
+  template_type: EmailTemplateType;
+  name: string;
+  subject_template: string;
+  html_template: string;
+  text_template: string | null;
+  variables: string[];
+  is_active: boolean;
+  version: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RenderedEmail {
+  subject: string;
+  html: string;
+  text?: string;
+}

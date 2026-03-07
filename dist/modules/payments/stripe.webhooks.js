@@ -105,7 +105,7 @@ function handleStripeWebhook(req, res, socketService) {
                                         .single();
                                     const { data: league } = yield database_1.supabase
                                         .from('leagues')
-                                        .select('name, format, day_of_week, start_time, total_weeks, season_fee, weekly_prize_pot, status')
+                                        .select('name, format, day_of_week, start_time, total_weeks, season_fee, weekly_prize_pot, status, location_id')
                                         .eq('id', leagueId)
                                         .single();
                                     const { data: firstWeek } = yield database_1.supabase
@@ -134,7 +134,7 @@ function handleStripeWebhook(req, res, socketService) {
                                             const ampm = hour >= 12 ? 'PM' : 'AM';
                                             const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
                                             const frontendUrl = process.env.FRONTEND_URL || 'https://golflabs.us';
-                                            email_service_1.EmailService.sendLeagueEnrollmentEmail({
+                                            email_service_1.EmailService.sendLeagueEnrollmentEmail(league.location_id, {
                                                 playerName: player.display_name,
                                                 playerEmail: userProfile.email,
                                                 leagueName: league.name,
@@ -802,7 +802,7 @@ function sendMembershipWelcomeEmailFromWebhook(subscription, userId, planId, loc
                 return;
             const plan = membership.membership_plans;
             const benefits = plan.benefits || {};
-            yield email_service_1.EmailService.sendMembershipWelcomeEmail({
+            yield email_service_1.EmailService.sendMembershipWelcomeEmail(locationId, {
                 userFullName: profile.full_name || 'Member',
                 userEmail: profile.email,
                 planName: plan.name,

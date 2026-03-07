@@ -517,7 +517,7 @@ export class MembershipService {
           : undefined,
       };
 
-      await EmailService.sendMembershipCanceledEmail(emailData);
+      await EmailService.sendMembershipCanceledEmail(membership.location_id, emailData);
     } catch (err) {
       console.error('Failed to send membership cancellation email:', err);
     }

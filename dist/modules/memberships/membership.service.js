@@ -489,7 +489,7 @@ class MembershipService {
                         ? new Date(membership.current_period_end).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
                         : undefined,
                 };
-                yield email_service_1.EmailService.sendMembershipCanceledEmail(emailData);
+                yield email_service_1.EmailService.sendMembershipCanceledEmail(membership.location_id, emailData);
             }
             catch (err) {
                 console.error('Failed to send membership cancellation email:', err);

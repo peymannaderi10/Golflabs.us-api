@@ -2370,7 +2370,7 @@ export class LeagueService {
     // Verify team exists and user is captain
     const { data: team, error: teamError } = await supabase
       .from('league_teams')
-      .select('*, leagues(id, name, players_per_team, total_weeks, season_fee, weekly_prize_pot, num_holes)')
+      .select('*, leagues(id, name, players_per_team, total_weeks, season_fee, weekly_prize_pot, num_holes, location_id)')
       .eq('id', teamId)
       .single();
 
@@ -2487,7 +2487,7 @@ export class LeagueService {
         .eq('id', captainUserId)
         .single();
 
-      EmailService.sendTeamInviteEmail({
+      EmailService.sendTeamInviteEmail(league.location_id, {
         invitedUserName: user.full_name || user.email,
         invitedEmail: normalizedEmail,
         captainName: captainProfile.data?.full_name || 'Your teammate',

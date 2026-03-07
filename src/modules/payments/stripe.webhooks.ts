@@ -110,7 +110,7 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
 
                 const { data: league } = await supabase
                   .from('leagues')
-                  .select('name, format, day_of_week, start_time, total_weeks, season_fee, weekly_prize_pot, status')
+                  .select('name, format, day_of_week, start_time, total_weeks, season_fee, weekly_prize_pot, status, location_id')
                   .eq('id', leagueId)
                   .single();
 
@@ -144,7 +144,7 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
 
                     const frontendUrl = process.env.FRONTEND_URL || 'https://golflabs.us';
 
-                    EmailService.sendLeagueEnrollmentEmail({
+                    EmailService.sendLeagueEnrollmentEmail(league.location_id, {
                       playerName: player.display_name,
                       playerEmail: userProfile.email,
                       leagueName: league.name,
@@ -875,7 +875,7 @@ async function sendMembershipWelcomeEmailFromWebhook(
     const plan = membership.membership_plans;
     const benefits = plan.benefits || {};
 
-    await EmailService.sendMembershipWelcomeEmail({
+    await EmailService.sendMembershipWelcomeEmail(locationId, {
       userFullName: profile.full_name || 'Member',
       userEmail: profile.email,
       planName: plan.name,
