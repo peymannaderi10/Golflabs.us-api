@@ -207,54 +207,32 @@ class MarketingService {
     }
     static getAllUserIds(locationId) {
         return __awaiter(this, void 0, void 0, function* () {
-            const [customerIds, memberIds, leaguePlayerIds] = yield Promise.all([
-                this.getCustomerUserIds(locationId),
-                this.getActiveMemberUserIds(locationId),
-                this.getLeaguePlayerUserIds(locationId),
-            ]);
-            const unique = new Set([...customerIds, ...memberIds, ...leaguePlayerIds]);
-            return Array.from(unique);
-        });
-    }
-    static getLeaguePlayerUserIds(locationId) {
-        return __awaiter(this, void 0, void 0, function* () {
-            const { data: leagues } = yield database_1.supabase
-                .from('leagues')
+            const { data } = yield database_1.supabase
+                .from('user_profiles')
                 .select('id')
                 .eq('location_id', locationId)
-                .in('status', ['registration', 'active', 'completed']);
-            if (!leagues || leagues.length === 0)
-                return [];
-            const leagueIds = leagues.map(l => l.id);
-            const { data: players } = yield database_1.supabase
-                .from('league_players')
-                .select('user_id')
-                .in('league_id', leagueIds)
-                .eq('enrollment_status', 'active');
-            const unique = new Set((players || []).map(p => p.user_id));
-            return Array.from(unique);
+                .in('role', ['customer', 'admin', 'employee']);
+            return (data || []).map(u => u.id);
         });
     }
     static getNoBookingUserIds(locationId) {
         return __awaiter(this, void 0, void 0, function* () {
-            const [memberIds, leaguePlayerIds, customerIds] = yield Promise.all([
-                this.getActiveMemberUserIds(locationId),
-                this.getLeaguePlayerUserIds(locationId),
+            const [allIds, customerIds] = yield Promise.all([
+                this.getAllUserIds(locationId),
                 this.getCustomerUserIds(locationId),
             ]);
-            const associatedIds = new Set([...memberIds, ...leaguePlayerIds]);
             const customerSet = new Set(customerIds);
-            return Array.from(associatedIds).filter(id => !customerSet.has(id));
+            return allIds.filter(id => !customerSet.has(id));
         });
     }
     static getNonMemberUserIds(locationId) {
         return __awaiter(this, void 0, void 0, function* () {
-            const [customerIds, memberIds] = yield Promise.all([
-                this.getCustomerUserIds(locationId),
+            const [allIds, memberIds] = yield Promise.all([
+                this.getAllUserIds(locationId),
                 this.getActiveMemberUserIds(locationId),
             ]);
             const memberSet = new Set(memberIds);
-            return customerIds.filter(id => !memberSet.has(id));
+            return allIds.filter(id => !memberSet.has(id));
         });
     }
     static getHighSpenderUserIds(locationId) {

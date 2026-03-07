@@ -250,57 +250,33 @@ export class MarketingService {
   }
 
   private static async getAllUserIds(locationId: string): Promise<string[]> {
-    const [customerIds, memberIds, leaguePlayerIds] = await Promise.all([
-      this.getCustomerUserIds(locationId),
-      this.getActiveMemberUserIds(locationId),
-      this.getLeaguePlayerUserIds(locationId),
-    ]);
-
-    const unique = new Set([...customerIds, ...memberIds, ...leaguePlayerIds]);
-    return Array.from(unique);
-  }
-
-  private static async getLeaguePlayerUserIds(locationId: string): Promise<string[]> {
-    const { data: leagues } = await supabase
-      .from('leagues')
+    const { data } = await supabase
+      .from('user_profiles')
       .select('id')
       .eq('location_id', locationId)
-      .in('status', ['registration', 'active', 'completed']);
+      .in('role', ['customer', 'admin', 'employee']);
 
-    if (!leagues || leagues.length === 0) return [];
-
-    const leagueIds = leagues.map(l => l.id);
-    const { data: players } = await supabase
-      .from('league_players')
-      .select('user_id')
-      .in('league_id', leagueIds)
-      .eq('enrollment_status', 'active');
-
-    const unique = new Set((players || []).map(p => p.user_id as string));
-    return Array.from(unique);
+    return (data || []).map(u => u.id);
   }
 
   private static async getNoBookingUserIds(locationId: string): Promise<string[]> {
-    const [memberIds, leaguePlayerIds, customerIds] = await Promise.all([
-      this.getActiveMemberUserIds(locationId),
-      this.getLeaguePlayerUserIds(locationId),
+    const [allIds, customerIds] = await Promise.all([
+      this.getAllUserIds(locationId),
       this.getCustomerUserIds(locationId),
     ]);
 
-    const associatedIds = new Set([...memberIds, ...leaguePlayerIds]);
     const customerSet = new Set(customerIds);
-
-    return Array.from(associatedIds).filter(id => !customerSet.has(id));
+    return allIds.filter(id => !customerSet.has(id));
   }
 
   private static async getNonMemberUserIds(locationId: string): Promise<string[]> {
-    const [customerIds, memberIds] = await Promise.all([
-      this.getCustomerUserIds(locationId),
+    const [allIds, memberIds] = await Promise.all([
+      this.getAllUserIds(locationId),
       this.getActiveMemberUserIds(locationId),
     ]);
 
     const memberSet = new Set(memberIds);
-    return customerIds.filter(id => !memberSet.has(id));
+    return allIds.filter(id => !memberSet.has(id));
   }
 
   private static async getHighSpenderUserIds(locationId: string): Promise<string[]> {
