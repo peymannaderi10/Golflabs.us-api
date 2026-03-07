@@ -592,7 +592,13 @@ export class MarketingService {
           await this.updateRecipientStatuses(campaign.id, batch, 'failed');
         } else {
           sentCount += batch.length;
-          const messageIds = Array.isArray(result.data) ? result.data : [];
+          console.log('Resend batch.send result.data:', JSON.stringify(result.data));
+          const rawData = result.data as any;
+          const messageIds: Array<{ id: string }> = Array.isArray(rawData)
+            ? rawData
+            : Array.isArray(rawData?.data)
+              ? rawData.data
+              : [];
           console.log(`Batch send returned ${messageIds.length} message IDs for ${batch.length} recipients`);
           await this.storeMessageIds(campaign.id, batch, messageIds);
         }

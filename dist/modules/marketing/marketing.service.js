@@ -481,7 +481,13 @@ class MarketingService {
                     }
                     else {
                         sentCount += batch.length;
-                        const messageIds = Array.isArray(result.data) ? result.data : [];
+                        console.log('Resend batch.send result.data:', JSON.stringify(result.data));
+                        const rawData = result.data;
+                        const messageIds = Array.isArray(rawData)
+                            ? rawData
+                            : Array.isArray(rawData === null || rawData === void 0 ? void 0 : rawData.data)
+                                ? rawData.data
+                                : [];
                         console.log(`Batch send returned ${messageIds.length} message IDs for ${batch.length} recipients`);
                         yield this.storeMessageIds(campaign.id, batch, messageIds);
                     }
