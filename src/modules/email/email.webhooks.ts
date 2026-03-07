@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import crypto from 'crypto';
+import { Webhook } from 'svix';
 import { resendConfig } from '../../config/resend';
 import { NotificationService } from './notification.service';
 import { MarketingService } from '../marketing/marketing.service';
@@ -11,47 +11,30 @@ export async function handleResendWebhook(req: Request, res: Response) {
     return res.status(400).send('Webhook secret not configured');
   }
 
-  // Verify webhook signature
-  const signature = req.headers['resend-signature'] as string;
-  if (!signature) {
-    console.error('Missing Resend webhook signature');
-    return res.status(400).send('Missing signature');
+  const svixId = req.headers['svix-id'] as string;
+  const svixTimestamp = req.headers['svix-timestamp'] as string;
+  const svixSignature = req.headers['svix-signature'] as string;
+
+  if (!svixId || !svixTimestamp || !svixSignature) {
+    console.error('Missing Svix webhook headers');
+    return res.status(400).send('Missing webhook headers');
   }
 
   try {
-    // Extract timestamp and signature from header
-    const elements = signature.split(',');
-    const timestamp = elements.find(e => e.startsWith('t='))?.split('=')[1];
-    const sig = elements.find(e => e.startsWith('v1='))?.split('=')[1];
+    const payload = req.body instanceof Buffer ? req.body.toString('utf8') : JSON.stringify(req.body);
 
-    if (!timestamp || !sig) {
-      console.error('Invalid signature format');
-      return res.status(400).send('Invalid signature format');
-    }
+    const wh = new Webhook(resendConfig.webhookSecret);
+    const event = wh.verify(payload, {
+      'svix-id': svixId,
+      'svix-timestamp': svixTimestamp,
+      'svix-signature': svixSignature,
+    }) as ResendWebhookEvent;
 
-    // Create expected signature
-    const payload = `${timestamp}.${JSON.stringify(req.body)}`;
-    const expectedSignature = crypto
-      .createHmac('sha256', resendConfig.webhookSecret)
-      .update(payload)
-      .digest('hex');
-
-    // Verify signature (timing-safe comparison)
-    const sigBuf = Buffer.from(sig, 'utf8');
-    const expectedBuf = Buffer.from(expectedSignature, 'utf8');
-    if (sigBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(sigBuf, expectedBuf)) {
-      console.error('Invalid webhook signature');
-      return res.status(400).send('Invalid signature');
-    }
-
-    // Process the webhook event
-    const event = req.body as ResendWebhookEvent;
     await processWebhookEvent(event);
-
     res.status(200).json({ received: true });
-  } catch (error) {
-    console.error('Error processing Resend webhook:', error);
-    res.status(500).send('Internal server error');
+  } catch (error: any) {
+    console.error('Webhook verification failed:', error.message || error);
+    res.status(400).send('Invalid webhook signature');
   }
 }
 
@@ -67,8 +50,6 @@ async function processWebhookEvent(event: ResendWebhookEvent) {
 
   switch (event.type) {
     case 'email.sent':
-      // Email was sent successfully by Resend
-      // We already mark as 'sent' when we get the API response, so no action needed
       break;
 
     case 'email.delivered':
@@ -101,4 +82,4 @@ async function processWebhookEvent(event: ResendWebhookEvent) {
     default:
       console.log(`Unhandled Resend webhook event type: ${event.type}`);
   }
-} 
+}
