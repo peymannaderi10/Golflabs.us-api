@@ -265,19 +265,24 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
 
               const { data: mem } = await supabase
                 .from('memberships')
-                .select('free_minutes_used')
+                .select('free_minutes_used, location_id')
                 .eq('id', membershipIdMeta)
                 .single();
 
               if (mem) {
-                await supabase
-                  .from('memberships')
-                  .update({ free_minutes_used: (mem.free_minutes_used || 0) + memberFreeMinutes })
-                  .eq('id', membershipIdMeta);
-              }
+                const memSettings = await membershipService.getLocationMembershipSettings(mem.location_id);
+                if (!memSettings.membershipsEnabled) {
+                  console.log(`Skipping free minutes deduction for membership ${membershipIdMeta} — memberships disabled at location ${mem.location_id}`);
+                } else {
+                  await supabase
+                    .from('memberships')
+                    .update({ free_minutes_used: (mem.free_minutes_used || 0) + memberFreeMinutes })
+                    .eq('id', membershipIdMeta);
 
-              await membershipService.logUsage(membershipIdMeta, bookingId, 'free_minutes', memberFreeMinutes);
-              console.log(`Deducted ${memberFreeMinutes} free minutes from membership ${membershipIdMeta} for booking ${bookingId}`);
+                  await membershipService.logUsage(membershipIdMeta, bookingId, 'free_minutes', memberFreeMinutes);
+                  console.log(`Deducted ${memberFreeMinutes} free minutes from membership ${membershipIdMeta} for booking ${bookingId}`);
+                }
+              }
             } catch (memberErr) {
               console.error(`Error deducting membership free minutes for booking ${bookingId}:`, memberErr);
             }
@@ -474,19 +479,24 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
 
             const { data: mem } = await supabase
               .from('memberships')
-              .select('free_minutes_used')
+              .select('free_minutes_used, location_id')
               .eq('id', setupMembershipId)
               .single();
 
             if (mem) {
-              await supabase
-                .from('memberships')
-                .update({ free_minutes_used: (mem.free_minutes_used || 0) + setupMemberFreeMinutes })
-                .eq('id', setupMembershipId);
-            }
+              const memSettings = await membershipService.getLocationMembershipSettings(mem.location_id);
+              if (!memSettings.membershipsEnabled) {
+                console.log(`Skipping free minutes deduction for membership ${setupMembershipId} — memberships disabled at location ${mem.location_id}`);
+              } else {
+                await supabase
+                  .from('memberships')
+                  .update({ free_minutes_used: (mem.free_minutes_used || 0) + setupMemberFreeMinutes })
+                  .eq('id', setupMembershipId);
 
-            await membershipService.logUsage(setupMembershipId, setupBookingId, 'free_minutes', setupMemberFreeMinutes);
-            console.log(`Deducted ${setupMemberFreeMinutes} free minutes from membership ${setupMembershipId} for free booking ${setupBookingId}`);
+                await membershipService.logUsage(setupMembershipId, setupBookingId, 'free_minutes', setupMemberFreeMinutes);
+                console.log(`Deducted ${setupMemberFreeMinutes} free minutes from membership ${setupMembershipId} for free booking ${setupBookingId}`);
+              }
+            }
           } catch (memberErr) {
             console.error(`Error deducting membership free minutes for free booking ${setupBookingId}:`, memberErr);
           }

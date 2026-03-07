@@ -71,4 +71,5 @@ export interface LocationMembershipSettings {
   membershipsEnabled: boolean;
   defaultBookingWindowDays: number;
   defaultBookingHours: { start: string; end: string } | null;
+  bookingBufferMinutes: number;
 }

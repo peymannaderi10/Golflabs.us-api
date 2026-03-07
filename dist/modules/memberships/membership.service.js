@@ -214,6 +214,10 @@ class MembershipService {
                 .single();
             if (planErr || !plan)
                 throw new Error('Plan not found or inactive');
+            const subLocationSettings = yield this.getLocationMembershipSettings(plan.location_id);
+            if (!subLocationSettings.membershipsEnabled) {
+                throw new Error('Memberships are not available at this location');
+            }
             // Validate billing interval
             if (billingInterval === 'annual' && !plan.stripe_annual_price_id) {
                 throw new Error('Annual billing is not available for this plan');
@@ -617,13 +621,14 @@ class MembershipService {
     // =====================================================
     getLocationMembershipSettings(locationId) {
         return __awaiter(this, void 0, void 0, function* () {
+            var _a;
             const { data, error } = yield database_1.supabase
                 .from('location_settings')
-                .select('memberships_enabled, leagues_enabled, default_booking_window_days, default_booking_hours_start, default_booking_hours_end')
+                .select('memberships_enabled, leagues_enabled, default_booking_window_days, default_booking_hours_start, default_booking_hours_end, booking_buffer_minutes')
                 .eq('location_id', locationId)
                 .single();
             if (error || !data) {
-                return { membershipsEnabled: false, leaguesEnabled: true, defaultBookingWindowDays: 7, defaultBookingHours: null };
+                return { membershipsEnabled: false, leaguesEnabled: true, defaultBookingWindowDays: 7, defaultBookingHours: null, bookingBufferMinutes: 0 };
             }
             return {
                 membershipsEnabled: data.memberships_enabled,
@@ -632,6 +637,7 @@ class MembershipService {
                 defaultBookingHours: data.default_booking_hours_start && data.default_booking_hours_end
                     ? { start: data.default_booking_hours_start, end: data.default_booking_hours_end }
                     : null,
+                bookingBufferMinutes: (_a = data.booking_buffer_minutes) !== null && _a !== void 0 ? _a : 0,
             };
         });
     }
@@ -648,6 +654,12 @@ class MembershipService {
             if (updates.defaultBookingHours !== undefined) {
                 updateFields.default_booking_hours_start = (_b = (_a = updates.defaultBookingHours) === null || _a === void 0 ? void 0 : _a.start) !== null && _b !== void 0 ? _b : null;
                 updateFields.default_booking_hours_end = (_d = (_c = updates.defaultBookingHours) === null || _c === void 0 ? void 0 : _c.end) !== null && _d !== void 0 ? _d : null;
+            }
+            if (updates.bookingBufferMinutes !== undefined) {
+                if (updates.bookingBufferMinutes < 0 || updates.bookingBufferMinutes > 60 || updates.bookingBufferMinutes % 15 !== 0) {
+                    throw new Error('Buffer must be 0, 15, 30, 45, or 60 minutes');
+                }
+                updateFields.booking_buffer_minutes = updates.bookingBufferMinutes;
             }
             const { error } = yield database_1.supabase
                 .from('location_settings')

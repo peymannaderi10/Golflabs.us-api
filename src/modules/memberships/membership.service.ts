@@ -212,6 +212,11 @@ export class MembershipService {
 
     if (planErr || !plan) throw new Error('Plan not found or inactive');
 
+    const subLocationSettings = await this.getLocationMembershipSettings(plan.location_id);
+    if (!subLocationSettings.membershipsEnabled) {
+      throw new Error('Memberships are not available at this location');
+    }
+
     // Validate billing interval
     if (billingInterval === 'annual' && !plan.stripe_annual_price_id) {
       throw new Error('Annual billing is not available for this plan');
@@ -654,12 +659,12 @@ export class MembershipService {
   async getLocationMembershipSettings(locationId: string): Promise<LocationMembershipSettings & { leaguesEnabled: boolean }> {
     const { data, error } = await supabase
       .from('location_settings')
-      .select('memberships_enabled, leagues_enabled, default_booking_window_days, default_booking_hours_start, default_booking_hours_end')
+      .select('memberships_enabled, leagues_enabled, default_booking_window_days, default_booking_hours_start, default_booking_hours_end, booking_buffer_minutes')
       .eq('location_id', locationId)
       .single();
 
     if (error || !data) {
-      return { membershipsEnabled: false, leaguesEnabled: true, defaultBookingWindowDays: 7, defaultBookingHours: null };
+      return { membershipsEnabled: false, leaguesEnabled: true, defaultBookingWindowDays: 7, defaultBookingHours: null, bookingBufferMinutes: 0 };
     }
 
     return {
@@ -669,6 +674,7 @@ export class MembershipService {
       defaultBookingHours: data.default_booking_hours_start && data.default_booking_hours_end
         ? { start: data.default_booking_hours_start, end: data.default_booking_hours_end }
         : null,
+      bookingBufferMinutes: data.booking_buffer_minutes ?? 0,
     };
   }
 
@@ -677,6 +683,7 @@ export class MembershipService {
     leaguesEnabled?: boolean;
     defaultBookingWindowDays?: number;
     defaultBookingHours?: { start: string; end: string } | null;
+    bookingBufferMinutes?: number;
   }): Promise<void> {
     const updateFields: any = {};
     if (updates.membershipsEnabled !== undefined) updateFields.memberships_enabled = updates.membershipsEnabled;
@@ -685,6 +692,12 @@ export class MembershipService {
     if (updates.defaultBookingHours !== undefined) {
       updateFields.default_booking_hours_start = updates.defaultBookingHours?.start ?? null;
       updateFields.default_booking_hours_end = updates.defaultBookingHours?.end ?? null;
+    }
+    if (updates.bookingBufferMinutes !== undefined) {
+      if (updates.bookingBufferMinutes < 0 || updates.bookingBufferMinutes > 60 || updates.bookingBufferMinutes % 15 !== 0) {
+        throw new Error('Buffer must be 0, 15, 30, 45, or 60 minutes');
+      }
+      updateFields.booking_buffer_minutes = updates.bookingBufferMinutes;
     }
 
     const { error } = await supabase

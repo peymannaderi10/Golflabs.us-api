@@ -12,7 +12,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.LocationService = void 0;
 const database_1 = require("../../config/database");
 function formatSettings(ls) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
     return {
         membershipsEnabled: (_a = ls.memberships_enabled) !== null && _a !== void 0 ? _a : false,
         leaguesEnabled: (_b = ls.leagues_enabled) !== null && _b !== void 0 ? _b : true,
@@ -20,9 +20,10 @@ function formatSettings(ls) {
         defaultBookingHoursStart: (_d = ls.default_booking_hours_start) !== null && _d !== void 0 ? _d : null,
         defaultBookingHoursEnd: (_e = ls.default_booking_hours_end) !== null && _e !== void 0 ? _e : null,
         cancellationPolicyHours: (_f = ls.cancellation_policy_hours) !== null && _f !== void 0 ? _f : 24,
-        brandPrimaryColor: (_g = ls.brand_primary_color) !== null && _g !== void 0 ? _g : '#00A36C',
-        brandLogoUrl: (_h = ls.brand_logo_url) !== null && _h !== void 0 ? _h : null,
-        customDomain: (_j = ls.custom_domain) !== null && _j !== void 0 ? _j : null,
+        bookingBufferMinutes: (_g = ls.booking_buffer_minutes) !== null && _g !== void 0 ? _g : 0,
+        brandPrimaryColor: (_h = ls.brand_primary_color) !== null && _h !== void 0 ? _h : '#00A36C',
+        brandLogoUrl: (_j = ls.brand_logo_url) !== null && _j !== void 0 ? _j : null,
+        customDomain: (_k = ls.custom_domain) !== null && _k !== void 0 ? _k : null,
     };
 }
 function formatLocation(location, settings) {

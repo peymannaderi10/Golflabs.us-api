@@ -7,6 +7,7 @@ interface LocationSettingsRow {
   default_booking_hours_start: string | null;
   default_booking_hours_end: string | null;
   cancellation_policy_hours: number;
+  booking_buffer_minutes: number;
   brand_primary_color: string;
   brand_logo_url: string | null;
   custom_domain: string | null;
@@ -20,6 +21,7 @@ function formatSettings(ls: Partial<LocationSettingsRow>) {
     defaultBookingHoursStart: ls.default_booking_hours_start ?? null,
     defaultBookingHoursEnd: ls.default_booking_hours_end ?? null,
     cancellationPolicyHours: ls.cancellation_policy_hours ?? 24,
+    bookingBufferMinutes: ls.booking_buffer_minutes ?? 0,
     brandPrimaryColor: ls.brand_primary_color ?? '#00A36C',
     brandLogoUrl: ls.brand_logo_url ?? null,
     customDomain: ls.custom_domain ?? null,

@@ -382,41 +382,42 @@ class PaymentService {
             if (userId) {
                 try {
                     const membershipService = new membership_service_1.MembershipService();
-                    const membership = yield membershipService.getActiveMembershipForUser(userId, locationId);
-                    if (membership) {
-                        membershipId = membership.id;
-                        const benefits = membership.benefits;
-                        const totalMinutes = (endDate.getTime() - startDate.getTime()) / (1000 * 60);
-                        // 1. Apply free minutes first
-                        if (benefits.freeMinutesPerMonth && benefits.freeMinutesPerMonth > 0) {
-                            const remainingFreeMinutes = benefits.freeMinutesPerMonth - (membership.free_minutes_used || 0);
-                            if (remainingFreeMinutes > 0) {
-                                const minutesToApply = Math.min(remainingFreeMinutes, totalMinutes);
-                                const slotsToCredit = Math.floor(minutesToApply / 15);
-                                if (slotsToCredit > 0) {
-                                    // Calculate the value of free slots using average slot price
-                                    const avgSlotPrice = total / (totalMinutes / 15);
-                                    const freeCredit = Math.round(slotsToCredit * avgSlotPrice);
-                                    freeMinutesApplied = slotsToCredit * 15;
-                                    total = Math.max(0, total - freeCredit);
+                    const locationSettings = yield membershipService.getLocationMembershipSettings(locationId);
+                    if (locationSettings.membershipsEnabled) {
+                        const membership = yield membershipService.getActiveMembershipForUser(userId, locationId);
+                        if (membership) {
+                            membershipId = membership.id;
+                            const benefits = membership.benefits;
+                            const totalMinutes = (endDate.getTime() - startDate.getTime()) / (1000 * 60);
+                            // 1. Apply free minutes first
+                            if (benefits.freeMinutesPerMonth && benefits.freeMinutesPerMonth > 0) {
+                                const remainingFreeMinutes = benefits.freeMinutesPerMonth - (membership.free_minutes_used || 0);
+                                if (remainingFreeMinutes > 0) {
+                                    const minutesToApply = Math.min(remainingFreeMinutes, totalMinutes);
+                                    const slotsToCredit = Math.floor(minutesToApply / 15);
+                                    if (slotsToCredit > 0) {
+                                        const avgSlotPrice = total / (totalMinutes / 15);
+                                        const freeCredit = Math.round(slotsToCredit * avgSlotPrice);
+                                        freeMinutesApplied = slotsToCredit * 15;
+                                        total = Math.max(0, total - freeCredit);
+                                    }
                                 }
                             }
-                        }
-                        // 2. Apply discount on remaining amount
-                        if (benefits.discountType && benefits.discountValue && benefits.discountValue > 0 && total > 0) {
-                            if (benefits.discountType === 'fixed') {
-                                memberDiscount = Math.min(Math.round(benefits.discountValue * 100), total);
+                            // 2. Apply discount on remaining amount
+                            if (benefits.discountType && benefits.discountValue && benefits.discountValue > 0 && total > 0) {
+                                if (benefits.discountType === 'fixed') {
+                                    memberDiscount = Math.min(Math.round(benefits.discountValue * 100), total);
+                                }
+                                else if (benefits.discountType === 'percentage') {
+                                    memberDiscount = Math.round(total * (benefits.discountValue / 100));
+                                }
+                                total = Math.max(0, total - memberDiscount);
                             }
-                            else if (benefits.discountType === 'percentage') {
-                                memberDiscount = Math.round(total * (benefits.discountValue / 100));
-                            }
-                            total = Math.max(0, total - memberDiscount);
                         }
                     }
                 }
                 catch (memberErr) {
                     console.error('Error checking membership for price calculation:', memberErr);
-                    // Non-fatal: proceed with regular pricing
                 }
             }
             return {

@@ -248,17 +248,23 @@ function handleStripeWebhook(req, res, socketService) {
                                 const membershipService = new membership_service_1.MembershipService();
                                 const { data: mem } = yield database_1.supabase
                                     .from('memberships')
-                                    .select('free_minutes_used')
+                                    .select('free_minutes_used, location_id')
                                     .eq('id', membershipIdMeta)
                                     .single();
                                 if (mem) {
-                                    yield database_1.supabase
-                                        .from('memberships')
-                                        .update({ free_minutes_used: (mem.free_minutes_used || 0) + memberFreeMinutes })
-                                        .eq('id', membershipIdMeta);
+                                    const memSettings = yield membershipService.getLocationMembershipSettings(mem.location_id);
+                                    if (!memSettings.membershipsEnabled) {
+                                        console.log(`Skipping free minutes deduction for membership ${membershipIdMeta} — memberships disabled at location ${mem.location_id}`);
+                                    }
+                                    else {
+                                        yield database_1.supabase
+                                            .from('memberships')
+                                            .update({ free_minutes_used: (mem.free_minutes_used || 0) + memberFreeMinutes })
+                                            .eq('id', membershipIdMeta);
+                                        yield membershipService.logUsage(membershipIdMeta, bookingId, 'free_minutes', memberFreeMinutes);
+                                        console.log(`Deducted ${memberFreeMinutes} free minutes from membership ${membershipIdMeta} for booking ${bookingId}`);
+                                    }
                                 }
-                                yield membershipService.logUsage(membershipIdMeta, bookingId, 'free_minutes', memberFreeMinutes);
-                                console.log(`Deducted ${memberFreeMinutes} free minutes from membership ${membershipIdMeta} for booking ${bookingId}`);
                             }
                             catch (memberErr) {
                                 console.error(`Error deducting membership free minutes for booking ${bookingId}:`, memberErr);
@@ -439,17 +445,23 @@ function handleStripeWebhook(req, res, socketService) {
                             const membershipService = new membership_service_1.MembershipService();
                             const { data: mem } = yield database_1.supabase
                                 .from('memberships')
-                                .select('free_minutes_used')
+                                .select('free_minutes_used, location_id')
                                 .eq('id', setupMembershipId)
                                 .single();
                             if (mem) {
-                                yield database_1.supabase
-                                    .from('memberships')
-                                    .update({ free_minutes_used: (mem.free_minutes_used || 0) + setupMemberFreeMinutes })
-                                    .eq('id', setupMembershipId);
+                                const memSettings = yield membershipService.getLocationMembershipSettings(mem.location_id);
+                                if (!memSettings.membershipsEnabled) {
+                                    console.log(`Skipping free minutes deduction for membership ${setupMembershipId} — memberships disabled at location ${mem.location_id}`);
+                                }
+                                else {
+                                    yield database_1.supabase
+                                        .from('memberships')
+                                        .update({ free_minutes_used: (mem.free_minutes_used || 0) + setupMemberFreeMinutes })
+                                        .eq('id', setupMembershipId);
+                                    yield membershipService.logUsage(setupMembershipId, setupBookingId, 'free_minutes', setupMemberFreeMinutes);
+                                    console.log(`Deducted ${setupMemberFreeMinutes} free minutes from membership ${setupMembershipId} for free booking ${setupBookingId}`);
+                                }
                             }
-                            yield membershipService.logUsage(setupMembershipId, setupBookingId, 'free_minutes', setupMemberFreeMinutes);
-                            console.log(`Deducted ${setupMemberFreeMinutes} free minutes from membership ${setupMembershipId} for free booking ${setupBookingId}`);
                         }
                         catch (memberErr) {
                             console.error(`Error deducting membership free minutes for free booking ${setupBookingId}:`, memberErr);

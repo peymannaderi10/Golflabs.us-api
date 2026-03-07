@@ -949,20 +949,39 @@ export class BookingService {
       throw new Error('Failed to determine customer ID');
     }
 
-    // Check for conflicting bookings
+    // Fetch booking buffer for this location
+    const { data: bufferRow } = await supabase
+      .from('location_settings')
+      .select('booking_buffer_minutes')
+      .eq('location_id', locationId)
+      .single();
+    const bufferMinutes = bufferRow?.booking_buffer_minutes ?? 0;
+
+    // Widen the query window by the buffer so we catch bookings whose
+    // end_time + buffer overlaps our start. Filter precisely in code.
+    const windowStart = new Date(new Date(p_start_time).getTime() - bufferMinutes * 60_000).toISOString();
+
     const { data: conflictingBookings, error: conflictError } = await supabase
       .from('bookings')
-      .select('id')
+      .select('id, start_time, end_time')
       .eq('bay_id', bayId)
       .not('status', 'in', '("cancelled","expired","abandoned")')
-      .or(`and(start_time.lt.${p_end_time},end_time.gt.${p_start_time})`);
+      .or(`and(start_time.lt.${p_end_time},end_time.gt.${windowStart})`);
 
     if (conflictError) {
       console.error('Error checking for conflicts:', conflictError);
       throw new Error('Failed to check booking availability');
     }
 
-    if (conflictingBookings && conflictingBookings.length > 0) {
+    const hasConflict = conflictingBookings?.some(b => {
+      const bStart = new Date(b.start_time).getTime();
+      const bEndWithBuffer = new Date(b.end_time).getTime() + bufferMinutes * 60_000;
+      const newStart = new Date(p_start_time).getTime();
+      const newEnd = new Date(p_end_time).getTime();
+      return bStart < newEnd && bEndWithBuffer > newStart;
+    });
+
+    if (hasConflict) {
       throw new Error('This time slot is no longer available');
     }
 
@@ -1172,12 +1191,20 @@ export class BookingService {
       throw new Error('Failed to check availability');
     }
 
-    // Max extension = gap until next booking, or unlimited if no next booking
-    let maxExtensionMinutes = 60; // default cap
+    // Fetch booking buffer for this location
+    const { data: bufferRow } = await supabase
+      .from('location_settings')
+      .select('booking_buffer_minutes')
+      .eq('location_id', booking.location_id)
+      .single();
+    const bufferMinutes = bufferRow?.booking_buffer_minutes ?? 0;
+
+    // Max extension = gap until next booking minus buffer, or default cap
+    let maxExtensionMinutes = 60;
     if (nextBookings && nextBookings.length > 0) {
       const nextStart = new Date(nextBookings[0].start_time);
       const gapMinutes = (nextStart.getTime() - endTime.getTime()) / (1000 * 60);
-      maxExtensionMinutes = Math.floor(gapMinutes);
+      maxExtensionMinutes = Math.floor(gapMinutes) - bufferMinutes;
     }
 
     // 4. Get extension pricing rules (fall back to regular rules if none exist)
@@ -1315,8 +1342,16 @@ export class BookingService {
       throw new Error('Booking has already ended');
     }
 
-    // 2. Check availability for the extension window
+    // 2. Check availability for the extension window (buffer-aware)
     const newEndTime = new Date(currentEndTime.getTime() + extensionMinutes * 60 * 1000);
+
+    const { data: extBufRow } = await supabase
+      .from('location_settings')
+      .select('booking_buffer_minutes')
+      .eq('location_id', locationId)
+      .single();
+    const extBufMins = extBufRow?.booking_buffer_minutes ?? 0;
+    const newEndWithBuffer = new Date(newEndTime.getTime() + extBufMins * 60_000);
 
     const { data: conflicts, error: conflictError } = await supabase
       .from('bookings')
@@ -1324,7 +1359,7 @@ export class BookingService {
       .eq('bay_id', bayId)
       .neq('id', bookingId)
       .not('status', 'in', '("cancelled","expired","abandoned")')
-      .lt('start_time', newEndTime.toISOString())
+      .lt('start_time', newEndWithBuffer.toISOString())
       .gt('end_time', currentEndTime.toISOString());
 
     if (conflictError) {
@@ -1555,8 +1590,16 @@ export class BookingService {
       throw new Error('Booking has already ended');
     }
 
-    // 2. Check availability for the extension window
+    // 2. Check availability for the extension window (buffer-aware)
     const newEndTime = new Date(currentEndTime.getTime() + extensionMinutes * 60 * 1000);
+
+    const { data: empExtBufRow } = await supabase
+      .from('location_settings')
+      .select('booking_buffer_minutes')
+      .eq('location_id', locationId)
+      .single();
+    const empExtBufMins = empExtBufRow?.booking_buffer_minutes ?? 0;
+    const empNewEndWithBuffer = new Date(newEndTime.getTime() + empExtBufMins * 60_000);
 
     const { data: conflicts, error: conflictError } = await supabase
       .from('bookings')
@@ -1564,7 +1607,7 @@ export class BookingService {
       .eq('bay_id', bayId)
       .neq('id', bookingId)
       .not('status', 'in', '("cancelled","expired","abandoned")')
-      .lt('start_time', newEndTime.toISOString())
+      .lt('start_time', empNewEndWithBuffer.toISOString())
       .gt('end_time', currentEndTime.toISOString());
 
     if (conflictError) {
