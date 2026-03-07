@@ -211,7 +211,7 @@ class MarketingService {
                 .from('user_profiles')
                 .select('id')
                 .eq('location_id', locationId)
-                .in('role', ['customer', 'admin', 'employee']);
+                .eq('role', 'customer');
             return (data || []).map(u => u.id);
         });
     }
