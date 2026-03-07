@@ -255,27 +255,39 @@ class MarketingController {
         });
     }
     renderUnsubscribePage(title, message) {
+        const isSuccess = title === 'Unsubscribed';
         return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${title} - Golf Labs</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f5f7fa; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
-    .card { background: white; border-radius: 12px; padding: 48px; max-width: 480px; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-    .icon { width: 64px; height: 64px; background: #e8f5e8; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 24px; font-size: 28px; }
-    h1 { color: #2c5530; font-size: 24px; margin-bottom: 12px; }
-    p { color: #666; font-size: 16px; line-height: 1.6; }
-    .brand { margin-top: 32px; color: #999; font-size: 13px; }
+    body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f9fafb; display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 16px; }
+    .card { background: #fff; border-radius: 0.5rem; padding: 40px 32px; max-width: 420px; width: 100%; text-align: center; border: 1px solid #e5e7eb; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+    .icon { width: 56px; height: 56px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px; }
+    .icon-success { background: rgba(0,163,108,0.1); color: #00A36C; }
+    .icon-error { background: #fef2f2; color: #ef4444; }
+    .icon svg { width: 28px; height: 28px; }
+    h1 { color: #0a0a0a; font-size: 20px; font-weight: 600; margin-bottom: 8px; }
+    .message { color: #737373; font-size: 14px; line-height: 1.6; }
+    .divider { height: 1px; background: #e5e7eb; margin: 24px 0; }
+    .brand { color: #a3a3a3; font-size: 12px; font-weight: 500; letter-spacing: 0.025em; }
   </style>
 </head>
 <body>
   <div class="card">
-    <div class="icon">${title === 'Unsubscribed' ? '&#10003;' : '&#9888;'}</div>
+    <div class="icon ${isSuccess ? 'icon-success' : 'icon-error'}">
+      ${isSuccess
+            ? '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>'
+            : '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"/></svg>'}
+    </div>
     <h1>${title}</h1>
-    <p>${message}</p>
+    <p class="message">${message}</p>
+    <div class="divider"></div>
     <p class="brand">Golf Labs US</p>
   </div>
 </body>
