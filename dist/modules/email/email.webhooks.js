@@ -46,9 +46,9 @@ function handleResendWebhook(req, res) {
 }
 function processWebhookEvent(event) {
     return __awaiter(this, void 0, void 0, function* () {
-        const messageId = event.data.message_id;
+        const messageId = event.data.email_id || event.data.message_id;
         if (!messageId) {
-            console.warn('Webhook event missing message_id');
+            console.warn('Webhook event missing email_id/message_id:', JSON.stringify(event.data));
             return;
         }
         console.log(`Processing Resend webhook: ${event.type} for message ${messageId}`);

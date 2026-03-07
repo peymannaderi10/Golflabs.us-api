@@ -39,10 +39,10 @@ export async function handleResendWebhook(req: Request, res: Response) {
 }
 
 async function processWebhookEvent(event: ResendWebhookEvent) {
-  const messageId = event.data.message_id;
+  const messageId = event.data.email_id || event.data.message_id;
   
   if (!messageId) {
-    console.warn('Webhook event missing message_id');
+    console.warn('Webhook event missing email_id/message_id:', JSON.stringify(event.data));
     return;
   }
 

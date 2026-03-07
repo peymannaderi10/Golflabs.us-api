@@ -46,12 +46,12 @@ export interface ResendWebhookEvent {
   type: 'email.sent' | 'email.delivered' | 'email.bounced' | 'email.complained' | 'email.opened' | 'email.clicked';
   created_at: string;
   data: {
-    message_id: string;
+    email_id: string;
     to: string[];
     from: string;
     subject: string;
     created_at: string;
-    email_id?: string;
+    message_id?: string;
   };
 }
 
