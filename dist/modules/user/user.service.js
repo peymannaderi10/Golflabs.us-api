@@ -36,12 +36,16 @@ class UserService {
                     logger_1.logger.error({ err: profileUpdateError }, 'Error marking user profile as deleted');
                     throw new Error('Failed to delete account');
                 }
-                // 2. Delete auth user so they can't sign in
-                const { error: deleteAuthError } = yield database_1.supabase.auth.admin.deleteUser(userId);
-                if (deleteAuthError) {
-                    logger_1.logger.warn({ err: deleteAuthError }, 'Auth user deletion failed');
+                // 2. Ban the auth user so they can't sign in
+                //    We can't delete auth.users because user_profiles FK cascades to it,
+                //    and user_profiles is referenced by bookings/payments/etc.
+                const { error: banError } = yield database_1.supabase.auth.admin.updateUserById(userId, {
+                    ban_duration: '876000h', // ~100 years
+                });
+                if (banError) {
+                    logger_1.logger.warn({ err: banError }, 'Failed to ban auth user');
                 }
-                logger_1.logger.info({ userId }, 'Account soft-deleted and PII redacted');
+                logger_1.logger.info({ userId }, 'Account soft-deleted and auth user banned');
                 return {
                     success: true,
                     message: 'Account deleted successfully.'

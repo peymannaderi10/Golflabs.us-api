@@ -30,14 +30,18 @@ export class UserService {
         throw new Error('Failed to delete account');
       }
 
-      // 2. Delete auth user so they can't sign in
-      const { error: deleteAuthError } = await supabase.auth.admin.deleteUser(userId);
+      // 2. Ban the auth user so they can't sign in
+      //    We can't delete auth.users because user_profiles FK cascades to it,
+      //    and user_profiles is referenced by bookings/payments/etc.
+      const { error: banError } = await supabase.auth.admin.updateUserById(userId, {
+        ban_duration: '876000h', // ~100 years
+      });
 
-      if (deleteAuthError) {
-        logger.warn({ err: deleteAuthError }, 'Auth user deletion failed');
+      if (banError) {
+        logger.warn({ err: banError }, 'Failed to ban auth user');
       }
 
-      logger.info({ userId }, 'Account soft-deleted and PII redacted');
+      logger.info({ userId }, 'Account soft-deleted and auth user banned');
 
       return {
         success: true,
