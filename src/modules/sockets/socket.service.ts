@@ -1,4 +1,5 @@
 import { Server, Socket } from 'socket.io';
+import crypto from 'crypto';
 import { BookingService } from '../bookings/booking.service';
 import { supabase } from '../../config/database';
 import { LeagueScorePayload, LeagueStandingsPayload } from '../leagues/league.types';
@@ -16,6 +17,16 @@ export class SocketService {
     console.log('SocketService initialized.');
   }
 
+  private isValidKioskKey(key: string | undefined): boolean {
+    const expectedKey = process.env.KIOSK_API_KEY;
+    if (!expectedKey || !key) return false;
+
+    const keyBuffer = Buffer.from(key);
+    const expectedBuffer = Buffer.from(expectedKey);
+    if (keyBuffer.length !== expectedBuffer.length) return false;
+    return crypto.timingSafeEqual(keyBuffer, expectedBuffer);
+  }
+
   /**
    * Initializes the socket connection handlers.
    */
@@ -23,28 +34,43 @@ export class SocketService {
     this.io.on('connection', (socket: Socket) => {
       console.log('A client connected:', socket.id);
 
-      // Register a kiosk and have it join a room based on its location and bay
+      // Validate kiosk API key from handshake auth, then join rooms
       socket.on('register_kiosk', (payload: { locationId: string; bayId: string }) => {
+        const kioskKey = socket.handshake.auth?.kioskKey as string | undefined;
+        if (!this.isValidKioskKey(kioskKey)) {
+          console.warn(`Socket ${socket.id} failed kiosk auth for register_kiosk`);
+          socket.emit('auth_error', { message: 'Invalid or missing kiosk API key' });
+          return;
+        }
+
         if (payload.locationId && payload.bayId) {
           const bayRoom = `location-${payload.locationId}-bay-${payload.bayId}`;
           const locationRoom = `location-${payload.locationId}`;
           socket.join(bayRoom);
           socket.join(locationRoom);
+          socket.data.isKiosk = true;
           console.log(`Socket ${socket.id} (Bay ${payload.bayId}) joined rooms: ${bayRoom}, ${locationRoom}`);
         }
       });
 
-      // Handle request from a kiosk for a full data refresh
+      // Only allow booking requests from authenticated kiosk sockets
       socket.on('request_initial_bookings', (payload: { locationId: string; bayId: string }) => {
+        if (!socket.data.isKiosk) {
+          socket.emit('auth_error', { message: 'Not authenticated as kiosk' });
+          return;
+        }
         if (payload.locationId && payload.bayId) {
           console.log(`Kiosk ${socket.id} requested initial bookings for bay ${payload.bayId}.`);
-          // Use the existing fallback method to send all bookings
           this.sendAllBookingsUpdate(payload.locationId, payload.bayId);
         }
       });
 
-      // Register a kiosk/TV to a league room for real-time score updates
+      // Register a kiosk/TV to a league room (requires kiosk auth)
       socket.on('register_league', (payload: { locationId: string; leagueId: string }) => {
+        if (!socket.data.isKiosk) {
+          socket.emit('auth_error', { message: 'Not authenticated as kiosk' });
+          return;
+        }
         if (payload.locationId && payload.leagueId) {
           const room = `location-${payload.locationId}-league-${payload.leagueId}`;
           socket.join(room);
