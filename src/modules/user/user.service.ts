@@ -25,26 +25,35 @@ export class UserService {
         .update({ user_id: null, notes: null })
         .eq('user_id', userId);
 
-      // 2. Anonymize access logs -- remove PII fields
+      // 2. Anonymize payments -- null out user_id but keep for financial records
+      await supabase
+        .from('payments')
+        .update({ user_id: null })
+        .eq('user_id', userId);
+
+      // 3. Anonymize access logs -- remove PII fields
       await supabase
         .from('access_logs')
         .update({ user_id: null, ip_address: null, user_agent: null })
         .eq('user_id', userId);
 
-      // 3. Anonymize agreement records -- keep for legal compliance but redact PII
+      // 4. Anonymize agreement records -- keep for legal compliance but redact PII
       await supabase
         .from('user_agreements')
         .update({ signer_name: '[deleted]', signer_email: '[deleted]', ip_address: null, user_agent: null })
         .eq('user_id', userId);
 
-      // 4. Delete marketing data entirely
+      // 5. Delete marketing data entirely
       await supabase.from('campaign_recipients').delete().eq('user_id', userId);
       await supabase.from('marketing_preferences').delete().eq('user_id', userId);
 
-      // 5. Delete notifications
+      // 6. Delete notifications
       await supabase.from('notifications').delete().eq('user_id', userId);
 
-      // 6. Delete Stripe customer if exists
+      // 7. Delete memberships
+      await supabase.from('memberships').delete().eq('user_id', userId);
+
+      // 8. Delete Stripe customer if exists
       if (existingUser.stripe_customer_id) {
         try {
           await stripe.customers.del(existingUser.stripe_customer_id);
@@ -53,7 +62,7 @@ export class UserService {
         }
       }
 
-      // 7. Delete user profile
+      // 9. Delete user profile (user_promotions cascades automatically)
       const { error: deleteProfileError } = await supabase
         .from('user_profiles')
         .delete()
@@ -64,7 +73,7 @@ export class UserService {
         throw new Error('Failed to delete user profile');
       }
 
-      // 8. Delete auth user
+      // 10. Delete auth user
       const { error: deleteAuthError } = await supabase.auth.admin.deleteUser(userId);
 
       if (deleteAuthError) {
