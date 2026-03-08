@@ -1,3 +1,5 @@
+import { fromZonedTime } from 'date-fns-tz';
+
 // Helper function to parse time string (e.g., "2:30 PM") and return hours and minutes
 export const parseTimeString = (timeStr: string): { hours: number; minutes: number } => {
   try {
@@ -20,27 +22,16 @@ export const parseTimeString = (timeStr: string): { hours: number; minutes: numb
   }
 };
 
-// Helper function to create ISO timestamp from date and time string
+// Converts a date string + time string in a given IANA timezone to a UTC ISO string.
+// Uses fromZonedTime which correctly handles DST boundaries.
 export const createISOTimestamp = (date: string, timeStr: string, timezone: string = 'America/New_York'): string => {
   try {
     const { hours, minutes } = parseTimeString(timeStr);
-    
-    // Create a date-time string in ISO format but without timezone
-    const isoString = `${date}T${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:00.000`;
-    
-    // Create a date object from this string (will be in local server time)
-    const localDate = new Date(isoString);
-    
-    // Convert to the target timezone using toLocaleString, then back to a Date object
-    const timeInTargetTZ = localDate.toLocaleString('sv-SE', { timeZone: timezone });
-    const targetDate = new Date(timeInTargetTZ);
-    
-    // Calculate the offset between what we want and what we got
-    const offset = localDate.getTime() - targetDate.getTime();
-    
-    // Apply the offset to get the correct UTC time
-    const utcDate = new Date(localDate.getTime() + offset);
-    
+
+    const wallClock = `${date}T${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:00.000`;
+
+    const utcDate = fromZonedTime(wallClock, timezone);
+
     return utcDate.toISOString();
   } catch (error) {
     console.error('Error creating timestamp:', { date, timeStr, timezone }, error);
