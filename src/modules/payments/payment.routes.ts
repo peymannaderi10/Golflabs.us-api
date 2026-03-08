@@ -1,34 +1,20 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
-import { body, param, query, validationResult } from 'express-validator';
+import { body, param, query } from 'express-validator';
 import { PaymentController } from './payment.controller';
+import { handleValidationErrors } from '../../shared/middleware/validation';
 
 export const paymentRoutes = Router();
 
 const controller = new PaymentController();
 
-// Rate limiting for payment endpoints - more restrictive than general API
 const paymentRateLimit = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 20, // 20 requests per 15 minutes per IP
-  message: {
-    error: 'Too many payment requests from this IP, please try again later.'
-  },
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  message: { error: 'Too many payment requests from this IP, please try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
 });
-
-// Validation middleware
-const handleValidationErrors = (req: any, res: any, next: any) => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(400).json({
-      error: 'Invalid input',
-      details: errors.array()
-    });
-  }
-  next();
-};
 
 // Payment routes with validation and rate limiting
 paymentRoutes.post('/bookings/:bookingId/create-payment-intent', 

@@ -7,12 +7,14 @@ import { SocketService } from '../sockets/socket.service';
 import { promotionService } from '../promotions/promotion.service';
 import { LeagueService } from '../leagues/league.service';
 import { MembershipService } from '../memberships/membership.service';
+import { createUnlockToken } from '../../shared/utils/token.utils';
+import { logger } from '../../shared/utils/logger';
 
 export async function handleStripeWebhook(req: Request, res: Response, socketService: SocketService) {
   const sig = req.headers['stripe-signature'] as string;
 
   if (!webhookSecret) {
-    console.error("Stripe webhook secret not found.");
+    logger.error('Stripe webhook secret not found');
     return res.status(400).send('Webhook Error: Missing secret');
   }
 
@@ -21,7 +23,7 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
   try {
     event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
   } catch (err: any) {
-    console.error(`Webhook signature verification failed.`, err.message);
+    logger.error({ err }, 'Webhook signature verification failed');
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
@@ -38,7 +40,7 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
         const leagueId = paymentIntent.metadata.league_id;
 
         if (event.type === 'payment_intent.succeeded') {
-          console.log(`League enrollment payment succeeded for player ${leaguePlayerId} in league ${leagueId}`);
+          logger.info({ leaguePlayerId, leagueId }, 'League enrollment payment succeeded');
 
           try {
             // Activate the player enrollment
@@ -52,9 +54,9 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
               .eq('id', leaguePlayerId);
 
             if (playerError) {
-              console.error(`Error activating league player ${leaguePlayerId}:`, playerError);
+              logger.error({ err: playerError, leaguePlayerId }, 'Error activating league player');
             } else {
-              console.log(`League player ${leaguePlayerId} activated successfully.`);
+              logger.info({ leaguePlayerId }, 'League player activated successfully');
 
               // Create league_standings row for the player
               const { error: standingsError } = await supabase
@@ -65,7 +67,7 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
                 }, { onConflict: 'league_id,league_player_id' });
 
               if (standingsError) {
-                console.error(`Error creating standings for league player ${leaguePlayerId}:`, standingsError);
+                logger.error({ err: standingsError, leaguePlayerId }, 'Error creating standings for league player');
               }
 
               // Insert prize pool contribution into the ledger
@@ -79,9 +81,9 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
                     prizePotTotal,
                     `Prize pool buy-in ($${prizePotTotal.toFixed(2)})`
                   );
-                  console.log(`Inserted prize contribution of $${prizePotTotal.toFixed(2)} for player ${leaguePlayerId}`);
+                  logger.info({ prizePotTotal, leaguePlayerId }, 'Inserted prize contribution');
                 } catch (ledgerError) {
-                  console.error(`Error inserting prize contribution:`, ledgerError);
+                  logger.error({ err: ledgerError }, 'Error inserting prize contribution');
                   // Non-fatal — enrollment is still active
                 }
               }
@@ -93,10 +95,10 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
                   const leagueService = new LeagueService();
                   const allPaid = await leagueService.checkTeamAllPaid(teamId);
                   if (allPaid) {
-                    console.log(`All team members paid for team ${teamId} — team is now active.`);
+                    logger.info({ teamId }, 'All team members paid — team is now active');
                   }
                 } catch (teamError) {
-                  console.error(`Error checking team payment status:`, teamError);
+                  logger.error({ err: teamError }, 'Error checking team payment status');
                 }
               }
 
@@ -161,21 +163,21 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
                   }
                 }
               } catch (emailError) {
-                console.error(`Error sending enrollment confirmation email:`, emailError);
+                logger.error({ err: emailError }, 'Error sending enrollment confirmation email');
               }
             }
           } catch (leagueError) {
-            console.error(`Error processing league enrollment payment:`, leagueError);
+            logger.error({ err: leagueError }, 'Error processing league enrollment payment');
           }
         } else if (event.type === 'payment_intent.payment_failed') {
-          console.log(`League enrollment payment failed for player ${leaguePlayerId} in league ${leagueId}`);
+          logger.info({ leaguePlayerId, leagueId }, 'League enrollment payment failed');
           // Mark enrollment as failed
           await supabase
             .from('league_players')
             .update({ enrollment_status: 'pending' })
             .eq('id', leaguePlayerId);
         } else if (event.type === 'payment_intent.canceled') {
-          console.log(`League enrollment payment cancelled for player ${leaguePlayerId} in league ${leagueId}`);
+          logger.info({ leaguePlayerId, leagueId }, 'League enrollment payment cancelled');
           // Remove the pending player record
           await supabase
             .from('league_players')
@@ -190,12 +192,12 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
       const bookingId = paymentIntent.metadata.booking_id;
 
       if (!bookingId) {
-        console.warn(`Webhook received for event ${event.type} with no booking_id in metadata.`);
+        logger.warn({ eventType: event.type }, 'Webhook received with no booking_id in metadata');
         return res.status(200).send({ received: true, message: 'No booking_id found, ignoring.' });
       }
 
       if (event.type === 'payment_intent.succeeded') {
-        console.log(`Payment succeeded for booking ID: ${bookingId}. Updating database...`);
+        logger.info({ bookingId }, 'Payment succeeded, updating database');
 
         // Update booking status to 'confirmed' and clear expiration
         const { error: bookingError } = await supabase
@@ -217,12 +219,11 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
               paymentUpdate.card_last_four = pm.card.last4;
               paymentUpdate.card_brand = pm.card.brand;
               paymentUpdate.payment_method = 'card';
-              console.log(`Extracted card details for booking ${bookingId}: ${pm.card.brand} ending in ${pm.card.last4}`);
+              logger.info({ bookingId, cardBrand: pm.card.brand, cardLast4: pm.card.last4 }, 'Extracted card details');
             }
           }
         } catch (pmError: any) {
-          console.error(`Error retrieving payment method details for booking ${bookingId}:`, pmError.message);
-          // Non-fatal - continue with payment processing
+          logger.error({ err: pmError, bookingId }, 'Error retrieving payment method details');
         }
 
         const { error: paymentError } = await supabase
@@ -231,9 +232,9 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
           .eq('stripe_payment_intent_id', paymentIntent.id);
 
         if (bookingError || paymentError) {
-          console.error(`Error updating database after payment for booking ${bookingId}:`, bookingError || paymentError);
+          logger.error({ err: bookingError || paymentError, bookingId }, 'Error updating database after payment');
         } else {
-          console.log(`Successfully updated booking ${bookingId} to confirmed.`);
+          logger.info({ bookingId }, 'Successfully updated booking to confirmed');
           
           // Apply promotion if one was used
           const promotionId = paymentIntent.metadata.promotion_id;
@@ -249,9 +250,9 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
                 discountAmount: discountAmount,
                 freeMinutes: freeMinutes || undefined
               });
-              console.log(`Applied promotion ${promotionId} to booking ${bookingId} (discount: $${discountAmount})`);
+              logger.info({ promotionId, bookingId, discountAmount }, 'Applied promotion to booking');
             } catch (promoError) {
-              console.error(`Error applying promotion to booking ${bookingId}:`, promoError);
+              logger.error({ err: promoError, bookingId }, 'Error applying promotion to booking');
             }
           }
 
@@ -272,7 +273,7 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
               if (mem) {
                 const memSettings = await membershipService.getLocationMembershipSettings(mem.location_id);
                 if (!memSettings.membershipsEnabled) {
-                  console.log(`Skipping free minutes deduction for membership ${membershipIdMeta} — memberships disabled at location ${mem.location_id}`);
+                  logger.info({ membershipId: membershipIdMeta, locationId: mem.location_id }, 'Skipping free minutes deduction — memberships disabled at location');
                 } else {
                   await supabase
                     .from('memberships')
@@ -280,20 +281,20 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
                     .eq('id', membershipIdMeta);
 
                   await membershipService.logUsage(membershipIdMeta, bookingId, 'free_minutes', memberFreeMinutes);
-                  console.log(`Deducted ${memberFreeMinutes} free minutes from membership ${membershipIdMeta} for booking ${bookingId}`);
+                  logger.info({ memberFreeMinutes, membershipId: membershipIdMeta, bookingId }, 'Deducted free minutes from membership');
                 }
               }
             } catch (memberErr) {
-              console.error(`Error deducting membership free minutes for booking ${bookingId}:`, memberErr);
+              logger.error({ err: memberErr, bookingId }, 'Error deducting membership free minutes');
             }
           }
           
           // Send thank you email notification
           try {
             await EmailService.sendThankYouEmail(bookingId);
-            console.log(`Queued thank you email for booking ${bookingId}`);
+            logger.info({ bookingId }, 'Queued thank you email');
           } catch (emailError) {
-            console.error(`Error queuing thank you email for booking ${bookingId}:`, emailError);
+            logger.error({ err: emailError, bookingId }, 'Error queuing thank you email');
             // Don't fail the webhook if email fails
           }
 
@@ -307,13 +308,13 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
               .single();
 
             if (fetchError || !booking?.location_id || !booking?.bay_id) {
-              console.error(`Could not fetch location_id and bay_id for booking ${bookingId} to trigger kiosk update.`, fetchError);
+              logger.error({ err: fetchError, bookingId }, 'Could not fetch location_id and bay_id for kiosk update');
             } else {
-              console.log(`Payment confirmed for location ${booking.location_id}, bay ${booking.bay_id}. Triggering kiosk update.`);
+              logger.info({ locationId: booking.location_id, bayId: booking.bay_id }, 'Payment confirmed, triggering kiosk update');
               await socketService.triggerBookingUpdate(booking.location_id, booking.bay_id, bookingId);
             }
           } catch (kioskError) {
-            console.error(`Error triggering kiosk update for booking ${bookingId}:`, kioskError);
+            logger.error({ err: kioskError, bookingId }, 'Error triggering kiosk update');
           }
 
           // Check if booking starts within 15 minutes - if so, send reminder immediately
@@ -330,20 +331,14 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
               const bookingStart = new Date(bookingDetails.start_time);
               const minutesUntilStart = (bookingStart.getTime() - now.getTime()) / (1000 * 60);
 
-              console.log(`Booking ${bookingId} starts in ${minutesUntilStart.toFixed(1)} minutes`);
+              logger.info({ bookingId, minutesUntilStart: minutesUntilStart.toFixed(1) }, 'Checked booking start time');
 
               // If booking starts within 15 minutes, send reminder email immediately
               if (minutesUntilStart <= 15) {
-                console.log(`Booking ${bookingId} starts soon (${minutesUntilStart.toFixed(1)} min), sending immediate reminder`);
+                logger.info({ bookingId, minutesUntilStart: minutesUntilStart.toFixed(1) }, 'Booking starts soon, sending immediate reminder');
                 
                 // Generate unlock token and link (same as reminder job)
-                const tokenData = {
-                  bookingId,
-                  startTime: bookingDetails.start_time,
-                  endTime: bookingDetails.end_time,
-                  expires: new Date(bookingDetails.end_time).getTime()
-                };
-                const unlockToken = Buffer.from(JSON.stringify(tokenData)).toString('base64');
+                const unlockToken = createUnlockToken(bookingId, bookingDetails.start_time, bookingDetails.end_time);
                 const unlockLink = `${process.env.FRONTEND_URL || 'https://golflabs.us'}/unlock?token=${unlockToken}`;
 
                 // Update booking with unlock token
@@ -357,16 +352,16 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
 
                 // Send reminder email immediately
                 await EmailService.sendReminderEmail(bookingId, unlockToken, unlockLink);
-                console.log(`Sent immediate reminder email for booking ${bookingId}`);
+                logger.info({ bookingId }, 'Sent immediate reminder email');
               }
             }
           } catch (reminderError) {
-            console.error(`Error handling immediate reminder for booking ${bookingId}:`, reminderError);
+            logger.error({ err: reminderError, bookingId }, 'Error handling immediate reminder');
             // Don't fail the webhook if reminder fails
           }
         }
       } else if (event.type === 'payment_intent.canceled') {
-        console.log(`Payment canceled for booking ID: ${bookingId}. Updating database...`);
+        logger.info({ bookingId }, 'Payment canceled, updating database');
 
         // Update booking status to 'cancelled'
         const { error: cancelBookingError } = await supabase
@@ -382,12 +377,12 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
           .eq('stripe_payment_intent_id', paymentIntent.id);
         
         if (cancelBookingError || cancelPaymentError) {
-          console.error(`Error updating database after payment cancellation for booking ${bookingId}:`, cancelBookingError || cancelPaymentError);
+          logger.error({ err: cancelBookingError || cancelPaymentError, bookingId }, 'Error updating database after payment cancellation');
         } else {
-          console.log(`Successfully updated booking ${bookingId} to cancelled.`);
+          logger.info({ bookingId }, 'Successfully updated booking to cancelled');
         }
       } else if (event.type === 'payment_intent.payment_failed') {
-        console.log(`Payment failed for booking ID: ${bookingId}.`);
+        logger.info({ bookingId }, 'Payment failed');
         // Update payment record to failed. The booking remains 'reserved' until it expires.
         const { error: paymentFailedError } = await supabase
           .from('payments')
@@ -395,7 +390,7 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
           .eq('stripe_payment_intent_id', paymentIntent.id);
 
         if (paymentFailedError) {
-          console.error(`Error updating payment status to failed for booking ${bookingId}:`, paymentFailedError);
+          logger.error({ err: paymentFailedError, bookingId }, 'Error updating payment status to failed');
         }
       }
       break;
@@ -407,11 +402,11 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
       const setupBookingId = setupMetadata.booking_id;
 
       if (!setupBookingId) {
-        console.warn(`SetupIntent webhook received with no booking_id in metadata: ${setupIntent.id}`);
+        logger.warn({ setupIntentId: setupIntent.id }, 'SetupIntent webhook received with no booking_id in metadata');
         return res.status(200).send({ received: true, message: 'No booking_id found, ignoring.' });
       }
 
-      console.log(`Setup intent succeeded for free booking ${setupBookingId}. Confirming booking...`);
+      logger.info({ bookingId: setupBookingId }, 'Setup intent succeeded for free booking, confirming');
 
       // Update booking status to 'confirmed' and clear expiration
       const { error: setupBookingError } = await supabase
@@ -432,11 +427,11 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
             setupPaymentUpdate.card_last_four = pm.card.last4;
             setupPaymentUpdate.card_brand = pm.card.brand;
             setupPaymentUpdate.payment_method = 'card';
-            console.log(`Extracted card details for free booking ${setupBookingId}: ${pm.card.brand} ending in ${pm.card.last4}`);
+            logger.info({ bookingId: setupBookingId, cardBrand: pm.card.brand, cardLast4: pm.card.last4 }, 'Extracted card details for free booking');
           }
         }
       } catch (pmError: any) {
-        console.error(`Error retrieving payment method for free booking ${setupBookingId}:`, pmError.message);
+        logger.error({ err: pmError, bookingId: setupBookingId }, 'Error retrieving payment method for free booking');
       }
 
       const { error: setupPaymentError } = await supabase
@@ -445,9 +440,9 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
         .eq('stripe_payment_intent_id', setupIntent.id);
 
       if (setupBookingError || setupPaymentError) {
-        console.error(`Error updating database after setup for booking ${setupBookingId}:`, setupBookingError || setupPaymentError);
+        logger.error({ err: setupBookingError || setupPaymentError, bookingId: setupBookingId }, 'Error updating database after setup for free booking');
       } else {
-        console.log(`Successfully confirmed free booking ${setupBookingId}.`);
+        logger.info({ bookingId: setupBookingId }, 'Successfully confirmed free booking');
 
         // Apply promotion if one was used
         const setupPromotionId = setupMetadata.promotion_id;
@@ -463,9 +458,9 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
               discountAmount: setupDiscountAmount,
               freeMinutes: setupFreeMinutes || undefined
             });
-            console.log(`Applied promotion ${setupPromotionId} to free booking ${setupBookingId}`);
+            logger.info({ promotionId: setupPromotionId, bookingId: setupBookingId }, 'Applied promotion to free booking');
           } catch (promoError) {
-            console.error(`Error applying promotion to free booking ${setupBookingId}:`, promoError);
+            logger.error({ err: promoError, bookingId: setupBookingId }, 'Error applying promotion to free booking');
           }
         }
 
@@ -486,7 +481,7 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
             if (mem) {
               const memSettings = await membershipService.getLocationMembershipSettings(mem.location_id);
               if (!memSettings.membershipsEnabled) {
-                console.log(`Skipping free minutes deduction for membership ${setupMembershipId} — memberships disabled at location ${mem.location_id}`);
+                logger.info({ membershipId: setupMembershipId, locationId: mem.location_id }, 'Skipping free minutes deduction — memberships disabled at location');
               } else {
                 await supabase
                   .from('memberships')
@@ -494,20 +489,20 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
                   .eq('id', setupMembershipId);
 
                 await membershipService.logUsage(setupMembershipId, setupBookingId, 'free_minutes', setupMemberFreeMinutes);
-                console.log(`Deducted ${setupMemberFreeMinutes} free minutes from membership ${setupMembershipId} for free booking ${setupBookingId}`);
+                logger.info({ memberFreeMinutes: setupMemberFreeMinutes, membershipId: setupMembershipId, bookingId: setupBookingId }, 'Deducted free minutes from membership for free booking');
               }
             }
           } catch (memberErr) {
-            console.error(`Error deducting membership free minutes for free booking ${setupBookingId}:`, memberErr);
+            logger.error({ err: memberErr, bookingId: setupBookingId }, 'Error deducting membership free minutes for free booking');
           }
         }
 
         // Send thank you email
         try {
           await EmailService.sendThankYouEmail(setupBookingId);
-          console.log(`Queued thank you email for free booking ${setupBookingId}`);
+          logger.info({ bookingId: setupBookingId }, 'Queued thank you email for free booking');
         } catch (emailError) {
-          console.error(`Error queuing thank you email for free booking ${setupBookingId}:`, emailError);
+          logger.error({ err: emailError, bookingId: setupBookingId }, 'Error queuing thank you email for free booking');
         }
 
         // Trigger kiosk update
@@ -519,11 +514,11 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
             .single();
 
           if (!setupFetchError && setupBooking?.location_id && setupBooking?.bay_id) {
-            console.log(`Free booking confirmed for location ${setupBooking.location_id}, bay ${setupBooking.bay_id}. Triggering kiosk update.`);
+            logger.info({ locationId: setupBooking.location_id, bayId: setupBooking.bay_id }, 'Free booking confirmed, triggering kiosk update');
             await socketService.triggerBookingUpdate(setupBooking.location_id, setupBooking.bay_id, setupBookingId);
           }
         } catch (kioskError) {
-          console.error(`Error triggering kiosk update for free booking ${setupBookingId}:`, kioskError);
+          logger.error({ err: kioskError, bookingId: setupBookingId }, 'Error triggering kiosk update for free booking');
         }
 
         // Check if booking starts within 15 minutes — send reminder immediately
@@ -540,15 +535,9 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
             const minutesUntilStart = (bookingStart.getTime() - now.getTime()) / (1000 * 60);
 
             if (minutesUntilStart <= 15) {
-              console.log(`Free booking ${setupBookingId} starts soon (${minutesUntilStart.toFixed(1)} min), sending immediate reminder`);
+              logger.info({ bookingId: setupBookingId, minutesUntilStart: minutesUntilStart.toFixed(1) }, 'Free booking starts soon, sending immediate reminder');
 
-              const tokenData = {
-                bookingId: setupBookingId,
-                startTime: setupBookingDetails.start_time,
-                endTime: setupBookingDetails.end_time,
-                expires: new Date(setupBookingDetails.end_time).getTime()
-              };
-              const unlockToken = Buffer.from(JSON.stringify(tokenData)).toString('base64');
+              const unlockToken = createUnlockToken(setupBookingId, setupBookingDetails.start_time, setupBookingDetails.end_time);
               const unlockLink = `${process.env.FRONTEND_URL || 'https://golflabs.us'}/unlock?token=${unlockToken}`;
 
               await supabase
@@ -560,11 +549,11 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
                 .eq('id', setupBookingId);
 
               await EmailService.sendReminderEmail(setupBookingId, unlockToken, unlockLink);
-              console.log(`Sent immediate reminder email for free booking ${setupBookingId}`);
+              logger.info({ bookingId: setupBookingId }, 'Sent immediate reminder email for free booking');
             }
           }
         } catch (reminderError) {
-          console.error(`Error handling immediate reminder for free booking ${setupBookingId}:`, reminderError);
+          logger.error({ err: reminderError, bookingId: setupBookingId }, 'Error handling immediate reminder for free booking');
         }
       }
 
@@ -584,7 +573,7 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
       const subLocationId = subMeta.location_id;
 
       if (!subUserId) {
-        console.warn(`Subscription webhook ${event.type} has no user_id metadata, ignoring.`);
+        logger.warn({ eventType: event.type }, 'Subscription webhook has no user_id metadata, ignoring');
         return res.json({ received: true });
       }
 
@@ -601,7 +590,7 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
       };
 
       if (event.type === 'customer.subscription.created') {
-        console.log(`Subscription created for user ${subUserId}, plan ${subPlanId}`);
+        logger.info({ userId: subUserId, planId: subPlanId }, 'Subscription created');
         if (subscription.status === 'active') {
           const updateFields: any = { status: 'active' };
           const periodStart = safeTimestamp(subscription.current_period_start);
@@ -618,7 +607,7 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
           sendMembershipWelcomeEmailFromWebhook(subscription, subUserId, subPlanId, subLocationId);
         }
       } else if (event.type === 'customer.subscription.updated') {
-        console.log(`Subscription updated for user ${subUserId}: status=${subscription.status}`);
+        logger.info({ userId: subUserId, status: subscription.status }, 'Subscription updated');
 
         const previousAttributes = (event.data as any).previous_attributes;
         const wasIncomplete = previousAttributes?.status && previousAttributes.status !== 'active' && subscription.status === 'active';
@@ -651,7 +640,7 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
           sendMembershipWelcomeEmailFromWebhook(subscription, subUserId, subPlanId, subLocationId);
         }
       } else if (event.type === 'customer.subscription.deleted') {
-        console.log(`Subscription deleted for user ${subUserId}`);
+        logger.info({ userId: subUserId }, 'Subscription deleted');
 
         await supabase
           .from('memberships')
@@ -671,7 +660,7 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
 
       if (invoiceSubId && paidInvoice.billing_reason === 'subscription_cycle') {
         // Only reset usage on actual renewals, not the initial subscription invoice
-        console.log(`Subscription renewal invoice paid for ${invoiceSubId}, resetting usage counters`);
+        logger.info({ subscriptionId: invoiceSubId }, 'Subscription renewal invoice paid, resetting usage counters');
 
         const { error: resetErr } = await supabase
           .from('memberships')
@@ -683,11 +672,11 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
           .eq('stripe_subscription_id', invoiceSubId);
 
         if (resetErr) {
-          console.error(`Error resetting usage for subscription ${invoiceSubId}:`, resetErr);
+          logger.error({ err: resetErr, subscriptionId: invoiceSubId }, 'Error resetting usage for subscription');
         }
       } else if (invoiceSubId) {
         // First invoice or other billing reason — just ensure active status
-        console.log(`Invoice paid for subscription ${invoiceSubId} (reason: ${paidInvoice.billing_reason})`);
+        logger.info({ subscriptionId: invoiceSubId, billingReason: paidInvoice.billing_reason }, 'Invoice paid for subscription');
 
         await supabase
           .from('memberships')
@@ -702,7 +691,7 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
       const failedSubId = failedInvoice.subscription as string | null;
 
       if (failedSubId) {
-        console.log(`Invoice payment failed for subscription ${failedSubId}`);
+        logger.info({ subscriptionId: failedSubId }, 'Invoice payment failed');
 
         await supabase
           .from('memberships')
@@ -716,11 +705,11 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
     case 'charge.dispute.created':
       const dispute = event.data.object as Stripe.Dispute;
       const chargeId = dispute.charge;
-      console.log(`Dispute created for charge ${chargeId}. Handling dispute...`);
+      logger.info({ chargeId }, 'Dispute created, handling dispute');
 
       // Find the payment record by charge ID (you may need to store charge_id in payments table)
       // For now, we'll log this and handle manually
-      console.warn(`Dispute created for charge ${chargeId}. Manual review required.`);
+      logger.warn({ chargeId }, 'Dispute created, manual review required');
       break;
 
     default:
@@ -735,7 +724,7 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
         // League enrollment refund
         if (refundLeaguePlayerId && refundLeagueId) {
           if (event.type === 'refund.created') {
-            console.log(`League refund created for player ${refundLeaguePlayerId} in league ${refundLeagueId}, refund ID: ${refund.id}`);
+            logger.info({ leaguePlayerId: refundLeaguePlayerId, leagueId: refundLeagueId, refundId: refund.id }, 'League refund created');
 
             const { error: leagueRefundError } = await supabase
               .from('league_players')
@@ -747,12 +736,12 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
               .eq('id', refundLeaguePlayerId);
 
             if (leagueRefundError) {
-              console.error(`Error updating league player ${refundLeaguePlayerId} on refund:`, leagueRefundError);
+              logger.error({ err: leagueRefundError, leaguePlayerId: refundLeaguePlayerId }, 'Error updating league player on refund');
             } else {
-              console.log(`League player ${refundLeaguePlayerId} marked as withdrawn (refund created).`);
+              logger.info({ leaguePlayerId: refundLeaguePlayerId }, 'League player marked as withdrawn (refund created)');
             }
           } else if (event.type === 'refund.updated') {
-            console.log(`League refund updated for player ${refundLeaguePlayerId}, status: ${refund.status}`);
+            logger.info({ leaguePlayerId: refundLeaguePlayerId, refundStatus: refund.status }, 'League refund updated');
 
             if (refund.status === 'succeeded') {
               const { error } = await supabase
@@ -761,12 +750,12 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
                 .eq('id', refundLeaguePlayerId);
 
               if (error) {
-                console.error(`Error finalizing league refund for player ${refundLeaguePlayerId}:`, error);
+                logger.error({ err: error, leaguePlayerId: refundLeaguePlayerId }, 'Error finalizing league refund');
               } else {
-                console.log(`League refund succeeded for player ${refundLeaguePlayerId}. Status: withdrawn.`);
+                logger.info({ leaguePlayerId: refundLeaguePlayerId }, 'League refund succeeded, status: withdrawn');
               }
             } else if (refund.status === 'failed') {
-              console.error(`League refund FAILED for player ${refundLeaguePlayerId}. Manual review required.`);
+              logger.error({ leaguePlayerId: refundLeaguePlayerId }, 'League refund FAILED, manual review required');
             }
           }
           break;
@@ -774,12 +763,12 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
 
         // Booking refund
         if (!refundBookingId) {
-          console.warn(`Refund webhook received with no booking_id or league_player_id in metadata: ${refund.id}, event type: ${event.type}`);
+          logger.warn({ refundId: refund.id, eventType: event.type }, 'Refund webhook received with no booking_id or league_player_id in metadata');
           break;
         }
 
         if (event.type === 'refund.created') {
-          console.log(`Refund created for booking ID: ${refundBookingId}, refund ID: ${refund.id}`);
+          logger.info({ bookingId: refundBookingId, refundId: refund.id }, 'Refund created for booking');
 
           const { error: refundCreateError } = await supabase
             .from('payments')
@@ -791,12 +780,12 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
             .eq('booking_id', refundBookingId);
 
           if (refundCreateError) {
-            console.error(`Error updating payment with refund info for booking ${refundBookingId}:`, refundCreateError);
+            logger.error({ err: refundCreateError, bookingId: refundBookingId }, 'Error updating payment with refund info');
           } else {
-            console.log(`Successfully updated payment record with refund info for booking ${refundBookingId}`);
+            logger.info({ bookingId: refundBookingId }, 'Successfully updated payment record with refund info');
           }
         } else if (event.type === 'refund.updated') {
-          console.log(`Refund updated for booking ID: ${refundBookingId}, status: ${refund.status}`);
+          logger.info({ bookingId: refundBookingId, refundStatus: refund.status }, 'Refund updated for booking');
 
           let paymentStatus = 'refunding';
           if (refund.status === 'succeeded') {
@@ -815,12 +804,12 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
             .eq('booking_id', refundBookingId);
 
           if (refundUpdateError) {
-            console.error(`Error updating payment refund status for booking ${refundBookingId}:`, refundUpdateError);
+            logger.error({ err: refundUpdateError, bookingId: refundBookingId }, 'Error updating payment refund status');
           } else {
-            console.log(`Successfully updated payment refund status to ${paymentStatus} for booking ${refundBookingId}`);
+            logger.info({ paymentStatus, bookingId: refundBookingId }, 'Successfully updated payment refund status');
           }
         } else if (event.type.includes('refund') && event.type.includes('failed')) {
-          console.log(`Refund failed for booking ID: ${refundBookingId}, refund ID: ${refund.id}`);
+          logger.info({ bookingId: refundBookingId, refundId: refund.id }, 'Refund failed for booking');
 
           const { error: refundFailedError } = await supabase
             .from('payments')
@@ -837,13 +826,13 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
             .eq('booking_id', refundBookingId);
 
           if (refundFailedError || cancellationUpdateError) {
-            console.error(`Error updating records for failed refund on booking ${refundBookingId}:`, refundFailedError || cancellationUpdateError);
+            logger.error({ err: refundFailedError || cancellationUpdateError, bookingId: refundBookingId }, 'Error updating records for failed refund');
           } else {
-            console.log(`Updated records for failed refund on booking ${refundBookingId}`);
+            logger.info({ bookingId: refundBookingId }, 'Updated records for failed refund');
           }
         }
       } else {
-        console.log(`Unhandled event type ${event.type}`);
+        logger.info({ eventType: event.type }, 'Unhandled event type');
       }
       break;
   }
@@ -900,6 +889,6 @@ async function sendMembershipWelcomeEmailFromWebhook(
         : undefined,
     });
   } catch (err) {
-    console.error('Failed to send membership welcome email:', err);
+    logger.error({ err }, 'Failed to send membership welcome email');
   }
 }

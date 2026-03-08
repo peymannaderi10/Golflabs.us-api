@@ -2,6 +2,7 @@ import { resend, resendConfig } from '../../config/resend';
 import { NotificationService } from './notification.service';
 import { EmailTemplateService } from './email-template.service';
 import { BookingEmailData, TeamInviteEmailData, TeamStatusEmailData, AttendanceReminderEmailData, LeagueEnrollmentEmailData, MembershipEmailData } from './email.types';
+import { logger } from '../../shared/utils/logger';
 
 export class EmailService {
   /**
@@ -11,13 +12,13 @@ export class EmailService {
     try {
       const exists = await NotificationService.notificationExists(bookingId, 'thank_you');
       if (exists) {
-        console.log(`Thank you email already exists for booking ${bookingId}`);
+        logger.info({ bookingId }, 'Thank you email already exists for booking');
         return;
       }
 
       const bookingData = await NotificationService.getBookingEmailData(bookingId);
       if (!bookingData) {
-        console.error(`Could not get booking data for thank you email: ${bookingId}`);
+        logger.error({ bookingId }, 'Could not get booking data for thank you email');
         return;
       }
 
@@ -36,9 +37,9 @@ export class EmailService {
         content: rendered.html
       });
 
-      console.log(`Created thank you notification ${notificationId} for booking ${bookingId}`);
+      logger.info({ notificationId, bookingId }, 'Created thank you notification');
     } catch (error) {
-      console.error(`Error sending thank you email for booking ${bookingId}:`, error);
+      logger.error({ err: error, bookingId }, 'Error sending thank you email');
     }
   }
 
@@ -53,13 +54,13 @@ export class EmailService {
     try {
       const exists = await NotificationService.notificationExists(bookingId, 'reminder');
       if (exists) {
-        console.log(`Reminder email already exists for booking ${bookingId}`);
+        logger.info({ bookingId }, 'Reminder email already exists for booking');
         return;
       }
 
       const bookingData = await NotificationService.getBookingEmailData(bookingId);
       if (!bookingData) {
-        console.error(`Could not get booking data for reminder email: ${bookingId}`);
+        logger.error({ bookingId }, 'Could not get booking data for reminder email');
         return;
       }
 
@@ -84,9 +85,9 @@ export class EmailService {
         content: rendered.html
       });
 
-      console.log(`Created reminder notification ${notificationId} for booking ${bookingId}`);
+      logger.info({ notificationId, bookingId }, 'Created reminder notification');
     } catch (error) {
-      console.error(`Error sending reminder email for booking ${bookingId}:`, error);
+      logger.error({ err: error, bookingId }, 'Error sending reminder email');
     }
   }
 
@@ -103,13 +104,13 @@ export class EmailService {
     try {
       const exists = await NotificationService.notificationExists(bookingId, 'cancellation');
       if (exists) {
-        console.log(`Cancellation email already exists for booking ${bookingId}`);
+        logger.info({ bookingId }, 'Cancellation email already exists for booking');
         return;
       }
 
       const bookingData = await NotificationService.getBookingEmailData(bookingId);
       if (!bookingData) {
-        console.error(`Could not get booking data for cancellation email: ${bookingId}`);
+        logger.error({ bookingId }, 'Could not get booking data for cancellation email');
         return;
       }
 
@@ -142,9 +143,9 @@ export class EmailService {
         }
       });
 
-      console.log(`Created cancellation notification ${notificationId} for booking ${bookingId}`);
+      logger.info({ notificationId, bookingId }, 'Created cancellation notification');
     } catch (error) {
-      console.error(`Error sending cancellation email for booking ${bookingId}:`, error);
+      logger.error({ err: error, bookingId }, 'Error sending cancellation email');
     }
   }
 
@@ -166,7 +167,7 @@ export class EmailService {
 
       return response.data?.id || '';
     } catch (error) {
-      console.error('Error sending email via Resend:', error);
+      logger.error({ err: error }, 'Error sending email via Resend');
       throw error;
     }
   }
@@ -182,7 +183,7 @@ export class EmailService {
         return 0;
       }
 
-      console.log(`Processing ${pendingNotifications.length} pending notifications`);
+      logger.info({ count: pendingNotifications.length }, 'Processing pending notifications');
 
       let dispatched = 0;
       for (const notification of pendingNotifications) {
@@ -196,19 +197,19 @@ export class EmailService {
           await NotificationService.markAsSent(notification.id, messageId);
           dispatched++;
 
-          console.log(`Sent notification ${notification.id} (${notification.type}) to ${notification.recipient}`);
+          logger.info({ notificationId: notification.id, type: notification.type }, 'Sent notification');
         } catch (error: any) {
-          console.error(`Failed to send notification ${notification.id}:`, error);
+          logger.error({ err: error, notificationId: notification.id }, 'Failed to send notification');
           await NotificationService.markAsFailed(notification.id, error.message);
         }
 
         await new Promise(res => setTimeout(res, 1000));
       }
 
-      console.log(`Dispatched ${dispatched}/${pendingNotifications.length} notifications`);
+      logger.info({ dispatched, total: pendingNotifications.length }, 'Dispatched notifications');
       return dispatched;
     } catch (error) {
-      console.error('Error dispatching notifications:', error);
+      logger.error({ err: error }, 'Error dispatching notifications');
       return 0;
     }
   }
@@ -221,9 +222,9 @@ export class EmailService {
     try {
       const rendered = await EmailTemplateService.renderTeamInvite(locationId, data);
       await this.sendEmail(data.invitedEmail, rendered.subject, rendered.html);
-      console.log(`Sent team invite email to ${data.invitedEmail} for team "${data.teamName}"`);
+      logger.info({ teamName: data.teamName }, 'Sent team invite email');
     } catch (error) {
-      console.error(`Failed to send team invite email to ${data.invitedEmail}:`, error);
+      logger.error({ err: error }, 'Failed to send team invite email');
     }
   }
 
@@ -231,9 +232,9 @@ export class EmailService {
     try {
       const rendered = await EmailTemplateService.renderTeamStatus(locationId, data);
       await this.sendEmail(data.recipientEmail, rendered.subject, rendered.html);
-      console.log(`Sent team status email to ${data.recipientEmail} for team "${data.teamName}"`);
+      logger.info({ teamName: data.teamName }, 'Sent team status email');
     } catch (error) {
-      console.error(`Failed to send team status email to ${data.recipientEmail}:`, error);
+      logger.error({ err: error }, 'Failed to send team status email');
     }
   }
 
@@ -241,9 +242,9 @@ export class EmailService {
     try {
       const rendered = await EmailTemplateService.renderAttendanceReminder(locationId, data);
       await this.sendEmail(data.playerEmail, rendered.subject, rendered.html);
-      console.log(`Sent attendance reminder to ${data.playerEmail} for ${data.leagueName} Week ${data.weekNumber}`);
+      logger.info({ leagueName: data.leagueName, weekNumber: data.weekNumber }, 'Sent attendance reminder');
     } catch (error) {
-      console.error(`Failed to send attendance reminder to ${data.playerEmail}:`, error);
+      logger.error({ err: error }, 'Failed to send attendance reminder');
     }
   }
 
@@ -251,9 +252,9 @@ export class EmailService {
     try {
       const rendered = await EmailTemplateService.renderEnrollmentConfirmation(locationId, data);
       await this.sendEmail(data.playerEmail, rendered.subject, rendered.html);
-      console.log(`Sent league enrollment confirmation to ${data.playerEmail} for "${data.leagueName}"`);
+      logger.info({ leagueName: data.leagueName }, 'Sent league enrollment confirmation');
     } catch (error) {
-      console.error(`Failed to send league enrollment email to ${data.playerEmail}:`, error);
+      logger.error({ err: error }, 'Failed to send league enrollment email');
     }
   }
 
@@ -265,9 +266,9 @@ export class EmailService {
     try {
       const rendered = await EmailTemplateService.renderMembershipWelcome(locationId, data);
       await this.sendEmail(data.userEmail, rendered.subject, rendered.html);
-      console.log(`Sent membership welcome email to ${data.userEmail} for plan "${data.planName}"`);
+      logger.info({ planName: data.planName }, 'Sent membership welcome email');
     } catch (error) {
-      console.error(`Failed to send membership welcome email to ${data.userEmail}:`, error);
+      logger.error({ err: error }, 'Failed to send membership welcome email');
     }
   }
 
@@ -275,9 +276,9 @@ export class EmailService {
     try {
       const rendered = await EmailTemplateService.renderMembershipCanceled(locationId, data);
       await this.sendEmail(data.userEmail, rendered.subject, rendered.html);
-      console.log(`Sent membership cancellation email to ${data.userEmail} for plan "${data.planName}"`);
+      logger.info({ planName: data.planName }, 'Sent membership cancellation email');
     } catch (error) {
-      console.error(`Failed to send membership cancellation email to ${data.userEmail}:`, error);
+      logger.error({ err: error }, 'Failed to send membership cancellation email');
     }
   }
 }

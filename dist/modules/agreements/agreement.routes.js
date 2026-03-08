@@ -1,10 +1,11 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
+const express_validator_1 = require("express-validator");
 const agreement_controller_1 = require("./agreement.controller");
+const auth_1 = require("../auth");
+const validation_1 = require("../../shared/middleware/validation");
 const router = (0, express_1.Router)();
-// Record agreement acceptance for a booking
-router.post('/accept', (req, res) => agreement_controller_1.agreementController.acceptAgreements(req, res));
-// Check if all agreements have been accepted for a booking
-router.get('/check/:bookingId', (req, res) => agreement_controller_1.agreementController.checkAgreements(req, res));
+router.post('/accept', (0, express_validator_1.body)('userId').isUUID().withMessage('userId must be a valid UUID'), (0, express_validator_1.body)('signerName').isString().notEmpty().withMessage('signerName is required'), (0, express_validator_1.body)('signerEmail').isEmail().withMessage('signerEmail must be a valid email'), (0, express_validator_1.body)('bookingId').isUUID().withMessage('bookingId must be a valid UUID'), (0, express_validator_1.body)('locationId').isUUID().withMessage('locationId must be a valid UUID'), (0, express_validator_1.body)('agreements').isArray({ min: 1 }).withMessage('agreements must be a non-empty array'), (0, express_validator_1.body)('documentHashes').isObject().withMessage('documentHashes must be an object'), validation_1.handleValidationErrors, auth_1.authenticateUser, (req, res) => agreement_controller_1.agreementController.acceptAgreements(req, res));
+router.get('/check/:bookingId', (0, express_validator_1.param)('bookingId').isUUID().withMessage('bookingId must be a valid UUID'), (0, express_validator_1.query)('userId').isUUID().withMessage('userId must be a valid UUID'), validation_1.handleValidationErrors, auth_1.authenticateUser, (req, res) => agreement_controller_1.agreementController.checkAgreements(req, res));
 exports.default = router;

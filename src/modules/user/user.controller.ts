@@ -1,5 +1,6 @@
-import { Request, Response } from 'express';
+import { Response } from 'express';
 import { UserService } from './user.service';
+import { AuthenticatedRequest } from '../auth';
 
 export class UserController {
   private userService: UserService;
@@ -8,12 +9,16 @@ export class UserController {
     this.userService = new UserService();
   }
 
-  deleteAccount = async (req: Request, res: Response) => {
+  deleteAccount = async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { userId } = req.params;
       
       if (!userId) {
         return res.status(400).json({ error: 'User ID is required' });
+      }
+
+      if (req.user?.id !== userId) {
+        return res.status(403).json({ error: 'You can only delete your own account' });
       }
 
       const result = await this.userService.deleteAccount(userId);
@@ -33,12 +38,16 @@ export class UserController {
     }
   };
 
-  getUserProfile = async (req: Request, res: Response) => {
+  getUserProfile = async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { userId } = req.params;
       
       if (!userId) {
         return res.status(400).json({ error: 'User ID is required' });
+      }
+
+      if (req.user?.id !== userId) {
+        return res.status(403).json({ error: 'You can only view your own profile' });
       }
 
       const profile = await this.userService.getUserProfile(userId);

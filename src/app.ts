@@ -1,4 +1,4 @@
-import express from 'express';
+import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
@@ -24,17 +24,23 @@ import { marketingController } from './modules/marketing/marketing.controller';
 import { BookingController } from './modules/bookings/booking.controller';
 import { SocketService } from './modules/sockets/socket.service';
 import { authenticateUser } from './modules/auth';
+import { logger } from './shared/utils/logger';
 
 export const app = express();
 export const httpServer = createServer(app);
 
-// Trust proxy - required for Render, Heroku, and other PaaS providers
-// This allows express-rate-limit to correctly identify users behind reverse proxies
 app.set('trust proxy', 1);
+
+const ALLOWED_ORIGINS = [
+  process.env.FRONTEND_URL?.replace(/\/$/, ''),
+  'https://www.golflabs.us',
+  'https://golflabs.us',
+  ...(process.env.NODE_ENV !== 'production' ? ['http://localhost:5173', 'http://localhost:3000', 'http://localhost:8080'] : []),
+].filter(Boolean) as string[];
 
 const io = new Server(httpServer, {
   cors: {
-    origin: "*",
+    origin: ALLOWED_ORIGINS,
     methods: ["GET", "POST"]
   }
 });
@@ -68,8 +74,10 @@ app.use(helmet({
   }
 }));
 
-// Use cors before the webhook route
-app.use(cors());
+app.use(cors({
+  origin: ALLOWED_ORIGINS,
+  credentials: true,
+}));
 
 // Webhook rate limiting - separate from payment endpoints
 const webhookRateLimit = rateLimit({
@@ -87,6 +95,29 @@ app.post('/resend-webhook', express.raw({ type: 'application/json' }), handleRes
 // Use json parser for all other routes
 app.use(express.json());
 
+const globalRateLimit = rateLimit({
+  windowMs: 1 * 60 * 1000,
+  max: 100,
+  message: { error: 'Too many requests, please try again later' },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => req.path === '/health',
+});
+app.use(globalRateLimit);
+
+const LONG_RUNNING_PATHS = ['/employee/marketing/campaigns'];
+
+app.use((req, res, next) => {
+  const isLongRunning = LONG_RUNNING_PATHS.some((p) => req.path.startsWith(p) && req.method === 'POST');
+  const timeout = isLongRunning ? 120000 : 30000;
+  req.setTimeout(timeout, () => {
+    if (!res.headersSent) {
+      res.status(408).json({ error: 'Request timeout' });
+    }
+  });
+  next();
+});
+
 // =====================================================
 // PHONE VALIDATION
 // =====================================================
@@ -102,7 +133,7 @@ app.post('/validate-phone', async (req, res) => {
   const numverifyApiKey = process.env.NUMVERIFY_API_KEY;
   if (!numverifyApiKey) {
     // If API key is not configured, skip validation and allow signup
-    console.warn('NumVerify API key not found - skipping phone validation');
+    logger.warn('NumVerify API key not found - skipping phone validation');
     return res.json({ valid: true, skipped: true, message: 'Phone validation skipped - not configured' });
   }
 
@@ -127,17 +158,17 @@ app.post('/validate-phone', async (req, res) => {
     const response = await fetch(numverifyUrl);
     const data = await response.json();
 
-    console.log('NumVerify response for phone validation:', {
+    logger.info({
       phone: phoneWithCountryCode,
       valid: data.valid,
       line_type: data.line_type,
-      carrier: data.carrier
-    });
+      carrier: data.carrier,
+    }, 'NumVerify response for phone validation');
 
     // Check for API errors - skip validation and allow signup if there's any API error
     // (rate limits, usage limits, inactive account, etc.)
     if (data.error) {
-      console.warn('NumVerify API error - skipping phone validation:', data.error);
+      logger.warn({ apiError: data.error }, 'NumVerify API error - skipping phone validation');
       return res.json({
         valid: true,
         skipped: true,
@@ -162,7 +193,7 @@ app.post('/validate-phone', async (req, res) => {
 
   } catch (error: any) {
     // On any unexpected error (network issues, etc.), skip validation and allow signup
-    console.warn('Error validating phone number - skipping validation:', error.message || error);
+    logger.warn({ err: error }, 'Error validating phone number - skipping validation');
     return res.json({
       valid: true,
       skipped: true,
@@ -207,4 +238,12 @@ app.get('/marketing/unsubscribe', (req, res) => marketingController.unsubscribe(
 // Health check endpoint
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Global error handler — must be last middleware
+app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
+  logger.error({ err }, 'Unhandled error');
+  if (!res.headersSent) {
+    res.status(500).json({ error: 'An internal error occurred' });
+  }
 }); 

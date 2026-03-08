@@ -2,23 +2,7 @@ import { supabase } from '../config/database';
 import { resendConfig } from '../config/resend';
 import { EmailService } from '../modules/email/email.service';
 import { NotificationService } from '../modules/email/notification.service';
-
-/**
- * Generate unlock token for booking - this would need to match your existing unlock token logic
- * For now, using a simple implementation
- */
-function generateUnlockToken(bookingId: string, startTime: string, endTime: string): string {
-  // This should match your existing token generation logic
-  // Using a simple base64 encoding for demo - replace with your actual implementation
-  const tokenData = {
-    bookingId,
-    startTime,
-    endTime,
-    expires: new Date(endTime).getTime()
-  };
-  
-  return Buffer.from(JSON.stringify(tokenData)).toString('base64');
-}
+import { createUnlockToken } from '../shared/utils/token.utils';
 
 /**
  * Process booking reminders for sessions starting in the next 16 minutes.
@@ -84,7 +68,7 @@ export async function enqueueReminders(): Promise<void> {
 
     for (const booking of bookingsNeedingReminders) {
       try {
-        const token = generateUnlockToken(booking.id, booking.start_time, booking.end_time);
+        const token = createUnlockToken(booking.id, booking.start_time, booking.end_time);
         const unlockLink = `${resendConfig.frontendUrl}/unlock?token=${token}`;
 
         // Update booking with unlock token (partial update - only these columns)

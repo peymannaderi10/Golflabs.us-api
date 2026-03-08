@@ -3,6 +3,7 @@ import { supabase } from '../../config/database';
 import { CreatePaymentForBookingBody, UpdatePaymentIntentRequest } from './payment.types';
 import { promotionService } from '../promotions/promotion.service';
 import { MembershipService } from '../memberships/membership.service';
+import { logger } from '../../shared/utils/logger';
 
 export class PaymentService {
   async createPaymentIntent(
@@ -34,19 +35,14 @@ export class PaymentService {
       .single();
 
     if (fetchError || !booking) {
-      console.error(`Booking ${bookingId} not found:`, fetchError);
+      logger.error({ bookingId, err: fetchError }, 'Booking not found');
       throw new Error('Booking not found.');
     }
 
-    console.log(`Payment intent requested for booking ${bookingId}:`, {
-      status: booking.status,
-      expires_at: booking.expires_at,
-      created_at: booking.created_at,
-      user_id: booking.user_id
-    });
+    logger.info({ bookingId, status: booking.status, expiresAt: booking.expires_at, createdAt: booking.created_at, userId: booking.user_id }, 'Payment intent requested for booking');
 
     if (booking.status !== 'reserved') {
-      console.error(`Booking ${bookingId} has invalid status for payment: ${booking.status}`);
+      logger.error({ bookingId, status: booking.status }, 'Booking has invalid status for payment');
       throw new Error(`Booking cannot be paid for. Status: ${booking.status}`);
     }
 
@@ -73,7 +69,7 @@ export class PaymentService {
       .single();
 
     if (paymentCheckError && paymentCheckError.code !== 'PGRST116') {
-      console.error('Error checking existing payments:', paymentCheckError);
+      logger.error({ err: paymentCheckError }, 'Error checking existing payments');
       throw paymentCheckError;
     }
 
@@ -86,30 +82,30 @@ export class PaymentService {
         if (isSetupIntent) {
           const existingSetupIntent = await stripe.setupIntents.retrieve(existingId);
           if (['requires_payment_method', 'requires_confirmation', 'requires_action'].includes(existingSetupIntent.status)) {
-            console.log(`Reusing existing setup intent ${existingSetupIntent.id} for booking ${bookingId}`);
+            logger.info({ setupIntentId: existingSetupIntent.id, bookingId }, 'Reusing existing setup intent');
             return {
               clientSecret: existingSetupIntent.client_secret,
               bookingId: booking.id,
               type: 'setup' as const
             };
           } else {
-            console.log(`Existing setup intent ${existingSetupIntent.id} has status ${existingSetupIntent.status}, creating new one`);
+            logger.info({ setupIntentId: existingSetupIntent.id, status: existingSetupIntent.status }, 'Existing setup intent has non-reusable status, creating new one');
           }
         } else {
           const existingPaymentIntent = await stripe.paymentIntents.retrieve(existingId);
           if (['requires_payment_method', 'requires_confirmation', 'requires_action', 'processing'].includes(existingPaymentIntent.status)) {
-            console.log(`Reusing existing payment intent ${existingPaymentIntent.id} for booking ${bookingId}`);
+            logger.info({ paymentIntentId: existingPaymentIntent.id, bookingId }, 'Reusing existing payment intent');
             return {
               clientSecret: existingPaymentIntent.client_secret,
               bookingId: booking.id,
               type: 'payment' as const
             };
           } else {
-            console.log(`Existing payment intent ${existingPaymentIntent.id} has status ${existingPaymentIntent.status}, creating new one`);
+            logger.info({ paymentIntentId: existingPaymentIntent.id, status: existingPaymentIntent.status }, 'Existing payment intent has non-reusable status, creating new one');
           }
         }
       } catch (stripeError) {
-        console.error('Error retrieving existing Stripe intent from Stripe:', stripeError);
+        logger.error({ err: stripeError }, 'Error retrieving existing Stripe intent');
       }
     }
 
@@ -127,10 +123,10 @@ export class PaymentService {
           try {
             await stripe.customers.retrieve(userProfile.stripe_customer_id);
             stripeCustomerId = userProfile.stripe_customer_id;
-            console.log(`Using existing Stripe customer ${stripeCustomerId} for user ${booking.user_id}`);
+            logger.info({ stripeCustomerId, userId: booking.user_id }, 'Using existing Stripe customer');
           } catch (err: any) {
             if (err.code === 'resource_missing') {
-              console.warn(`Stored Stripe customer ${userProfile.stripe_customer_id} not found, will create new one`);
+              logger.warn({ stripeCustomerId: userProfile.stripe_customer_id }, 'Stored Stripe customer not found, will create new one');
             } else {
               throw err;
             }
@@ -150,11 +146,11 @@ export class PaymentService {
             .update({ stripe_customer_id: customer.id })
             .eq('id', booking.user_id);
 
-          console.log(`Created new Stripe customer ${customer.id} for user ${booking.user_id}`);
+          logger.info({ stripeCustomerId: customer.id, userId: booking.user_id }, 'Created new Stripe customer');
         }
       }
     } catch (customerError: any) {
-      console.error(`Error setting up Stripe customer for user ${booking.user_id}:`, customerError.message);
+      logger.error({ userId: booking.user_id, err: customerError }, 'Error setting up Stripe customer');
       // Continue without customer - payment will still work, just won't save card
     }
 
@@ -171,10 +167,10 @@ export class PaymentService {
         .eq('id', bookingId);
 
       if (updateBookingError) {
-        console.error('Error updating booking with promotion info:', updateBookingError);
+        logger.error({ err: updateBookingError }, 'Error updating booking with promotion info');
         // Continue anyway, the booking can still be paid
       } else {
-        console.log(`Updated booking ${bookingId} with promotion discount: $${promotionInfo.discountAmount}`);
+        logger.info({ bookingId, discountAmount: promotionInfo.discountAmount }, 'Updated booking with promotion discount');
       }
     }
 
@@ -222,11 +218,11 @@ export class PaymentService {
 
       if (paymentError) {
         await stripe.setupIntents.cancel(setupIntent.id);
-        console.error('Error creating payment record for free booking, cancelling setup intent:', paymentError);
+        logger.error({ err: paymentError }, 'Error creating payment record for free booking, cancelling setup intent');
         throw paymentError;
       }
 
-      console.log(`Created setup intent ${setupIntent.id} for free booking ${bookingId} (discount: $${promotionInfo?.discountAmount || 0})`);
+      logger.info({ setupIntentId: setupIntent.id, bookingId, discountAmount: promotionInfo?.discountAmount || 0 }, 'Created setup intent for free booking');
 
       return {
         clientSecret: setupIntent.client_secret,
@@ -266,11 +262,11 @@ export class PaymentService {
     
     if (paymentError) {
       await stripe.paymentIntents.cancel(paymentIntent.id);
-      console.error('Error creating payment record, cancelling payment intent:', paymentError);
+      logger.error({ err: paymentError }, 'Error creating payment record, cancelling payment intent');
       throw paymentError;
     }
 
-    console.log(`Created new payment intent ${paymentIntent.id} for booking ${bookingId} (amount: $${amount / 100}, discount: $${promotionInfo?.discountAmount || 0})`);
+    logger.info({ paymentIntentId: paymentIntent.id, bookingId, amount: amount / 100, discountAmount: promotionInfo?.discountAmount || 0 }, 'Created new payment intent');
 
     // 8. Send the client secret back to the frontend
     return {
@@ -461,7 +457,7 @@ export class PaymentService {
           }
         }
       } catch (memberErr) {
-        console.error('Error checking membership for price calculation:', memberErr);
+        logger.error({ err: memberErr }, 'Error checking membership for price calculation');
       }
     }
     

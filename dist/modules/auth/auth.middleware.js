@@ -8,9 +8,14 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.authenticateEmployee = exports.authenticateUser = void 0;
+exports.authenticateKioskOrEmployee = exports.authenticateKiosk = exports.authenticateEmployee = exports.authenticateUser = void 0;
+const crypto_1 = __importDefault(require("crypto"));
 const database_1 = require("../../config/database");
+const logger_1 = require("../../shared/utils/logger");
 /**
  * Validates a Supabase JWT and sets req.user. Any authenticated user passes.
  */
@@ -29,7 +34,7 @@ const authenticateUser = (req, res, next) => __awaiter(void 0, void 0, void 0, f
         next();
     }
     catch (error) {
-        console.error('User authentication error:', error);
+        logger_1.logger.error({ err: error }, 'User authentication error');
         return res.status(401).json({ error: 'Authentication failed' });
     }
 });
@@ -65,8 +70,42 @@ const authenticateEmployee = (req, res, next) => __awaiter(void 0, void 0, void 
         next();
     }
     catch (error) {
-        console.error('Employee authentication error:', error);
+        logger_1.logger.error({ err: error }, 'Employee authentication error');
         return res.status(401).json({ error: 'Authentication failed' });
     }
 });
 exports.authenticateEmployee = authenticateEmployee;
+/**
+ * Validates a kiosk API key sent via X-Kiosk-Key header.
+ * Uses timing-safe comparison to prevent timing attacks.
+ */
+const authenticateKiosk = (req, res, next) => {
+    const kioskKey = req.headers['x-kiosk-key'];
+    const expectedKey = process.env.KIOSK_API_KEY;
+    if (!expectedKey) {
+        logger_1.logger.error('KIOSK_API_KEY not configured on the server');
+        return res.status(500).json({ error: 'Kiosk authentication not configured' });
+    }
+    if (!kioskKey) {
+        return res.status(401).json({ error: 'Kiosk API key required' });
+    }
+    const keyBuffer = Buffer.from(kioskKey);
+    const expectedBuffer = Buffer.from(expectedKey);
+    if (keyBuffer.length !== expectedBuffer.length || !crypto_1.default.timingSafeEqual(keyBuffer, expectedBuffer)) {
+        return res.status(401).json({ error: 'Invalid kiosk API key' });
+    }
+    req.isKiosk = true;
+    next();
+};
+exports.authenticateKiosk = authenticateKiosk;
+/**
+ * Accepts either a valid kiosk API key (X-Kiosk-Key) or employee JWT.
+ */
+const authenticateKioskOrEmployee = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
+    const kioskKey = req.headers['x-kiosk-key'];
+    if (kioskKey) {
+        return (0, exports.authenticateKiosk)(req, res, next);
+    }
+    return (0, exports.authenticateEmployee)(req, res, next);
+});
+exports.authenticateKioskOrEmployee = authenticateKioskOrEmployee;

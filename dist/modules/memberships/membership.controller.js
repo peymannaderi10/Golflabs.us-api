@@ -11,6 +11,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.MembershipController = void 0;
 const membership_service_1 = require("./membership.service");
+const error_utils_1 = require("../../shared/utils/error.utils");
 class MembershipController {
     constructor() {
         this.service = new membership_service_1.MembershipService();
@@ -27,7 +28,7 @@ class MembershipController {
             }
             catch (error) {
                 console.error('Error fetching membership plans:', error);
-                res.status(500).json({ error: error.message || 'Failed to fetch plans' });
+                res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
         this.getMyMembership = (req, res) => __awaiter(this, void 0, void 0, function* () {
@@ -42,7 +43,7 @@ class MembershipController {
             }
             catch (error) {
                 console.error('Error fetching user membership:', error);
-                res.status(500).json({ error: error.message || 'Failed to fetch membership' });
+                res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
         this.subscribe = (req, res) => __awaiter(this, void 0, void 0, function* () {
@@ -66,7 +67,7 @@ class MembershipController {
                 if ((_b = error.message) === null || _b === void 0 ? void 0 : _b.includes('already have')) {
                     return res.status(409).json({ error: error.message });
                 }
-                res.status(500).json({ error: error.message || 'Failed to subscribe' });
+                res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
         this.cancel = (req, res) => __awaiter(this, void 0, void 0, function* () {
@@ -94,7 +95,7 @@ class MembershipController {
                 console.error('Error canceling membership:', error);
                 if (error.message === 'Access denied')
                     return res.status(403).json({ error: error.message });
-                res.status(500).json({ error: error.message || 'Failed to cancel' });
+                res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
         this.changePlan = (req, res) => __awaiter(this, void 0, void 0, function* () {
@@ -114,7 +115,7 @@ class MembershipController {
                 console.error('Error changing plan:', error);
                 if (error.message === 'Access denied')
                     return res.status(403).json({ error: error.message });
-                res.status(500).json({ error: error.message || 'Failed to change plan' });
+                res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
         // =====================================================
@@ -127,7 +128,7 @@ class MembershipController {
             }
             catch (error) {
                 console.error('Error creating plan:', error);
-                res.status(500).json({ error: error.message || 'Failed to create plan' });
+                res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
         this.updatePlan = (req, res) => __awaiter(this, void 0, void 0, function* () {
@@ -138,7 +139,7 @@ class MembershipController {
             }
             catch (error) {
                 console.error('Error updating plan:', error);
-                res.status(500).json({ error: error.message || 'Failed to update plan' });
+                res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
         this.deactivatePlan = (req, res) => __awaiter(this, void 0, void 0, function* () {
@@ -149,7 +150,7 @@ class MembershipController {
             }
             catch (error) {
                 console.error('Error deactivating plan:', error);
-                res.status(500).json({ error: error.message || 'Failed to deactivate plan' });
+                res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
         this.getSubscribers = (req, res) => __awaiter(this, void 0, void 0, function* () {
@@ -162,7 +163,7 @@ class MembershipController {
             }
             catch (error) {
                 console.error('Error fetching subscribers:', error);
-                res.status(500).json({ error: error.message || 'Failed to fetch subscribers' });
+                res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
         // =====================================================
@@ -176,7 +177,7 @@ class MembershipController {
             }
             catch (error) {
                 console.error('Error fetching location membership settings:', error);
-                res.status(500).json({ error: error.message || 'Failed to fetch settings' });
+                res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
         this.updateLocationSettings = (req, res) => __awaiter(this, void 0, void 0, function* () {
@@ -187,7 +188,7 @@ class MembershipController {
             }
             catch (error) {
                 console.error('Error updating location membership settings:', error);
-                res.status(500).json({ error: error.message || 'Failed to update settings' });
+                res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
     }

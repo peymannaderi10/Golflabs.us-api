@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { AuthenticatedRequest } from '../auth/auth.middleware';
 import { MembershipService } from './membership.service';
+import { sanitizeError } from '../../shared/utils/error.utils';
 
 export class MembershipController {
   private service = new MembershipService();
@@ -18,7 +19,7 @@ export class MembershipController {
       res.json(plans);
     } catch (error: any) {
       console.error('Error fetching membership plans:', error);
-      res.status(500).json({ error: error.message || 'Failed to fetch plans' });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 
@@ -32,7 +33,7 @@ export class MembershipController {
       res.json({ membership });
     } catch (error: any) {
       console.error('Error fetching user membership:', error);
-      res.status(500).json({ error: error.message || 'Failed to fetch membership' });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 
@@ -57,7 +58,7 @@ export class MembershipController {
       if (error.message?.includes('already have')) {
         return res.status(409).json({ error: error.message });
       }
-      res.status(500).json({ error: error.message || 'Failed to subscribe' });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 
@@ -84,7 +85,7 @@ export class MembershipController {
     } catch (error: any) {
       console.error('Error canceling membership:', error);
       if (error.message === 'Access denied') return res.status(403).json({ error: error.message });
-      res.status(500).json({ error: error.message || 'Failed to cancel' });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 
@@ -102,7 +103,7 @@ export class MembershipController {
     } catch (error: any) {
       console.error('Error changing plan:', error);
       if (error.message === 'Access denied') return res.status(403).json({ error: error.message });
-      res.status(500).json({ error: error.message || 'Failed to change plan' });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 
@@ -116,7 +117,7 @@ export class MembershipController {
       res.status(201).json(plan);
     } catch (error: any) {
       console.error('Error creating plan:', error);
-      res.status(500).json({ error: error.message || 'Failed to create plan' });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 
@@ -127,7 +128,7 @@ export class MembershipController {
       res.json(plan);
     } catch (error: any) {
       console.error('Error updating plan:', error);
-      res.status(500).json({ error: error.message || 'Failed to update plan' });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 
@@ -138,7 +139,7 @@ export class MembershipController {
       res.json({ success: true });
     } catch (error: any) {
       console.error('Error deactivating plan:', error);
-      res.status(500).json({ error: error.message || 'Failed to deactivate plan' });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 
@@ -151,7 +152,7 @@ export class MembershipController {
       res.json(subscribers);
     } catch (error: any) {
       console.error('Error fetching subscribers:', error);
-      res.status(500).json({ error: error.message || 'Failed to fetch subscribers' });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 
@@ -166,7 +167,7 @@ export class MembershipController {
       res.json(settings);
     } catch (error: any) {
       console.error('Error fetching location membership settings:', error);
-      res.status(500).json({ error: error.message || 'Failed to fetch settings' });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 
@@ -177,7 +178,7 @@ export class MembershipController {
       res.json({ success: true });
     } catch (error: any) {
       console.error('Error updating location membership settings:', error);
-      res.status(500).json({ error: error.message || 'Failed to update settings' });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 }

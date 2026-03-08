@@ -1,12 +1,30 @@
 import { Router } from 'express';
+import { body, param, query } from 'express-validator';
 import { agreementController } from './agreement.controller';
+import { authenticateUser } from '../auth';
+import { handleValidationErrors } from '../../shared/middleware/validation';
 
 const router = Router();
 
-// Record agreement acceptance for a booking
-router.post('/accept', (req, res) => agreementController.acceptAgreements(req, res));
+router.post('/accept',
+  body('userId').isUUID().withMessage('userId must be a valid UUID'),
+  body('signerName').isString().notEmpty().withMessage('signerName is required'),
+  body('signerEmail').isEmail().withMessage('signerEmail must be a valid email'),
+  body('bookingId').isUUID().withMessage('bookingId must be a valid UUID'),
+  body('locationId').isUUID().withMessage('locationId must be a valid UUID'),
+  body('agreements').isArray({ min: 1 }).withMessage('agreements must be a non-empty array'),
+  body('documentHashes').isObject().withMessage('documentHashes must be an object'),
+  handleValidationErrors,
+  authenticateUser,
+  (req, res) => agreementController.acceptAgreements(req, res),
+);
 
-// Check if all agreements have been accepted for a booking
-router.get('/check/:bookingId', (req, res) => agreementController.checkAgreements(req, res));
+router.get('/check/:bookingId',
+  param('bookingId').isUUID().withMessage('bookingId must be a valid UUID'),
+  query('userId').isUUID().withMessage('userId must be a valid UUID'),
+  handleValidationErrors,
+  authenticateUser,
+  (req, res) => agreementController.checkAgreements(req, res),
+);
 
 export default router;

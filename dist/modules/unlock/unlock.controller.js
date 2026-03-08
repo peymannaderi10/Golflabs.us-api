@@ -11,6 +11,8 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.UnlockController = void 0;
 const database_1 = require("../../config/database");
+const token_utils_1 = require("../../shared/utils/token.utils");
+const error_utils_1 = require("../../shared/utils/error.utils");
 class UnlockController {
     constructor(socketService) {
         /**
@@ -82,7 +84,7 @@ class UnlockController {
             }
             catch (error) {
                 console.error('Error in employee unlock:', error);
-                res.status(500).json({ error: 'Internal server error', details: error.message });
+                res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
         this.unlockDoor = (req, res) => __awaiter(this, void 0, void 0, function* () {
@@ -91,20 +93,12 @@ class UnlockController {
                 if (!token || typeof token !== 'string') {
                     return res.status(400).json({ error: 'Token is required' });
                 }
-                // Decode and verify the token
-                let tokenData;
-                try {
-                    const decoded = Buffer.from(token, 'base64').toString('utf-8');
-                    tokenData = JSON.parse(decoded);
-                }
-                catch (error) {
-                    console.error('Error decoding unlock token:', error);
-                    return res.status(400).json({ error: 'Invalid token format' });
+                const tokenData = (0, token_utils_1.verifyUnlockToken)(token);
+                if (!tokenData) {
+                    return res.status(400).json({ error: 'Invalid or tampered token' });
                 }
                 const { bookingId, expires } = tokenData;
-                // Check if token is expired
                 if (Date.now() > expires) {
-                    console.log(`Unlock token expired for booking ${bookingId}`);
                     return res.status(403).json({ error: 'Token has expired' });
                 }
                 // Verify booking exists and is confirmed
@@ -200,7 +194,7 @@ class UnlockController {
             }
             catch (error) {
                 console.error('Error in unlock door:', error);
-                res.status(500).json({ error: 'Internal server error', details: error.message });
+                res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
         this.socketService = socketService;

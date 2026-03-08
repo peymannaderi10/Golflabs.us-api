@@ -12,6 +12,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.BookingController = void 0;
 const booking_service_1 = require("./booking.service");
 const capacity_hold_service_1 = require("./capacity-hold.service");
+const error_utils_1 = require("../../shared/utils/error.utils");
 class BookingController {
     constructor(socketService) {
         this.reserveBooking = (req, res) => __awaiter(this, void 0, void 0, function* () {
@@ -21,7 +22,7 @@ class BookingController {
             }
             catch (error) {
                 console.error("Error in /bookings/reserve:", error);
-                res.status(500).json({ error: error.message });
+                res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
         this.getBookings = (req, res) => __awaiter(this, void 0, void 0, function* () {
@@ -112,7 +113,7 @@ class BookingController {
             }
             catch (error) {
                 console.error(`Error cancelling booking ${req.params.bookingId}:`, error);
-                res.status(500).json({ error: 'Failed to cancel booking', details: error.message });
+                res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
         // Employee-specific endpoints
@@ -127,7 +128,7 @@ class BookingController {
             }
             catch (error) {
                 console.error('Error in employee bookings endpoint:', error);
-                res.status(500).json({ error: error.message });
+                res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
         this.searchCustomers = (req, res) => __awaiter(this, void 0, void 0, function* () {
@@ -141,7 +142,7 @@ class BookingController {
             }
             catch (error) {
                 console.error('Error in customer search endpoint:', error);
-                res.status(500).json({ error: error.message });
+                res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
         this.employeeCancelBooking = (req, res) => __awaiter(this, void 0, void 0, function* () {
@@ -161,7 +162,7 @@ class BookingController {
             }
             catch (error) {
                 console.error(`Error in employee cancel booking ${req.params.bookingId}:`, error);
-                res.status(500).json({ error: 'Failed to cancel booking', details: error.message });
+                res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
         this.cancelReservedBooking = (req, res) => __awaiter(this, void 0, void 0, function* () {
@@ -177,7 +178,7 @@ class BookingController {
             }
             catch (error) {
                 console.error(`Error cancelling reserved booking ${req.params.bookingId}:`, error);
-                res.status(500).json({ error: 'Failed to cancel reservation', details: error.message });
+                res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
         // Session extension endpoints (called by kiosk)
@@ -195,7 +196,7 @@ class BookingController {
                 if (error.message === 'Booking has already ended' || error.message === 'Booking is not confirmed') {
                     return res.status(409).json({ error: error.message });
                 }
-                res.status(500).json({ error: error.message || 'Failed to get extension options' });
+                res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
         this.extendBooking = (req, res) => __awaiter(this, void 0, void 0, function* () {
@@ -223,7 +224,7 @@ class BookingController {
                 if (error.message.includes('Payment failed') || error.message.includes('No payment method') || error.message.includes('No saved card')) {
                     return res.status(402).json({ error: error.message });
                 }
-                res.status(500).json({ error: error.message || 'Failed to extend booking' });
+                res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
         this.employeeExtendBooking = (req, res) => __awaiter(this, void 0, void 0, function* () {
@@ -254,7 +255,7 @@ class BookingController {
                 if (error.message.includes('Payment failed') || error.message.includes('No payment method') || error.message.includes('No saved card')) {
                     return res.status(402).json({ error: error.message });
                 }
-                res.status(500).json({ error: error.message || 'Failed to extend booking' });
+                res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
         // Employee create booking - bypasses Stripe payment

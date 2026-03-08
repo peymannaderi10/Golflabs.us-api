@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { MarketingService, AudienceType, CampaignAction } from './marketing.service';
 import { AuthenticatedRequest } from '../auth/auth.middleware';
+import { sanitizeError } from '../../shared/utils/error.utils';
 
 const VALID_AUDIENCE_TYPES: AudienceType[] = [
   'all_customers', 'active_members', 'inactive_30d',
@@ -22,7 +23,7 @@ export class MarketingController {
       return res.json(campaigns);
     } catch (error: any) {
       console.error('Error fetching campaigns:', error);
-      return res.status(500).json({ error: error.message || 'Internal server error' });
+      return res.status(500).json({ error: sanitizeError(error) });
     }
   }
 
@@ -38,7 +39,7 @@ export class MarketingController {
       return res.json(detail);
     } catch (error: any) {
       console.error('Error fetching campaign detail:', error);
-      return res.status(500).json({ error: error.message || 'Internal server error' });
+      return res.status(500).json({ error: sanitizeError(error) });
     }
   }
 
@@ -81,7 +82,7 @@ export class MarketingController {
       return res.json(campaign);
     } catch (error: any) {
       console.error('Error creating campaign:', error);
-      return res.status(500).json({ error: error.message || 'Failed to create campaign' });
+      return res.status(500).json({ error: sanitizeError(error) });
     }
   }
 
@@ -159,7 +160,7 @@ export class MarketingController {
       return res.json({ count });
     } catch (error: any) {
       console.error('Error getting audience preview:', error);
-      return res.status(500).json({ error: error.message || 'Internal server error' });
+      return res.status(500).json({ error: sanitizeError(error) });
     }
   }
 
@@ -177,7 +178,7 @@ export class MarketingController {
       return res.json(templates);
     } catch (error: any) {
       console.error('Error fetching templates:', error);
-      return res.status(500).json({ error: error.message || 'Internal server error' });
+      return res.status(500).json({ error: sanitizeError(error) });
     }
   }
 
@@ -203,7 +204,7 @@ export class MarketingController {
       return res.json(template);
     } catch (error: any) {
       console.error('Error creating template:', error);
-      return res.status(500).json({ error: error.message || 'Failed to create template' });
+      return res.status(500).json({ error: sanitizeError(error) });
     }
   }
 
@@ -218,7 +219,7 @@ export class MarketingController {
       return res.json(template);
     } catch (error: any) {
       console.error('Error updating template:', error);
-      return res.status(500).json({ error: error.message || 'Failed to update template' });
+      return res.status(500).json({ error: sanitizeError(error) });
     }
   }
 
@@ -229,7 +230,7 @@ export class MarketingController {
       return res.json({ success: true });
     } catch (error: any) {
       console.error('Error deleting template:', error);
-      return res.status(500).json({ error: error.message || 'Failed to delete template' });
+      return res.status(500).json({ error: sanitizeError(error) });
     }
   }
 

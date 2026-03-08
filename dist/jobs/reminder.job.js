@@ -13,21 +13,7 @@ exports.enqueueReminders = enqueueReminders;
 const database_1 = require("../config/database");
 const resend_1 = require("../config/resend");
 const email_service_1 = require("../modules/email/email.service");
-/**
- * Generate unlock token for booking - this would need to match your existing unlock token logic
- * For now, using a simple implementation
- */
-function generateUnlockToken(bookingId, startTime, endTime) {
-    // This should match your existing token generation logic
-    // Using a simple base64 encoding for demo - replace with your actual implementation
-    const tokenData = {
-        bookingId,
-        startTime,
-        endTime,
-        expires: new Date(endTime).getTime()
-    };
-    return Buffer.from(JSON.stringify(tokenData)).toString('base64');
-}
+const token_utils_1 = require("../shared/utils/token.utils");
 /**
  * Process booking reminders for sessions starting in the next 16 minutes.
  * - Ideal: 14-16 min window sends ~15 min before booking
@@ -77,7 +63,7 @@ function enqueueReminders() {
             console.log(`[Reminder Job] Processing ${bookingsNeedingReminders.length} bookings without reminders`);
             for (const booking of bookingsNeedingReminders) {
                 try {
-                    const token = generateUnlockToken(booking.id, booking.start_time, booking.end_time);
+                    const token = (0, token_utils_1.createUnlockToken)(booking.id, booking.start_time, booking.end_time);
                     const unlockLink = `${resend_1.resendConfig.frontendUrl}/unlock?token=${token}`;
                     // Update booking with unlock token (partial update - only these columns)
                     const { error: updateError } = yield database_1.supabase

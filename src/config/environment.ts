@@ -32,6 +32,10 @@ export function validateEnvironment(): EnvironmentConfig {
     process.exit(1);
   }
 
+  if (!process.env.KIOSK_API_KEY) {
+    console.warn("KIOSK_API_KEY not set in .env. Kiosk endpoints will reject all requests.");
+  }
+
   return {
     stripe: {
       secretKey: stripeSecretKey,

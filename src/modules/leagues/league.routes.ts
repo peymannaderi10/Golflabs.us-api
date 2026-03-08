@@ -1,22 +1,37 @@
 import { Router } from 'express';
 import { LeagueController } from './league.controller';
 import { SocketService } from '../sockets/socket.service';
-import { authenticateEmployee, authenticateUser } from '../auth';
+import { authenticateEmployee, authenticateUser, authenticateKiosk } from '../auth';
+import { body, param, query } from 'express-validator';
+import { handleValidationErrors } from '../../shared/middleware/validation';
 
 export const createLeagueRoutes = (socketService: SocketService): Router => {
   const router = Router();
   const controller = new LeagueController(socketService);
 
   // --- League CRUD (employee-only for create/update/activate) ---
-  router.post('/', authenticateEmployee, controller.createLeague);
+  router.post('/', authenticateEmployee, [
+    body('locationId').isUUID().withMessage('locationId must be a valid UUID'),
+    body('name').isString().notEmpty().withMessage('name is required'),
+    handleValidationErrors,
+  ], controller.createLeague);
   router.get('/', controller.getLeaguesByLocation);                                 // ?locationId=
 
   // --- User-facing: my leagues (must be before /:leagueId to avoid capture) ---
   router.get('/user/:userId', authenticateUser, controller.getUserLeagues);
 
-  router.get('/:leagueId', controller.getLeague);
-  router.put('/:leagueId', authenticateEmployee, controller.updateLeague);
-  router.post('/:leagueId/activate', authenticateEmployee, controller.activateLeague);
+  router.get('/:leagueId', [
+    param('leagueId').isUUID().withMessage('leagueId must be a valid UUID'),
+    handleValidationErrors,
+  ], controller.getLeague);
+  router.put('/:leagueId', authenticateEmployee, [
+    param('leagueId').isUUID().withMessage('leagueId must be a valid UUID'),
+    handleValidationErrors,
+  ], controller.updateLeague);
+  router.post('/:leagueId/activate', authenticateEmployee, [
+    param('leagueId').isUUID().withMessage('leagueId must be a valid UUID'),
+    handleValidationErrors,
+  ], controller.activateLeague);
 
   // --- Course management ---
   router.post('/:leagueId/courses', authenticateEmployee, controller.addCourse);
@@ -25,7 +40,10 @@ export const createLeagueRoutes = (socketService: SocketService): Router => {
   router.delete('/:leagueId/courses/:courseId', authenticateEmployee, controller.deleteCourse);
 
   // --- Player enrollment ---
-  router.post('/:leagueId/enroll', controller.enrollPlayer);
+  router.post('/:leagueId/enroll', [
+    param('leagueId').isUUID().withMessage('leagueId must be a valid UUID'),
+    handleValidationErrors,
+  ], controller.enrollPlayer);
   router.get('/:leagueId/players', controller.getPlayers);
   router.post('/:leagueId/players/:playerId/withdraw', authenticateEmployee, controller.withdrawPlayer);
   router.post('/:leagueId/players/:playerId/override-handicap', authenticateEmployee, controller.overrideHandicap);
@@ -37,8 +55,10 @@ export const createLeagueRoutes = (socketService: SocketService): Router => {
   router.post('/:leagueId/weeks/:weekId/assign-course', authenticateEmployee, controller.assignCourseToWeek);
   router.post('/:leagueId/weeks/:weekId/confirm-scores', authenticateEmployee, controller.confirmWeekScores);
 
-  // --- Score entry (kiosk + employee — no auth required for kiosk) ---
-  router.post('/:leagueId/scores', controller.submitScore);
+  router.post('/:leagueId/scores', authenticateKiosk, [
+    param('leagueId').isUUID().withMessage('leagueId must be a valid UUID'),
+    handleValidationErrors,
+  ], controller.submitScore);
   router.get('/:leagueId/weeks/:weekId/scores', controller.getWeekScores);
   router.get('/:leagueId/weeks/:weekId/scorecard/:playerId', controller.getPlayerScorecard);
 
@@ -52,7 +72,10 @@ export const createLeagueRoutes = (socketService: SocketService): Router => {
   router.get('/:leagueId/team-leaderboard', controller.getTeamLeaderboard);
 
   // --- Payments (authenticated user) ---
-  router.post('/:leagueId/enroll-and-pay', authenticateUser, controller.enrollAndPay);
+  router.post('/:leagueId/enroll-and-pay', authenticateUser, [
+    param('leagueId').isUUID().withMessage('leagueId must be a valid UUID'),
+    handleValidationErrors,
+  ], controller.enrollAndPay);
 
   // --- Prize pool ledger ---
   router.get('/:leagueId/prize-pool', controller.getPrizePoolSummary);
@@ -60,11 +83,16 @@ export const createLeagueRoutes = (socketService: SocketService): Router => {
   router.post('/:leagueId/weeks/:weekId/confirm-payouts', authenticateEmployee, controller.confirmWeekPayouts);
   router.post('/:leagueId/prize-ledger/:entryId/confirm', authenticateEmployee, controller.confirmSinglePayout);
 
-  // --- Kiosk state ---
-  router.get('/:leagueId/kiosk-state', controller.getLeagueStateForKiosk);           // ?playerId= or ?userId=
+  router.get('/:leagueId/kiosk-state', authenticateKiosk, [
+    param('leagueId').isUUID().withMessage('leagueId must be a valid UUID'),
+    handleValidationErrors,
+  ], controller.getLeagueStateForKiosk);
 
   // --- Team management (authenticated user for create/invite/pay) ---
-  router.post('/:leagueId/teams', authenticateUser, controller.createTeam);
+  router.post('/:leagueId/teams', authenticateUser, [
+    param('leagueId').isUUID().withMessage('leagueId must be a valid UUID'),
+    handleValidationErrors,
+  ], controller.createTeam);
   router.get('/:leagueId/teams', controller.getTeams);
   router.get('/:leagueId/teams/:teamId', controller.getTeam);
   router.post('/:leagueId/teams/:teamId/invites', authenticateUser, controller.inviteTeammates);

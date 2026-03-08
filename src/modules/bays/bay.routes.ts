@@ -1,15 +1,14 @@
 import { Router } from 'express';
 import { BayController } from './bay.controller';
 import { SocketService } from '../sockets/socket.service';
-import { authenticateEmployee } from '../auth';
+import { authenticateEmployee, authenticateKiosk } from '../auth';
 
 export const createBayRoutes = (socketService: SocketService): Router => {
   const bayRoutes = Router();
   const controller = new BayController(socketService);
 
-  // Bay routes
   bayRoutes.get('/', controller.getBays); 
-  bayRoutes.post('/:bayId/heartbeat', controller.updateHeartbeat);
+  bayRoutes.post('/:bayId/heartbeat', authenticateKiosk, controller.updateHeartbeat);
 
   // Employee-only: update bay status
   bayRoutes.put('/:bayId/status', authenticateEmployee, controller.updateBayStatus);

@@ -1,29 +1,37 @@
 import dotenv from 'dotenv';
 
-// Load environment variables FIRST before any other imports
 dotenv.config();
 
 import { app, httpServer } from './app';
 import { validateEnvironment } from './config/environment';
-import { startScheduler } from './jobs/scheduler';
+import { startScheduler, stopScheduler } from './jobs/scheduler';
+import { logger } from './shared/utils/logger';
 
-// =====================================================
-// INITIALIZATION
-// =====================================================
-
-// Validate environment variables
 const config = validateEnvironment();
 
-// Start background jobs
 startScheduler();
-
-// =====================================================
-// SERVER START
-// =====================================================
 
 const PORT = config.server.port;
 
+httpServer.setTimeout(30000);
+
 httpServer.listen(PORT, () => {
-  console.log(`Backend server running on http://localhost:${PORT}`);
-  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
-}); 
+  logger.info({ port: PORT }, 'Backend server running');
+  logger.info({ env: process.env.NODE_ENV || 'development' }, 'Environment');
+});
+
+function shutdown(signal: string) {
+  logger.info({ signal }, 'Shutting down gracefully');
+  stopScheduler();
+  httpServer.close(() => {
+    logger.info('Server closed');
+    process.exit(0);
+  });
+  setTimeout(() => {
+    logger.error('Forced shutdown after timeout');
+    process.exit(1);
+  }, 10000).unref();
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT')); 

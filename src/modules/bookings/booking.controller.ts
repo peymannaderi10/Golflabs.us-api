@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { BookingService } from './booking.service';
 import { CapacityHoldService } from './capacity-hold.service';
 import { SocketService } from '../sockets/socket.service';
+import { sanitizeError } from '../../shared/utils/error.utils';
 
 export class BookingController {
   private bookingService: BookingService;
@@ -20,7 +21,7 @@ export class BookingController {
       res.status(201).json(result);
     } catch (error: any) {
       console.error("Error in /bookings/reserve:", error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 
@@ -121,7 +122,7 @@ export class BookingController {
       }
     } catch (error: any) {
       console.error(`Error cancelling booking ${req.params.bookingId}:`, error);
-      res.status(500).json({ error: 'Failed to cancel booking', details: error.message });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 
@@ -144,7 +145,7 @@ export class BookingController {
       res.json(bookings);
     } catch (error: any) {
       console.error('Error in employee bookings endpoint:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 
@@ -160,7 +161,7 @@ export class BookingController {
       res.json(customers);
     } catch (error: any) {
       console.error('Error in customer search endpoint:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 
@@ -183,7 +184,7 @@ export class BookingController {
       }
     } catch (error: any) {
       console.error(`Error in employee cancel booking ${req.params.bookingId}:`, error);
-      res.status(500).json({ error: 'Failed to cancel booking', details: error.message });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 
@@ -200,7 +201,7 @@ export class BookingController {
       }
     } catch (error: any) {
       console.error(`Error cancelling reserved booking ${req.params.bookingId}:`, error);
-      res.status(500).json({ error: 'Failed to cancel reservation', details: error.message });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 
@@ -218,7 +219,7 @@ export class BookingController {
       if (error.message === 'Booking has already ended' || error.message === 'Booking is not confirmed') {
         return res.status(409).json({ error: error.message });
       }
-      res.status(500).json({ error: error.message || 'Failed to get extension options' });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 
@@ -249,7 +250,7 @@ export class BookingController {
       if (error.message.includes('Payment failed') || error.message.includes('No payment method') || error.message.includes('No saved card')) {
         return res.status(402).json({ error: error.message });
       }
-      res.status(500).json({ error: error.message || 'Failed to extend booking' });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 
@@ -291,7 +292,7 @@ export class BookingController {
       if (error.message.includes('Payment failed') || error.message.includes('No payment method') || error.message.includes('No saved card')) {
         return res.status(402).json({ error: error.message });
       }
-      res.status(500).json({ error: error.message || 'Failed to extend booking' });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 

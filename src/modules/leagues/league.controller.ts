@@ -4,6 +4,7 @@ import { AttendanceService } from './attendance.service';
 import { CapacityHoldService } from '../bookings/capacity-hold.service';
 import { SocketService } from '../sockets/socket.service';
 import { LeagueScorePayload } from './league.types';
+import { sanitizeError } from '../../shared/utils/error.utils';
 
 export class LeagueController {
   private leagueService: LeagueService;
@@ -28,7 +29,7 @@ export class LeagueController {
       res.status(201).json(league);
     } catch (error: any) {
       console.error('Error creating league:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 
@@ -42,7 +43,7 @@ export class LeagueController {
       res.json(leagues);
     } catch (error: any) {
       console.error('Error fetching leagues:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 
@@ -62,7 +63,7 @@ export class LeagueController {
       res.json(league);
     } catch (error: any) {
       console.error('Error updating league:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 
@@ -86,7 +87,7 @@ export class LeagueController {
       res.status(201).json(course);
     } catch (error: any) {
       console.error('Error adding course:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 
@@ -96,7 +97,7 @@ export class LeagueController {
       res.json(courses);
     } catch (error: any) {
       console.error('Error fetching courses:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 
@@ -106,7 +107,7 @@ export class LeagueController {
       res.json(course);
     } catch (error: any) {
       console.error('Error updating course:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 
@@ -116,7 +117,7 @@ export class LeagueController {
       res.json({ success: true });
     } catch (error: any) {
       console.error('Error deleting course:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 
@@ -130,7 +131,7 @@ export class LeagueController {
       res.json(week);
     } catch (error: any) {
       console.error('Error assigning course to week:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 
@@ -150,7 +151,7 @@ export class LeagueController {
       if (error.message.includes('full')) {
         return res.status(409).json({ error: error.message });
       }
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 
@@ -160,7 +161,7 @@ export class LeagueController {
       res.json(players);
     } catch (error: any) {
       console.error('Error fetching players:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 
@@ -170,7 +171,7 @@ export class LeagueController {
       res.json({ success: true });
     } catch (error: any) {
       console.error('Error withdrawing player:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 
@@ -199,7 +200,7 @@ export class LeagueController {
       res.json({ success: true });
     } catch (error: any) {
       console.error('Error overriding handicap:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 
@@ -213,7 +214,7 @@ export class LeagueController {
       res.json(weeks);
     } catch (error: any) {
       console.error('Error fetching weeks:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 
@@ -223,7 +224,7 @@ export class LeagueController {
       res.json(week);
     } catch (error: any) {
       console.error('Error activating week:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 
@@ -243,7 +244,7 @@ export class LeagueController {
       res.json(result);
     } catch (error: any) {
       console.error('Error finalizing week:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 
@@ -304,7 +305,7 @@ export class LeagueController {
       res.json(scores);
     } catch (error: any) {
       console.error('Error fetching week scores:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 
@@ -318,7 +319,7 @@ export class LeagueController {
       res.json(scorecard);
     } catch (error: any) {
       console.error('Error fetching player scorecard:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 
@@ -333,7 +334,7 @@ export class LeagueController {
       res.json({ success: true });
     } catch (error: any) {
       console.error('Error confirming score:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 
@@ -344,7 +345,7 @@ export class LeagueController {
       res.json({ success: true, confirmed: count });
     } catch (error: any) {
       console.error('Error confirming week scores:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 
@@ -360,7 +361,7 @@ export class LeagueController {
       res.json({ success: true });
     } catch (error: any) {
       console.error('Error overriding score:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 
@@ -374,7 +375,7 @@ export class LeagueController {
       res.json(standings);
     } catch (error: any) {
       console.error('Error fetching standings:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 
@@ -384,7 +385,7 @@ export class LeagueController {
       res.json(leaderboard);
     } catch (error: any) {
       console.error('Error fetching live leaderboard:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 
@@ -394,7 +395,7 @@ export class LeagueController {
       res.json(leaderboard);
     } catch (error: any) {
       console.error('Error fetching team leaderboard:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 
@@ -424,7 +425,7 @@ export class LeagueController {
       if (error.message.includes('not accepting')) {
         return res.status(400).json({ error: error.message });
       }
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 
@@ -442,7 +443,7 @@ export class LeagueController {
       res.json(leagues);
     } catch (error: any) {
       console.error('Error fetching user leagues:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 
@@ -466,7 +467,7 @@ export class LeagueController {
       res.json(state);
     } catch (error: any) {
       console.error('Error fetching league state for kiosk:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 
@@ -480,7 +481,7 @@ export class LeagueController {
       res.json(summary);
     } catch (error: any) {
       console.error('Error fetching prize pool summary:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 
@@ -493,7 +494,7 @@ export class LeagueController {
       res.json(history);
     } catch (error: any) {
       console.error('Error fetching player prize history:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 
@@ -508,7 +509,7 @@ export class LeagueController {
       res.json({ success: true });
     } catch (error: any) {
       console.error('Error confirming week payouts:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 
@@ -519,7 +520,7 @@ export class LeagueController {
       res.json({ success: true });
     } catch (error: any) {
       console.error('Error confirming payout:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 
@@ -543,7 +544,7 @@ export class LeagueController {
       if (error.message.includes('does not support') || error.message.includes('not accepting')) {
         return res.status(400).json({ error: error.message });
       }
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 
@@ -553,7 +554,7 @@ export class LeagueController {
       res.json(teams);
     } catch (error: any) {
       console.error('Error fetching teams:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 
@@ -583,7 +584,7 @@ export class LeagueController {
       if (error.message.includes('Only the team captain') || error.message.includes('no longer accepting')) {
         return res.status(403).json({ error: error.message });
       }
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 
@@ -610,7 +611,7 @@ export class LeagueController {
       if (error.message.includes('not sent to you') || error.message.includes('already been')) {
         return res.status(400).json({ error: error.message });
       }
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 
@@ -624,7 +625,7 @@ export class LeagueController {
       res.json({ success: true });
     } catch (error: any) {
       console.error('Error declining invite:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 
@@ -649,7 +650,7 @@ export class LeagueController {
       if (error.message.includes('does not support') || error.message.includes('cannot accept')) {
         return res.status(400).json({ error: error.message });
       }
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 
@@ -663,7 +664,7 @@ export class LeagueController {
       res.json(result);
     } catch (error: any) {
       console.error('Error disqualifying team:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 
@@ -677,7 +678,7 @@ export class LeagueController {
       res.json(teams);
     } catch (error: any) {
       console.error('Error fetching user teams:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 
@@ -698,7 +699,7 @@ export class LeagueController {
       res.json(result);
     } catch (error: any) {
       console.error('Error confirming attendance:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 
@@ -715,7 +716,7 @@ export class LeagueController {
       res.json(result);
     } catch (error: any) {
       console.error('Error declining attendance:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 
@@ -729,7 +730,7 @@ export class LeagueController {
       res.json(attendance);
     } catch (error: any) {
       console.error('Error fetching week attendance:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 
@@ -748,7 +749,7 @@ export class LeagueController {
       res.json(summary);
     } catch (error: any) {
       console.error('Error fetching attendance summary:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 
@@ -775,7 +776,7 @@ export class LeagueController {
       if (error.message.includes('locked') || error.message.includes('not found')) {
         return res.status(400).json({ error: error.message });
       }
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 
@@ -795,7 +796,7 @@ export class LeagueController {
       res.json(attendance);
     } catch (error: any) {
       console.error('Error fetching player attendance:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 
@@ -809,7 +810,7 @@ export class LeagueController {
       res.json(result);
     } catch (error: any) {
       console.error('Error adjusting capacity:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 
@@ -823,7 +824,7 @@ export class LeagueController {
       res.json(holds);
     } catch (error: any) {
       console.error('Error fetching league holds:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 
@@ -846,7 +847,7 @@ export class LeagueController {
       res.json({ success: true, message: 'Week skipped — hold suspended and bays released.' });
     } catch (error: any) {
       console.error('Error skipping week:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 
@@ -869,7 +870,7 @@ export class LeagueController {
       res.json({ success: true, message: 'Week restored — hold reactivated.' });
     } catch (error: any) {
       console.error('Error unskipping week:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 }

@@ -1,13 +1,8 @@
 import { Request, Response } from 'express';
 import { SocketService } from '../sockets/socket.service';
 import { supabase } from '../../config/database';
-
-interface UnlockTokenData {
-  bookingId: string;
-  startTime: string;
-  endTime: string;
-  expires: number;
-}
+import { verifyUnlockToken } from '../../shared/utils/token.utils';
+import { sanitizeError } from '../../shared/utils/error.utils';
 
 export class UnlockController {
   private socketService: SocketService;
@@ -97,7 +92,7 @@ export class UnlockController {
 
     } catch (error: any) {
       console.error('Error in employee unlock:', error);
-      res.status(500).json({ error: 'Internal server error', details: error.message });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 
@@ -109,21 +104,14 @@ export class UnlockController {
         return res.status(400).json({ error: 'Token is required' });
       }
 
-      // Decode and verify the token
-      let tokenData: UnlockTokenData;
-      try {
-        const decoded = Buffer.from(token, 'base64').toString('utf-8');
-        tokenData = JSON.parse(decoded);
-      } catch (error) {
-        console.error('Error decoding unlock token:', error);
-        return res.status(400).json({ error: 'Invalid token format' });
+      const tokenData = verifyUnlockToken(token);
+      if (!tokenData) {
+        return res.status(400).json({ error: 'Invalid or tampered token' });
       }
 
       const { bookingId, expires } = tokenData;
 
-      // Check if token is expired
       if (Date.now() > expires) {
-        console.log(`Unlock token expired for booking ${bookingId}`);
         return res.status(403).json({ error: 'Token has expired' });
       }
 
@@ -239,7 +227,7 @@ export class UnlockController {
 
     } catch (error: any) {
       console.error('Error in unlock door:', error);
-      res.status(500).json({ error: 'Internal server error', details: error.message });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 } 

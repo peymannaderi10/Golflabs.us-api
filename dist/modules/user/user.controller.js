@@ -14,10 +14,14 @@ const user_service_1 = require("./user.service");
 class UserController {
     constructor() {
         this.deleteAccount = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            var _a;
             try {
                 const { userId } = req.params;
                 if (!userId) {
                     return res.status(400).json({ error: 'User ID is required' });
+                }
+                if (((_a = req.user) === null || _a === void 0 ? void 0 : _a.id) !== userId) {
+                    return res.status(403).json({ error: 'You can only delete your own account' });
                 }
                 const result = yield this.userService.deleteAccount(userId);
                 res.json(result);
@@ -34,10 +38,14 @@ class UserController {
             }
         });
         this.getUserProfile = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            var _a;
             try {
                 const { userId } = req.params;
                 if (!userId) {
                     return res.status(400).json({ error: 'User ID is required' });
+                }
+                if (((_a = req.user) === null || _a === void 0 ? void 0 : _a.id) !== userId) {
+                    return res.status(403).json({ error: 'You can only view your own profile' });
                 }
                 const profile = yield this.userService.getUserProfile(userId);
                 res.json(profile);

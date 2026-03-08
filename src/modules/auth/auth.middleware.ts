@@ -1,10 +1,13 @@
 import { Request, Response, NextFunction } from 'express';
+import crypto from 'crypto';
 import { supabase } from '../../config/database';
+import { logger } from '../../shared/utils/logger';
 
 export interface AuthenticatedRequest extends Request {
   user?: any;
   employee?: any;
   employeeProfile?: any;
+  isKiosk?: boolean;
 }
 
 /**
@@ -29,7 +32,7 @@ export const authenticateUser = async (req: AuthenticatedRequest, res: Response,
     req.user = user;
     next();
   } catch (error) {
-    console.error('User authentication error:', error);
+    logger.error({ err: error }, 'User authentication error');
     return res.status(401).json({ error: 'Authentication failed' });
   }
 };
@@ -72,7 +75,46 @@ export const authenticateEmployee = async (req: AuthenticatedRequest, res: Respo
     req.employeeProfile = profile;
     next();
   } catch (error) {
-    console.error('Employee authentication error:', error);
+    logger.error({ err: error }, 'Employee authentication error');
     return res.status(401).json({ error: 'Authentication failed' });
   }
+};
+
+/**
+ * Validates a kiosk API key sent via X-Kiosk-Key header.
+ * Uses timing-safe comparison to prevent timing attacks.
+ */
+export const authenticateKiosk = (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  const kioskKey = req.headers['x-kiosk-key'] as string | undefined;
+  const expectedKey = process.env.KIOSK_API_KEY;
+
+  if (!expectedKey) {
+    logger.error('KIOSK_API_KEY not configured on the server');
+    return res.status(500).json({ error: 'Kiosk authentication not configured' });
+  }
+
+  if (!kioskKey) {
+    return res.status(401).json({ error: 'Kiosk API key required' });
+  }
+
+  const keyBuffer = Buffer.from(kioskKey);
+  const expectedBuffer = Buffer.from(expectedKey);
+
+  if (keyBuffer.length !== expectedBuffer.length || !crypto.timingSafeEqual(keyBuffer, expectedBuffer)) {
+    return res.status(401).json({ error: 'Invalid kiosk API key' });
+  }
+
+  req.isKiosk = true;
+  next();
+};
+
+/**
+ * Accepts either a valid kiosk API key (X-Kiosk-Key) or employee JWT.
+ */
+export const authenticateKioskOrEmployee = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  const kioskKey = req.headers['x-kiosk-key'] as string | undefined;
+  if (kioskKey) {
+    return authenticateKiosk(req, res, next);
+  }
+  return authenticateEmployee(req, res, next);
 };

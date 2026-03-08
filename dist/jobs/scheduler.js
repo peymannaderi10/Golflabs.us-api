@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.startScheduler = startScheduler;
+exports.stopScheduler = stopScheduler;
 const expired_reservations_job_1 = require("./expired-reservations.job");
 const notifications_job_1 = require("./notifications.job");
 const reminder_job_1 = require("./reminder.job");
@@ -10,31 +11,14 @@ const league_mode_deactivate_job_1 = require("./league-mode-deactivate.job");
 const attendance_reminder_job_1 = require("./attendance-reminder.job");
 const attendance_cutoff_job_1 = require("./attendance-cutoff.job");
 const marketing_scheduler_job_1 = require("./marketing-scheduler.job");
+const intervals = [];
 function startScheduler() {
-    // Run the expiration check every 2 minutes
-    setInterval(expired_reservations_job_1.handleExpiredReservations, 2 * 60 * 1000);
-    // Run the notification dispatch every minute
-    setInterval(notifications_job_1.dispatchNotifications, 60 * 1000);
-    // Run the reminder check every minute (and immediately on startup)
-    (0, reminder_job_1.enqueueReminders)(); // Run immediately so we don't miss reminders if server just started
-    setInterval(reminder_job_1.enqueueReminders, 60 * 1000);
-    // Run handicap recalculation daily at 3 AM as a safety net
-    // (Primary trigger is on-demand via LeagueService.finalizeWeek)
-    const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
-    setInterval(handicap_job_1.recalculateAllHandicaps, TWENTY_FOUR_HOURS);
-    // Run team league deadline check every 5 minutes
-    // Disqualifies teams with unpaid members after the league start time
-    setInterval(league_deadline_job_1.processTeamDeadlines, 5 * 60 * 1000);
-    // Auto-deactivate league mode on bays after league end time + buffer
-    // Checks every 5 minutes
-    setInterval(league_mode_deactivate_job_1.autoDeactivateLeagueMode, 5 * 60 * 1000);
-    // Send attendance reminders for leagues with attendance_required = true
-    // Checks every 5 minutes
-    setInterval(attendance_reminder_job_1.sendAttendanceReminders, 5 * 60 * 1000);
-    // Lock attendance and optionally adjust capacity holds at cutoff time
-    // Checks every 5 minutes
-    setInterval(attendance_cutoff_job_1.processAttendanceCutoffs, 5 * 60 * 1000);
-    // Send scheduled marketing campaigns every 60 seconds
-    setInterval(marketing_scheduler_job_1.processScheduledCampaigns, 60 * 1000);
-    console.log('Background job scheduler started (expiration: 2min, notifications: 1min, reminders: 1min, handicaps: 24h, team-deadlines: 5min, league-mode-deactivate: 5min, attendance-reminders: 5min, attendance-cutoffs: 5min, marketing-scheduler: 1min)');
+    (0, reminder_job_1.enqueueReminders)();
+    intervals.push(setInterval(expired_reservations_job_1.handleExpiredReservations, 2 * 60 * 1000), setInterval(notifications_job_1.dispatchNotifications, 60 * 1000), setInterval(reminder_job_1.enqueueReminders, 60 * 1000), setInterval(handicap_job_1.recalculateAllHandicaps, 24 * 60 * 60 * 1000), setInterval(league_deadline_job_1.processTeamDeadlines, 5 * 60 * 1000), setInterval(league_mode_deactivate_job_1.autoDeactivateLeagueMode, 5 * 60 * 1000), setInterval(attendance_reminder_job_1.sendAttendanceReminders, 5 * 60 * 1000), setInterval(attendance_cutoff_job_1.processAttendanceCutoffs, 5 * 60 * 1000), setInterval(marketing_scheduler_job_1.processScheduledCampaigns, 60 * 1000));
+    console.log('Background job scheduler started');
+}
+function stopScheduler() {
+    intervals.forEach(clearInterval);
+    intervals.length = 0;
+    console.log('Background job scheduler stopped');
 }

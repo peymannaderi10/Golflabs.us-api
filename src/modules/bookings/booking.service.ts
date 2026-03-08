@@ -8,6 +8,8 @@ import { promotionService } from '../promotions/promotion.service';
 import { resendConfig } from '../../config/resend';
 import { CapacityHoldService } from './capacity-hold.service';
 import { MembershipService } from '../memberships/membership.service';
+import { createUnlockToken } from '../../shared/utils/token.utils';
+import { logger } from '../../shared/utils/logger';
 
 export class BookingService {
   private capacityHoldService = new CapacityHoldService();
@@ -37,7 +39,7 @@ export class BookingService {
       .single();
 
     if (locationError || !location) {
-      console.error('Error fetching location timezone:', locationError);
+      logger.error({ err: locationError }, 'Error fetching location timezone');
       throw new Error('Invalid location ID');
     }
 
@@ -56,10 +58,7 @@ export class BookingService {
     const p_start_time = createISOTimestamp(date, startTime, timezone);
     const p_end_time = createISOTimestamp(date, endTime, timezone);
     
-    console.log(`Creating booking with timezone ${timezone}:`, {
-      input: { date, startTime, endTime },
-      output: { p_start_time, p_end_time }
-    });
+    logger.info({ timezone, date, startTime, endTime, p_start_time, p_end_time }, 'Creating booking');
 
     // Enforce booking window and available hours based on membership
     try {
@@ -104,7 +103,7 @@ export class BookingService {
       if (membershipErr.message?.includes('Bookings can only') || membershipErr.message?.includes('Non-member bookings')) {
         throw membershipErr;
       }
-      console.error('Error checking membership for booking rules:', membershipErr);
+      logger.error({ err: membershipErr }, 'Error checking membership for booking rules');
       // Non-fatal for other errors: allow the booking to proceed
     }
 
@@ -150,7 +149,7 @@ export class BookingService {
     });
 
     if (error) {
-      console.error('Error calling create_booking_and_payment_record function:', error);
+      logger.error({ err: error }, 'Error calling create_booking_and_payment_record function');
       // Handle common database errors
       if (error.message?.includes('duplicate key') || error.message?.includes('already exists')) {
         throw new Error('This time slot is no longer available.');
@@ -165,7 +164,7 @@ export class BookingService {
       throw new Error('Failed to create booking - no booking ID returned');
     }
 
-    console.log(`Created new booking ${data.booking_id} for bay ${bayId} from ${p_start_time} to ${p_end_time}`);
+    logger.info({ bookingId: data.booking_id, bayId, p_start_time, p_end_time }, 'Created new booking');
 
     // Update the booking to have reserved status and set expiration
     const { error: updateError } = await supabase
@@ -177,11 +176,11 @@ export class BookingService {
       .eq('id', data.booking_id);
 
     if (updateError) {
-      console.error('Error updating booking to reserved status:', updateError);
+      logger.error({ err: updateError }, 'Error updating booking to reserved status');
       throw updateError;
     }
 
-    console.log(`Successfully reserved booking ${data.booking_id}, expires at ${expiresAt}`);
+    logger.info({ bookingId: data.booking_id, expiresAt }, 'Successfully reserved booking');
 
     return {
       bookingId: data.booking_id,
@@ -202,7 +201,7 @@ export class BookingService {
       .single();
 
     if (locationError || !location) {
-      console.error('Error fetching location timezone:', locationError);
+      logger.error({ err: locationError }, 'Error fetching location timezone');
       throw new Error('Invalid location ID');
     }
 
@@ -222,12 +221,7 @@ export class BookingService {
     // But we should still include active bookings that started before the current time
     const filterEndTimeAfter = startTime ? createISOTimestamp(date, startTime, timezone) : null;
 
-    console.log(`Fetching bookings for ${date} in timezone ${timezone}:`, {
-      startUTC: startOfDayUTC,
-      endUTC: endOfDayPlusOneMinute,
-      filterEndTimeAfter: filterEndTimeAfter,
-      note: 'Bookings that START on this date and END after the filter time (if provided)'
-    });
+    logger.info({ date, timezone, startUTC: startOfDayUTC, endUTC: endOfDayPlusOneMinute, filterEndTimeAfter }, 'Fetching bookings');
 
     // Query bookings that START within this specific date
     // Include expires_at to filter out expired reserved bookings
@@ -250,7 +244,7 @@ export class BookingService {
     const { data, error } = await query;
 
     if (error) {
-      console.error('Error fetching bookings:', error);
+      logger.error({ err: error }, 'Error fetching bookings');
       throw new Error('Failed to fetch bookings');
     }
 
@@ -284,7 +278,7 @@ export class BookingService {
         timeZone: timezone
       });
 
-      console.log(`Booking ${booking.id}: UTC ${booking.start_time} -> Local ${startTimeLocal}`);
+      logger.debug({ bookingId: booking.id, utcTime: booking.start_time, localTime: startTimeLocal }, 'Booking time conversion');
 
       return {
         id: booking.id,
@@ -316,7 +310,7 @@ export class BookingService {
       .limit(1);
 
     if (error) {
-      console.error('Error fetching reserved user bookings:', error);
+      logger.error({ err: error }, 'Error fetching reserved user bookings');
       throw new Error('Failed to fetch reserved user bookings');
     }
 
@@ -359,7 +353,7 @@ export class BookingService {
       .order('start_time', { ascending: true });
 
     if (error) {
-      console.error('Error fetching future user bookings:', error);
+      logger.error({ err: error }, 'Error fetching future user bookings');
       throw new Error('Failed to fetch future user bookings');
     }
 
@@ -393,7 +387,7 @@ export class BookingService {
       .order('start_time', { ascending: false });
 
     if (error) {
-      console.error('Error fetching past user bookings:', error);
+      logger.error({ err: error }, 'Error fetching past user bookings');
       throw new Error('Failed to fetch past user bookings');
     }
 
@@ -454,7 +448,7 @@ export class BookingService {
       .single();
 
     if (paymentError || !payment) {
-      console.warn(`No successful payment found for booking ${bookingId}, cancelling without refund`);
+      logger.warn({ bookingId }, 'No successful payment found for booking, cancelling without refund');
     }
 
     // 5. Process Stripe refund if payment exists
@@ -471,9 +465,9 @@ export class BookingService {
           }
         });
         refundId = refund.id;
-        console.log(`Refund created for booking ${bookingId}: ${refund.id}`);
+        logger.info({ bookingId, refundId: refund.id }, 'Refund created for booking');
       } catch (stripeError: any) {
-        console.error(`Error creating refund for booking ${bookingId}:`, stripeError);
+        logger.error({ err: stripeError, bookingId }, 'Error creating refund for booking');
         throw new Error(`Failed to process refund. Please contact support. Details: ${stripeError.message}`);
       }
     }
@@ -488,11 +482,11 @@ export class BookingService {
       .eq('id', bookingId);
 
     if (updateBookingError) {
-      console.error(`Error updating booking ${bookingId} to cancelled:`, updateBookingError);
+      logger.error({ err: updateBookingError, bookingId }, 'Error updating booking to cancelled');
       throw updateBookingError;
     }
 
-    console.log(`Booking ${bookingId} cancelled and time slot freed for new reservations`);
+    logger.info({ bookingId }, 'Booking cancelled and time slot freed for new reservations');
 
     // 7. Update payment status if refund was processed
     if (payment && refundId) {
@@ -506,7 +500,7 @@ export class BookingService {
         .eq('booking_id', bookingId);
 
       if (updatePaymentError) {
-        console.error(`Error updating payment status for booking ${bookingId}:`, updatePaymentError);
+        logger.error({ err: updatePaymentError, bookingId }, 'Error updating payment status for booking');
         // Don't fail the request since booking was already cancelled and refund was processed
       }
     }
@@ -524,7 +518,7 @@ export class BookingService {
       });
 
     if (cancellationError) {
-      console.error(`Error creating cancellation record for booking ${bookingId}:`, cancellationError);
+      logger.error({ err: cancellationError, bookingId }, 'Error creating cancellation record for booking');
     }
 
     // 9. Send cancellation email notification
@@ -537,7 +531,7 @@ export class BookingService {
         !!refundId
       );
     } catch (emailError) {
-      console.error(`Error sending cancellation email for booking ${bookingId}:`, emailError);
+      logger.error({ err: emailError, bookingId }, 'Error sending cancellation email for booking');
       // Don't fail the request since booking was already cancelled successfully
     }
 
@@ -595,7 +589,7 @@ export class BookingService {
     const { data, error } = await query.order('start_time', { ascending: true });
 
     if (error) {
-      console.error('Error fetching bookings for employee:', error);
+      logger.error({ err: error }, 'Error fetching bookings for employee');
       throw error;
     }
 
@@ -626,7 +620,7 @@ export class BookingService {
       .order('email');
 
     if (error) {
-      console.error('Error searching customers:', error);
+      logger.error({ err: error }, 'Error searching customers');
       throw error;
     }
 
@@ -646,7 +640,7 @@ export class BookingService {
     });
 
     if (rpcError) {
-      console.error('Error cancelling booking in database:', rpcError);
+      logger.error({ err: rpcError, bookingId }, 'Error cancelling booking in database');
       throw new Error('Database cancellation failed: ' + rpcError.message);
     }
 
@@ -659,7 +653,7 @@ export class BookingService {
       .maybeSingle();
 
     if (paymentError) {
-        console.warn(`Could not query payment for booking ${bookingId}. Cancelling without refund.`, paymentError);
+        logger.warn({ err: paymentError, bookingId }, 'Could not query payment for booking, cancelling without refund');
     }
 
     // 3. Process Stripe refund if a valid payment intent exists
@@ -687,13 +681,13 @@ export class BookingService {
           })
           .eq('stripe_payment_intent_id', payment.stripe_payment_intent_id);
 
-        console.log(`Employee refund processed for booking ${bookingId}: ${refund.id}`);
+        logger.info({ bookingId, refundId: refund.id }, 'Employee refund processed for booking');
       } catch (stripeError: any) {
-        console.error(`Error processing employee refund for booking ${bookingId}:`, stripeError);
+        logger.error({ err: stripeError, bookingId }, 'Error processing employee refund for booking');
         // Don't fail the entire request since the booking is already cancelled in DB.
       }
     } else if (payment) {
-        console.warn(`Skipping refund for booking ${bookingId} because a valid payment_intent_id was not found.`);
+        logger.warn({ bookingId }, 'Skipping refund for booking because a valid payment_intent_id was not found');
     }
 
     // 5. Get booking details needed for the socket update
@@ -713,7 +707,7 @@ export class BookingService {
         !!refundId
       );
     } catch (emailError) {
-      console.error(`Error sending cancellation email for booking ${bookingId}:`, emailError);
+      logger.error({ err: emailError, bookingId }, 'Error sending cancellation email for booking');
       // Don't fail the request since booking was already cancelled successfully
     }
 
@@ -759,11 +753,11 @@ export class BookingService {
       .eq('id', bookingId);
 
     if (updateBookingError) {
-      console.error(`Error updating reserved booking ${bookingId} to cancelled:`, updateBookingError);
+      logger.error({ err: updateBookingError, bookingId }, 'Error updating reserved booking to cancelled');
       throw updateBookingError;
     }
 
-    console.log(`Reserved booking ${bookingId} abandoned and time slot freed for new reservations`);
+    logger.info({ bookingId }, 'Reserved booking abandoned and time slot freed for new reservations');
 
     // 4. Create cancellation record (no refund needed since no payment was made)
     const { error: cancellationError } = await supabase
@@ -778,7 +772,7 @@ export class BookingService {
       });
 
     if (cancellationError) {
-      console.error(`Error creating cancellation record for reserved booking ${bookingId}:`, cancellationError);
+      logger.error({ err: cancellationError, bookingId }, 'Error creating cancellation record for reserved booking');
       // Don't fail the request since booking was already cancelled successfully
     }
 
@@ -811,12 +805,12 @@ export class BookingService {
       });
 
       if (success) {
-        console.log(`Successfully applied promotion ${promotionId} to booking ${bookingId}`);
+        logger.info({ promotionId, bookingId }, 'Successfully applied promotion to booking');
       }
 
       return success;
     } catch (error) {
-      console.error(`Error applying promotion to booking ${bookingId}:`, error);
+      logger.error({ err: error, bookingId }, 'Error applying promotion to booking');
       // Don't throw - the booking is already confirmed, just log the error
       return false;
     }
@@ -886,7 +880,7 @@ export class BookingService {
       .single();
 
     if (locationError || !location) {
-      console.error('Error fetching location timezone:', locationError);
+      logger.error({ err: locationError }, 'Error fetching location timezone');
       throw new Error('Invalid location ID');
     }
 
@@ -896,11 +890,7 @@ export class BookingService {
     const p_start_time = createISOTimestamp(date, startTime, timezone);
     const p_end_time = createISOTimestamp(date, endTime, timezone);
 
-    console.log(`Employee creating booking with timezone ${timezone}:`, {
-      input: { date, startTime, endTime },
-      output: { p_start_time, p_end_time },
-      employeeId
-    });
+    logger.info({ timezone, date, startTime, endTime, p_start_time, p_end_time, employeeId }, 'Employee creating booking');
 
     // Determine the customer user ID
     let customerUserId = userId;
@@ -917,7 +907,7 @@ export class BookingService {
       if (existingUser) {
         // Use existing user
         customerUserId = existingUser.id;
-        console.log(`Found existing user for email ${newCustomer.email}: ${customerUserId}`);
+        logger.info({ customerUserId }, 'Found existing user for booking');
       } else {
         // Create a new user profile without auth (walk-in customer)
         // Generate a random UUID for the user
@@ -936,12 +926,12 @@ export class BookingService {
           .single();
 
         if (createUserError) {
-          console.error('Error creating new customer:', createUserError);
+          logger.error({ err: createUserError }, 'Error creating new customer');
           throw new Error('Failed to create customer profile');
         }
 
         customerUserId = createdUser.id;
-        console.log(`Created new customer profile: ${customerUserId}`);
+        logger.info({ customerUserId }, 'Created new customer profile');
       }
     }
 
@@ -969,7 +959,7 @@ export class BookingService {
       .or(`and(start_time.lt.${p_end_time},end_time.gt.${windowStart})`);
 
     if (conflictError) {
-      console.error('Error checking for conflicts:', conflictError);
+      logger.error({ err: conflictError }, 'Error checking for conflicts');
       throw new Error('Failed to check booking availability');
     }
 
@@ -1004,7 +994,7 @@ export class BookingService {
       .single();
 
     if (bookingError) {
-      console.error('Error creating booking:', bookingError);
+      logger.error({ err: bookingError }, 'Error creating booking');
       if (bookingError.message?.includes('duplicate') || bookingError.message?.includes('already exists')) {
         throw new Error('This time slot is no longer available');
       }
@@ -1012,14 +1002,14 @@ export class BookingService {
     }
 
     const bookingId = booking.id;
-    console.log(`Employee ${employeeId} created booking ${bookingId} (no payment record created)`);
+    logger.info({ employeeId, bookingId }, 'Employee created booking (no payment record created)');
 
     // Send thank you email notification (always sent immediately, same as normal booking flow)
     try {
       await EmailService.sendThankYouEmail(bookingId);
-      console.log(`Queued thank you email for employee-created booking ${bookingId}`);
+      logger.info({ bookingId }, 'Queued thank you email for employee-created booking');
     } catch (emailError) {
-      console.error(`Error queuing thank you email for booking ${bookingId}:`, emailError);
+      logger.error({ err: emailError, bookingId }, 'Error queuing thank you email for booking');
       // Don't fail the booking creation if email fails
     }
 
@@ -1029,20 +1019,14 @@ export class BookingService {
       const bookingStart = new Date(p_start_time);
       const minutesUntilStart = (bookingStart.getTime() - now.getTime()) / (1000 * 60);
 
-      console.log(`Employee-created booking ${bookingId} starts in ${minutesUntilStart.toFixed(1)} minutes`);
+      logger.info({ bookingId, minutesUntilStart: minutesUntilStart.toFixed(1) }, 'Employee-created booking start time check');
 
       // If booking starts within 15 minutes, send reminder email immediately with unlock token
       if (minutesUntilStart <= 15) {
-        console.log(`Employee-created booking ${bookingId} starts soon (${minutesUntilStart.toFixed(1)} min), sending immediate reminder`);
+        logger.info({ bookingId, minutesUntilStart: minutesUntilStart.toFixed(1) }, 'Employee-created booking starts soon, sending immediate reminder');
         
         // Generate unlock token and link (same as normal booking flow)
-        const tokenData = {
-          bookingId,
-          startTime: p_start_time,
-          endTime: p_end_time,
-          expires: new Date(p_end_time).getTime()
-        };
-        const unlockToken = Buffer.from(JSON.stringify(tokenData)).toString('base64');
+        const unlockToken = createUnlockToken(bookingId, p_start_time, p_end_time);
         const unlockLink = `${resendConfig.frontendUrl}/unlock?token=${unlockToken}`;
 
         // Update booking with unlock token
@@ -1055,19 +1039,19 @@ export class BookingService {
           .eq('id', bookingId);
 
         if (tokenUpdateError) {
-          console.error(`Error updating unlock token for booking ${bookingId}:`, tokenUpdateError);
+          logger.error({ err: tokenUpdateError, bookingId }, 'Error updating unlock token for booking');
           // Don't fail the booking creation if token update fails
         }
 
         // Send reminder email immediately
         await EmailService.sendReminderEmail(bookingId, unlockToken, unlockLink);
-        console.log(`Sent immediate reminder email for employee-created booking ${bookingId}`);
+        logger.info({ bookingId }, 'Sent immediate reminder email for employee-created booking');
       } else {
         // Booking starts later - unlock token and reminder email will be sent by the reminder job
-        console.log(`Employee-created booking ${bookingId} starts later - reminder will be sent by reminder job`);
+        logger.info({ bookingId }, 'Employee-created booking starts later, reminder will be sent by reminder job');
       }
     } catch (reminderError) {
-      console.error(`Error handling reminder for employee-created booking ${bookingId}:`, reminderError);
+      logger.error({ err: reminderError, bookingId }, 'Error handling reminder for employee-created booking');
       // Don't fail the booking creation if reminder handling fails
     }
 
@@ -1096,7 +1080,7 @@ export class BookingService {
       });
 
     if (auditError) {
-      console.error('Error creating audit log:', auditError);
+      logger.error({ err: auditError }, 'Error creating audit log');
       // Don't fail the booking, just log the error
     }
 
@@ -1112,7 +1096,7 @@ export class BookingService {
       .single();
 
     if (fetchError) {
-      console.error('Error fetching created booking:', fetchError);
+      logger.error({ err: fetchError }, 'Error fetching created booking');
     }
 
     return {
@@ -1187,7 +1171,7 @@ export class BookingService {
       .limit(1);
 
     if (nextError) {
-      console.error('Error fetching next bookings:', nextError);
+      logger.error({ err: nextError }, 'Error fetching next bookings');
       throw new Error('Failed to check availability');
     }
 
@@ -1464,7 +1448,7 @@ export class BookingService {
         }
       });
     } catch (stripeError: any) {
-      console.error(`Extension payment failed for booking ${bookingId}:`, stripeError.message);
+      logger.error({ err: stripeError, bookingId }, 'Extension payment failed for booking');
 
       // Log the failure
       await supabase.from('access_logs').insert({
@@ -1492,7 +1476,7 @@ export class BookingService {
       .eq('id', bookingId);
 
     if (updateError) {
-      console.error(`Error extending booking ${bookingId}:`, updateError);
+      logger.error({ err: updateError, bookingId }, 'Error extending booking after successful payment');
       // Payment already succeeded - log this as critical
       throw new Error('Payment succeeded but failed to extend booking. Contact staff.');
     }
@@ -1530,7 +1514,7 @@ export class BookingService {
       }
     });
 
-    console.log(`Successfully extended booking ${bookingId} by ${extensionMinutes} min. New end: ${newEndTime.toISOString()}, charged $${(totalCents / 100).toFixed(2)}`);
+    logger.info({ bookingId, extensionMinutes, newEndTime: newEndTime.toISOString(), amountCharged: (totalCents / 100).toFixed(2) }, 'Successfully extended booking');
 
     return {
       success: true,
@@ -1713,7 +1697,7 @@ export class BookingService {
           }
         });
       } catch (stripeError: any) {
-        console.error(`Employee extension payment failed for booking ${bookingId}:`, stripeError.message);
+        logger.error({ err: stripeError, bookingId }, 'Employee extension payment failed for booking');
 
         await supabase.from('access_logs').insert({
           location_id: locationId,
@@ -1761,7 +1745,7 @@ export class BookingService {
       .eq('id', bookingId);
 
     if (updateError) {
-      console.error(`Error extending booking ${bookingId}:`, updateError);
+      logger.error({ err: updateError, bookingId }, 'Error extending booking');
       throw new Error('Failed to extend booking');
     }
 
@@ -1784,7 +1768,7 @@ export class BookingService {
       }
     });
 
-    console.log(`Employee ${employeeId} extended booking ${bookingId} by ${extensionMinutes} min. New end: ${newEndTime.toISOString()}${skipPayment ? ' (no charge)' : `, charged $${(totalCents / 100).toFixed(2)}`}`);
+    logger.info({ employeeId, bookingId, extensionMinutes, newEndTime: newEndTime.toISOString(), amountCharged: skipPayment ? 0 : (totalCents / 100), skipPayment }, 'Employee extended booking');
 
     return {
       success: true,

@@ -11,6 +11,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.marketingController = exports.MarketingController = void 0;
 const marketing_service_1 = require("./marketing.service");
+const error_utils_1 = require("../../shared/utils/error.utils");
 const VALID_AUDIENCE_TYPES = [
     'all_customers', 'active_members', 'inactive_30d',
     'all_users', 'no_bookings', 'non_members', 'high_spenders',
@@ -29,7 +30,7 @@ class MarketingController {
             }
             catch (error) {
                 console.error('Error fetching campaigns:', error);
-                return res.status(500).json({ error: error.message || 'Internal server error' });
+                return res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
     }
@@ -45,7 +46,7 @@ class MarketingController {
             }
             catch (error) {
                 console.error('Error fetching campaign detail:', error);
-                return res.status(500).json({ error: error.message || 'Internal server error' });
+                return res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
     }
@@ -75,7 +76,7 @@ class MarketingController {
             }
             catch (error) {
                 console.error('Error creating campaign:', error);
-                return res.status(500).json({ error: error.message || 'Failed to create campaign' });
+                return res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
     }
@@ -150,7 +151,7 @@ class MarketingController {
             }
             catch (error) {
                 console.error('Error getting audience preview:', error);
-                return res.status(500).json({ error: error.message || 'Internal server error' });
+                return res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
     }
@@ -169,7 +170,7 @@ class MarketingController {
             }
             catch (error) {
                 console.error('Error fetching templates:', error);
-                return res.status(500).json({ error: error.message || 'Internal server error' });
+                return res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
     }
@@ -200,7 +201,7 @@ class MarketingController {
             }
             catch (error) {
                 console.error('Error creating template:', error);
-                return res.status(500).json({ error: error.message || 'Failed to create template' });
+                return res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
     }
@@ -217,7 +218,7 @@ class MarketingController {
             }
             catch (error) {
                 console.error('Error updating template:', error);
-                return res.status(500).json({ error: error.message || 'Failed to update template' });
+                return res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
     }
@@ -230,7 +231,7 @@ class MarketingController {
             }
             catch (error) {
                 console.error('Error deleting template:', error);
-                return res.status(500).json({ error: error.message || 'Failed to delete template' });
+                return res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
     }
