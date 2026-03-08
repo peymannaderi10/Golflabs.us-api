@@ -11,7 +11,6 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.UserService = void 0;
 const database_1 = require("../../config/database");
-const stripe_1 = require("../../config/stripe");
 const logger_1 = require("../../shared/utils/logger");
 class UserService {
     deleteAccount(userId) {
@@ -28,60 +27,24 @@ class UserService {
                 if (checkError || !existingUser) {
                     throw new Error('User not found');
                 }
-                // 1. Anonymize bookings -- null out user_id but keep the record for financial audit
-                yield database_1.supabase
-                    .from('bookings')
-                    .update({ user_id: null, notes: null })
-                    .eq('user_id', userId);
-                // 2. Anonymize payments -- null out user_id but keep for financial records
-                yield database_1.supabase
-                    .from('payments')
-                    .update({ user_id: null })
-                    .eq('user_id', userId);
-                // 3. Anonymize access logs -- remove PII fields
-                yield database_1.supabase
-                    .from('access_logs')
-                    .update({ user_id: null, ip_address: null, user_agent: null })
-                    .eq('user_id', userId);
-                // 4. Anonymize agreement records -- keep for legal compliance but redact PII
-                yield database_1.supabase
-                    .from('user_agreements')
-                    .update({ signer_name: '[deleted]', signer_email: '[deleted]', ip_address: null, user_agent: null })
-                    .eq('user_id', userId);
-                // 5. Delete marketing data entirely
-                yield database_1.supabase.from('campaign_recipients').delete().eq('user_id', userId);
-                yield database_1.supabase.from('marketing_preferences').delete().eq('user_id', userId);
-                // 6. Delete notifications
-                yield database_1.supabase.from('notifications').delete().eq('user_id', userId);
-                // 7. Delete memberships
-                yield database_1.supabase.from('memberships').delete().eq('user_id', userId);
-                // 8. Delete Stripe customer if exists
-                if (existingUser.stripe_customer_id) {
-                    try {
-                        yield stripe_1.stripe.customers.del(existingUser.stripe_customer_id);
-                    }
-                    catch (stripeErr) {
-                        logger_1.logger.warn({ err: stripeErr, stripeCustomerId: existingUser.stripe_customer_id }, 'Failed to delete Stripe customer');
-                    }
-                }
-                // 9. Delete user profile (user_promotions cascades automatically)
-                const { error: deleteProfileError } = yield database_1.supabase
+                // 1. Mark the account as deleted
+                const { error: profileUpdateError } = yield database_1.supabase
                     .from('user_profiles')
-                    .delete()
+                    .update({ deleted_at: new Date().toISOString() })
                     .eq('id', userId);
-                if (deleteProfileError) {
-                    logger_1.logger.error({ err: deleteProfileError }, 'Error deleting user profile');
-                    throw new Error('Failed to delete user profile');
+                if (profileUpdateError) {
+                    logger_1.logger.error({ err: profileUpdateError }, 'Error marking user profile as deleted');
+                    throw new Error('Failed to delete account');
                 }
-                // 10. Delete auth user
+                // 2. Delete auth user so they can't sign in
                 const { error: deleteAuthError } = yield database_1.supabase.auth.admin.deleteUser(userId);
                 if (deleteAuthError) {
-                    logger_1.logger.warn({ err: deleteAuthError }, 'Auth user deletion failed after profile deletion');
+                    logger_1.logger.warn({ err: deleteAuthError }, 'Auth user deletion failed');
                 }
-                logger_1.logger.info({ userId }, 'Account fully deleted and data anonymized');
+                logger_1.logger.info({ userId }, 'Account soft-deleted and PII redacted');
                 return {
                     success: true,
-                    message: 'Account and personal data deleted successfully.'
+                    message: 'Account deleted successfully.'
                 };
             }
             catch (error) {
