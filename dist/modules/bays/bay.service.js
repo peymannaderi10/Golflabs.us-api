@@ -11,6 +11,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.BayService = void 0;
 const database_1 = require("../../config/database");
+const logger_1 = require("../../shared/utils/logger");
 class BayService {
     getBaysByLocationId(locationId) {
         return __awaiter(this, void 0, void 0, function* () {
@@ -22,7 +23,7 @@ class BayService {
                 .select('id, status, location_id, bay_number, name, last_seen, kiosk_ip, league_mode_active, league_mode_league_id')
                 .eq('location_id', locationId);
             if (error) {
-                console.error('Error fetching bays:', error);
+                logger_1.logger.error({ err: error }, 'Error fetching bays');
                 throw new Error('Failed to fetch bays');
             }
             return data;
@@ -43,7 +44,7 @@ class BayService {
                 .select('id, last_seen, kiosk_ip')
                 .single();
             if (error) {
-                console.error('Error updating bay heartbeat:', error);
+                logger_1.logger.error({ err: error }, 'Error updating bay heartbeat');
                 throw new Error('Failed to update bay heartbeat');
             }
             if (!data) {
@@ -71,7 +72,7 @@ class BayService {
                 .select('id, status, bay_number, name, location_id')
                 .single();
             if (error) {
-                console.error('Error updating bay status:', error);
+                logger_1.logger.error({ err: error }, 'Error updating bay status');
                 throw new Error('Failed to update bay status');
             }
             if (!data) {
@@ -101,7 +102,7 @@ class BayService {
                 .eq('location_id', locationId)
                 .select('id, bay_number, name, league_mode_active, league_mode_league_id');
             if (error) {
-                console.error('Error activating league mode:', error);
+                logger_1.logger.error({ err: error }, 'Error activating league mode');
                 throw new Error('Failed to activate league mode');
             }
             return data;
@@ -125,7 +126,7 @@ class BayService {
                 .eq('location_id', locationId)
                 .select('id, bay_number, name, league_mode_active, league_mode_league_id');
             if (error) {
-                console.error('Error deactivating league mode:', error);
+                logger_1.logger.error({ err: error }, 'Error deactivating league mode');
                 throw new Error('Failed to deactivate league mode');
             }
             return data;
@@ -150,7 +151,7 @@ class BayService {
                 .select('id, bay_number, name, league_mode_active, league_mode_league_id, location_id')
                 .single();
             if (error) {
-                console.error('Error toggling bay league mode:', error);
+                logger_1.logger.error({ err: error }, 'Error toggling bay league mode');
                 throw new Error('Failed to toggle bay league mode');
             }
             if (!data) {

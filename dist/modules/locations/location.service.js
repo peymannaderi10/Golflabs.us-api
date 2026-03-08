@@ -11,6 +11,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.LocationService = void 0;
 const database_1 = require("../../config/database");
+const logger_1 = require("../../shared/utils/logger");
 function formatSettings(ls) {
     var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l;
     return {
@@ -53,7 +54,7 @@ class LocationService {
                 .is('deleted_at', null)
                 .order('name', { ascending: true });
             if (error) {
-                console.error('Error fetching locations:', error);
+                logger_1.logger.error({ err: error }, 'Error fetching locations');
                 throw new Error('Failed to fetch locations');
             }
             const locationIds = locations.map(l => l.id);
@@ -83,7 +84,7 @@ class LocationService {
                 .is('deleted_at', null)
                 .single();
             if (error || !data) {
-                console.error(`Location ${locationId} not found:`, error);
+                logger_1.logger.error({ err: error, locationId }, 'Location not found');
                 throw new Error('Location not found');
             }
             const { data: settingsRow } = yield database_1.supabase
@@ -121,7 +122,7 @@ class LocationService {
                 .select('id, name, slug, address, city, state, zip_code, phone, timezone, status, sales_tax_rate')
                 .single();
             if (error || !data) {
-                console.error(`Error updating location ${locationId}:`, error);
+                logger_1.logger.error({ err: error, locationId }, 'Error updating location');
                 throw new Error('Failed to update location');
             }
             const { data: settingsRow } = yield database_1.supabase

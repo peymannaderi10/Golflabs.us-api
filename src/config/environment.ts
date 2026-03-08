@@ -15,12 +15,14 @@ export interface EnvironmentConfig {
 export function validateEnvironment(): EnvironmentConfig {
   const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
   if (!stripeSecretKey) {
+    // Intentionally using console here to avoid circular dependency with logger
     console.error("Stripe secret key not found. Make sure you have a .env file with STRIPE_SECRET_KEY set.");
     process.exit(1);
   }
 
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
   if (!webhookSecret) {
+    // Intentionally using console here to avoid circular dependency with logger
     console.error("Stripe webhook secret not found. Make sure STRIPE_WEBHOOK_SECRET is set in .env.");
     process.exit(1);
   }
@@ -28,11 +30,13 @@ export function validateEnvironment(): EnvironmentConfig {
   const supabaseUrl = process.env.SUPABASE_URL;
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!supabaseUrl || !supabaseServiceKey) {
+    // Intentionally using console here to avoid circular dependency with logger
     console.error("Supabase credentials not found. Make sure SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are set in .env.");
     process.exit(1);
   }
 
   if (!process.env.KIOSK_API_KEY) {
+    // Intentionally using console here to avoid circular dependency with logger
     console.warn("KIOSK_API_KEY not set in .env. Kiosk endpoints will reject all requests.");
   }
 

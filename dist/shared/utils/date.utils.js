@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.createISOTimestamp = exports.parseTimeString = void 0;
 const date_fns_tz_1 = require("date-fns-tz");
+const logger_1 = require("./logger");
 // Helper function to parse time string (e.g., "2:30 PM") and return hours and minutes
 const parseTimeString = (timeStr) => {
     try {
@@ -19,7 +20,7 @@ const parseTimeString = (timeStr) => {
         return { hours: hour24, minutes };
     }
     catch (error) {
-        console.error('Error parsing time string:', timeStr, error);
+        logger_1.logger.error({ err: error, timeStr }, 'Error parsing time string');
         throw new Error(`Invalid time format: ${timeStr}`);
     }
 };
@@ -34,7 +35,7 @@ const createISOTimestamp = (date, timeStr, timezone = 'America/New_York') => {
         return utcDate.toISOString();
     }
     catch (error) {
-        console.error('Error creating timestamp:', { date, timeStr, timezone }, error);
+        logger_1.logger.error({ err: error, date, timeStr, timezone }, 'Error creating timestamp');
         throw error;
     }
 };

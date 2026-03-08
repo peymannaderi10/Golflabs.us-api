@@ -12,6 +12,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.MembershipController = void 0;
 const membership_service_1 = require("./membership.service");
 const error_utils_1 = require("../../shared/utils/error.utils");
+const logger_1 = require("../../shared/utils/logger");
 class MembershipController {
     constructor() {
         this.service = new membership_service_1.MembershipService();
@@ -27,7 +28,7 @@ class MembershipController {
                 res.json(plans);
             }
             catch (error) {
-                console.error('Error fetching membership plans:', error);
+                logger_1.logger.error({ err: error }, 'Error fetching membership plans');
                 res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
@@ -42,7 +43,7 @@ class MembershipController {
                 res.json({ membership });
             }
             catch (error) {
-                console.error('Error fetching user membership:', error);
+                logger_1.logger.error({ err: error }, 'Error fetching user membership');
                 res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
@@ -63,7 +64,7 @@ class MembershipController {
                 res.json(result);
             }
             catch (error) {
-                console.error('Error subscribing:', error);
+                logger_1.logger.error({ err: error }, 'Error subscribing');
                 if ((_b = error.message) === null || _b === void 0 ? void 0 : _b.includes('already have')) {
                     return res.status(409).json({ error: error.message });
                 }
@@ -92,7 +93,7 @@ class MembershipController {
                 }
             }
             catch (error) {
-                console.error('Error canceling membership:', error);
+                logger_1.logger.error({ err: error }, 'Error canceling membership');
                 if (error.message === 'Access denied')
                     return res.status(403).json({ error: error.message });
                 res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
@@ -112,7 +113,7 @@ class MembershipController {
                 res.json({ success: true, message: 'Plan changed successfully' });
             }
             catch (error) {
-                console.error('Error changing plan:', error);
+                logger_1.logger.error({ err: error }, 'Error changing plan');
                 if (error.message === 'Access denied')
                     return res.status(403).json({ error: error.message });
                 res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
@@ -127,7 +128,7 @@ class MembershipController {
                 res.status(201).json(plan);
             }
             catch (error) {
-                console.error('Error creating plan:', error);
+                logger_1.logger.error({ err: error }, 'Error creating plan');
                 res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
@@ -138,7 +139,7 @@ class MembershipController {
                 res.json(plan);
             }
             catch (error) {
-                console.error('Error updating plan:', error);
+                logger_1.logger.error({ err: error }, 'Error updating plan');
                 res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
@@ -149,7 +150,7 @@ class MembershipController {
                 res.json({ success: true });
             }
             catch (error) {
-                console.error('Error deactivating plan:', error);
+                logger_1.logger.error({ err: error }, 'Error deactivating plan');
                 res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
@@ -162,7 +163,7 @@ class MembershipController {
                 res.json(subscribers);
             }
             catch (error) {
-                console.error('Error fetching subscribers:', error);
+                logger_1.logger.error({ err: error }, 'Error fetching subscribers');
                 res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
@@ -176,7 +177,7 @@ class MembershipController {
                 res.json(settings);
             }
             catch (error) {
-                console.error('Error fetching location membership settings:', error);
+                logger_1.logger.error({ err: error }, 'Error fetching location membership settings');
                 res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
@@ -187,7 +188,7 @@ class MembershipController {
                 res.json({ success: true });
             }
             catch (error) {
-                console.error('Error updating location membership settings:', error);
+                logger_1.logger.error({ err: error }, 'Error updating location membership settings');
                 res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });

@@ -11,6 +11,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.PricingController = void 0;
 const pricing_service_1 = require("./pricing.service");
+const logger_1 = require("../../shared/utils/logger");
 class PricingController {
     constructor() {
         this.getPricingRules = (req, res) => __awaiter(this, void 0, void 0, function* () {
@@ -20,7 +21,7 @@ class PricingController {
                 res.json(pricingRules);
             }
             catch (error) {
-                console.error('Error in /pricing-rules endpoint:', error);
+                logger_1.logger.error({ err: error }, 'Error in pricing-rules endpoint');
                 if (error.message === 'Location ID is required') {
                     return res.status(400).json({ error: error.message });
                 }
@@ -37,7 +38,7 @@ class PricingController {
                 res.json(pricingRules);
             }
             catch (error) {
-                console.error('Error in getAllPricingRules endpoint:', error);
+                logger_1.logger.error({ err: error }, 'Error in getAllPricingRules endpoint');
                 if (error.message === 'Location ID is required') {
                     return res.status(400).json({ error: error.message });
                 }
@@ -52,7 +53,7 @@ class PricingController {
                 res.status(201).json(pricingRule);
             }
             catch (error) {
-                console.error('Error in createPricingRule endpoint:', error);
+                logger_1.logger.error({ err: error }, 'Error in createPricingRule endpoint');
                 if (error.message === 'Location ID is required' || error.message === 'Failed to create pricing rule') {
                     return res.status(400).json({ error: error.message });
                 }
@@ -67,7 +68,7 @@ class PricingController {
                 res.json(pricingRule);
             }
             catch (error) {
-                console.error('Error in updatePricingRule endpoint:', error);
+                logger_1.logger.error({ err: error }, 'Error in updatePricingRule endpoint');
                 if (error.message === 'Pricing rule ID is required' || error.message === 'Failed to update pricing rule') {
                     return res.status(400).json({ error: error.message });
                 }
@@ -81,7 +82,7 @@ class PricingController {
                 res.json({ success: true });
             }
             catch (error) {
-                console.error('Error in deletePricingRule endpoint:', error);
+                logger_1.logger.error({ err: error }, 'Error in deletePricingRule endpoint');
                 if (error.message === 'Pricing rule ID is required' || error.message === 'Failed to delete pricing rule') {
                     return res.status(400).json({ error: error.message });
                 }

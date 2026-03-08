@@ -5,6 +5,7 @@ import { CapacityHoldService } from '../bookings/capacity-hold.service';
 import { SocketService } from '../sockets/socket.service';
 import { LeagueScorePayload } from './league.types';
 import { sanitizeError } from '../../shared/utils/error.utils';
+import { logger } from '../../shared/utils/logger';
 
 export class LeagueController {
   private leagueService: LeagueService;
@@ -28,7 +29,7 @@ export class LeagueController {
       const league = await this.leagueService.createLeague(req.body);
       res.status(201).json(league);
     } catch (error: any) {
-      console.error('Error creating league:', error);
+      logger.error({ err: error }, 'Error creating league');
       res.status(500).json({ error: sanitizeError(error) });
     }
   };
@@ -42,7 +43,7 @@ export class LeagueController {
       const leagues = await this.leagueService.getLeaguesByLocation(locationId as string);
       res.json(leagues);
     } catch (error: any) {
-      console.error('Error fetching leagues:', error);
+      logger.error({ err: error }, 'Error fetching leagues');
       res.status(500).json({ error: sanitizeError(error) });
     }
   };
@@ -52,7 +53,7 @@ export class LeagueController {
       const league = await this.leagueService.getLeague(req.params.leagueId);
       res.json(league);
     } catch (error: any) {
-      console.error('Error fetching league:', error);
+      logger.error({ err: error }, 'Error fetching league');
       res.status(404).json({ error: error.message });
     }
   };
@@ -62,7 +63,7 @@ export class LeagueController {
       const league = await this.leagueService.updateLeague(req.params.leagueId, req.body);
       res.json(league);
     } catch (error: any) {
-      console.error('Error updating league:', error);
+      logger.error({ err: error }, 'Error updating league');
       res.status(500).json({ error: sanitizeError(error) });
     }
   };
@@ -72,7 +73,7 @@ export class LeagueController {
       const league = await this.leagueService.activateLeague(req.params.leagueId);
       res.json(league);
     } catch (error: any) {
-      console.error('Error activating league:', error);
+      logger.error({ err: error }, 'Error activating league');
       res.status(400).json({ error: error.message });
     }
   };
@@ -86,7 +87,7 @@ export class LeagueController {
       const course = await this.leagueService.addCourse(req.params.leagueId, req.body);
       res.status(201).json(course);
     } catch (error: any) {
-      console.error('Error adding course:', error);
+      logger.error({ err: error }, 'Error adding course');
       res.status(500).json({ error: sanitizeError(error) });
     }
   };
@@ -96,7 +97,7 @@ export class LeagueController {
       const courses = await this.leagueService.getCourses(req.params.leagueId);
       res.json(courses);
     } catch (error: any) {
-      console.error('Error fetching courses:', error);
+      logger.error({ err: error }, 'Error fetching courses');
       res.status(500).json({ error: sanitizeError(error) });
     }
   };
@@ -106,7 +107,7 @@ export class LeagueController {
       const course = await this.leagueService.updateCourse(req.params.courseId, req.body);
       res.json(course);
     } catch (error: any) {
-      console.error('Error updating course:', error);
+      logger.error({ err: error }, 'Error updating course');
       res.status(500).json({ error: sanitizeError(error) });
     }
   };
@@ -116,7 +117,7 @@ export class LeagueController {
       await this.leagueService.deleteCourse(req.params.courseId);
       res.json({ success: true });
     } catch (error: any) {
-      console.error('Error deleting course:', error);
+      logger.error({ err: error }, 'Error deleting course');
       res.status(500).json({ error: sanitizeError(error) });
     }
   };
@@ -130,7 +131,7 @@ export class LeagueController {
       const week = await this.leagueService.assignCourseToWeek(req.params.weekId, courseId);
       res.json(week);
     } catch (error: any) {
-      console.error('Error assigning course to week:', error);
+      logger.error({ err: error }, 'Error assigning course to week');
       res.status(500).json({ error: sanitizeError(error) });
     }
   };
@@ -144,7 +145,7 @@ export class LeagueController {
       const player = await this.leagueService.enrollPlayer(req.params.leagueId, req.body);
       res.status(201).json(player);
     } catch (error: any) {
-      console.error('Error enrolling player:', error);
+      logger.error({ err: error }, 'Error enrolling player');
       if (error.message.includes('already enrolled')) {
         return res.status(409).json({ error: error.message });
       }
@@ -160,7 +161,7 @@ export class LeagueController {
       const players = await this.leagueService.getPlayers(req.params.leagueId);
       res.json(players);
     } catch (error: any) {
-      console.error('Error fetching players:', error);
+      logger.error({ err: error }, 'Error fetching players');
       res.status(500).json({ error: sanitizeError(error) });
     }
   };
@@ -170,7 +171,7 @@ export class LeagueController {
       await this.leagueService.withdrawPlayer(req.params.leagueId, req.params.playerId);
       res.json({ success: true });
     } catch (error: any) {
-      console.error('Error withdrawing player:', error);
+      logger.error({ err: error }, 'Error withdrawing player');
       res.status(500).json({ error: sanitizeError(error) });
     }
   };
@@ -199,7 +200,7 @@ export class LeagueController {
 
       res.json({ success: true });
     } catch (error: any) {
-      console.error('Error overriding handicap:', error);
+      logger.error({ err: error }, 'Error overriding handicap');
       res.status(500).json({ error: sanitizeError(error) });
     }
   };
@@ -213,7 +214,7 @@ export class LeagueController {
       const weeks = await this.leagueService.getWeeks(req.params.leagueId);
       res.json(weeks);
     } catch (error: any) {
-      console.error('Error fetching weeks:', error);
+      logger.error({ err: error }, 'Error fetching weeks');
       res.status(500).json({ error: sanitizeError(error) });
     }
   };
@@ -223,7 +224,7 @@ export class LeagueController {
       const week = await this.leagueService.activateWeek(req.params.leagueId, req.params.weekId);
       res.json(week);
     } catch (error: any) {
-      console.error('Error activating week:', error);
+      logger.error({ err: error }, 'Error activating week');
       res.status(500).json({ error: sanitizeError(error) });
     }
   };
@@ -243,7 +244,7 @@ export class LeagueController {
 
       res.json(result);
     } catch (error: any) {
-      console.error('Error finalizing week:', error);
+      logger.error({ err: error }, 'Error finalizing week');
       res.status(500).json({ error: sanitizeError(error) });
     }
   };
@@ -293,7 +294,7 @@ export class LeagueController {
 
       res.json(result);
     } catch (error: any) {
-      console.error('Error submitting score:', error);
+      logger.error({ err: error }, 'Error submitting score');
       const status = error.message.includes('not found') || error.message.includes('Must be active') || error.message.includes('Cannot submit') || error.message.includes('exceeds') ? 400 : 500;
       res.status(status).json({ error: error.message });
     }
@@ -304,7 +305,7 @@ export class LeagueController {
       const scores = await this.leagueService.getWeekScores(req.params.leagueId, req.params.weekId);
       res.json(scores);
     } catch (error: any) {
-      console.error('Error fetching week scores:', error);
+      logger.error({ err: error }, 'Error fetching week scores');
       res.status(500).json({ error: sanitizeError(error) });
     }
   };
@@ -318,7 +319,7 @@ export class LeagueController {
       );
       res.json(scorecard);
     } catch (error: any) {
-      console.error('Error fetching player scorecard:', error);
+      logger.error({ err: error }, 'Error fetching player scorecard');
       res.status(500).json({ error: sanitizeError(error) });
     }
   };
@@ -333,7 +334,7 @@ export class LeagueController {
       await this.leagueService.confirmScore(req.params.scoreId, confirmedBy);
       res.json({ success: true });
     } catch (error: any) {
-      console.error('Error confirming score:', error);
+      logger.error({ err: error }, 'Error confirming score');
       res.status(500).json({ error: sanitizeError(error) });
     }
   };
@@ -344,7 +345,7 @@ export class LeagueController {
       const count = await this.leagueService.confirmWeekScores(req.params.weekId, confirmedBy);
       res.json({ success: true, confirmed: count });
     } catch (error: any) {
-      console.error('Error confirming week scores:', error);
+      logger.error({ err: error }, 'Error confirming week scores');
       res.status(500).json({ error: sanitizeError(error) });
     }
   };
@@ -360,7 +361,7 @@ export class LeagueController {
       await this.leagueService.overrideScore(req.params.scoreId, strokes, overriddenBy, reason);
       res.json({ success: true });
     } catch (error: any) {
-      console.error('Error overriding score:', error);
+      logger.error({ err: error }, 'Error overriding score');
       res.status(500).json({ error: sanitizeError(error) });
     }
   };
@@ -374,7 +375,7 @@ export class LeagueController {
       const standings = await this.leagueService.getStandings(req.params.leagueId);
       res.json(standings);
     } catch (error: any) {
-      console.error('Error fetching standings:', error);
+      logger.error({ err: error }, 'Error fetching standings');
       res.status(500).json({ error: sanitizeError(error) });
     }
   };
@@ -384,7 +385,7 @@ export class LeagueController {
       const leaderboard = await this.leagueService.getLiveLeaderboard(req.params.leagueId);
       res.json(leaderboard);
     } catch (error: any) {
-      console.error('Error fetching live leaderboard:', error);
+      logger.error({ err: error }, 'Error fetching live leaderboard');
       res.status(500).json({ error: sanitizeError(error) });
     }
   };
@@ -394,7 +395,7 @@ export class LeagueController {
       const leaderboard = await this.leagueService.getTeamLeaderboard(req.params.leagueId);
       res.json(leaderboard);
     } catch (error: any) {
-      console.error('Error fetching team leaderboard:', error);
+      logger.error({ err: error }, 'Error fetching team leaderboard');
       res.status(500).json({ error: sanitizeError(error) });
     }
   };
@@ -418,7 +419,7 @@ export class LeagueController {
 
       res.json(result);
     } catch (error: any) {
-      console.error('Error in enroll-and-pay:', error);
+      logger.error({ err: error }, 'Error in enroll-and-pay');
       if (error.message.includes('already enrolled') || error.message.includes('full')) {
         return res.status(409).json({ error: error.message });
       }
@@ -442,7 +443,7 @@ export class LeagueController {
       const leagues = await this.leagueService.getLeaguesForUser(userId);
       res.json(leagues);
     } catch (error: any) {
-      console.error('Error fetching user leagues:', error);
+      logger.error({ err: error }, 'Error fetching user leagues');
       res.status(500).json({ error: sanitizeError(error) });
     }
   };
@@ -466,7 +467,7 @@ export class LeagueController {
       });
       res.json(state);
     } catch (error: any) {
-      console.error('Error fetching league state for kiosk:', error);
+      logger.error({ err: error }, 'Error fetching league state for kiosk');
       res.status(500).json({ error: sanitizeError(error) });
     }
   };
@@ -480,7 +481,7 @@ export class LeagueController {
       const summary = await this.leagueService.getPrizePoolSummary(req.params.leagueId);
       res.json(summary);
     } catch (error: any) {
-      console.error('Error fetching prize pool summary:', error);
+      logger.error({ err: error }, 'Error fetching prize pool summary');
       res.status(500).json({ error: sanitizeError(error) });
     }
   };
@@ -493,7 +494,7 @@ export class LeagueController {
       );
       res.json(history);
     } catch (error: any) {
-      console.error('Error fetching player prize history:', error);
+      logger.error({ err: error }, 'Error fetching player prize history');
       res.status(500).json({ error: sanitizeError(error) });
     }
   };
@@ -508,7 +509,7 @@ export class LeagueController {
       );
       res.json({ success: true });
     } catch (error: any) {
-      console.error('Error confirming week payouts:', error);
+      logger.error({ err: error }, 'Error confirming week payouts');
       res.status(500).json({ error: sanitizeError(error) });
     }
   };
@@ -519,7 +520,7 @@ export class LeagueController {
       await this.leagueService.confirmPayout(req.params.entryId, confirmedBy);
       res.json({ success: true });
     } catch (error: any) {
-      console.error('Error confirming payout:', error);
+      logger.error({ err: error }, 'Error confirming payout');
       res.status(500).json({ error: sanitizeError(error) });
     }
   };
@@ -537,7 +538,7 @@ export class LeagueController {
       const team = await this.leagueService.createTeam(req.params.leagueId, captainUserId, teamName);
       res.status(201).json(team);
     } catch (error: any) {
-      console.error('Error creating team:', error);
+      logger.error({ err: error }, 'Error creating team');
       if (error.message.includes('already on a team') || error.message.includes('already exists')) {
         return res.status(409).json({ error: error.message });
       }
@@ -553,7 +554,7 @@ export class LeagueController {
       const teams = await this.leagueService.getTeams(req.params.leagueId);
       res.json(teams);
     } catch (error: any) {
-      console.error('Error fetching teams:', error);
+      logger.error({ err: error }, 'Error fetching teams');
       res.status(500).json({ error: sanitizeError(error) });
     }
   };
@@ -563,7 +564,7 @@ export class LeagueController {
       const team = await this.leagueService.getTeam(req.params.teamId);
       res.json(team);
     } catch (error: any) {
-      console.error('Error fetching team:', error);
+      logger.error({ err: error }, 'Error fetching team');
       res.status(404).json({ error: error.message });
     }
   };
@@ -580,7 +581,7 @@ export class LeagueController {
       const result = await this.leagueService.inviteTeammates(req.params.teamId, captainUserId, emails);
       res.json(result);
     } catch (error: any) {
-      console.error('Error inviting teammates:', error);
+      logger.error({ err: error }, 'Error inviting teammates');
       if (error.message.includes('Only the team captain') || error.message.includes('no longer accepting')) {
         return res.status(403).json({ error: error.message });
       }
@@ -593,7 +594,7 @@ export class LeagueController {
       const invite = await this.leagueService.getInviteByToken(req.params.token);
       res.json(invite);
     } catch (error: any) {
-      console.error('Error fetching invite:', error);
+      logger.error({ err: error }, 'Error fetching invite');
       res.status(404).json({ error: error.message });
     }
   };
@@ -607,7 +608,7 @@ export class LeagueController {
       const result = await this.leagueService.acceptInvite(req.params.token, userId);
       res.json(result);
     } catch (error: any) {
-      console.error('Error accepting invite:', error);
+      logger.error({ err: error }, 'Error accepting invite');
       if (error.message.includes('not sent to you') || error.message.includes('already been')) {
         return res.status(400).json({ error: error.message });
       }
@@ -624,7 +625,7 @@ export class LeagueController {
       await this.leagueService.declineInvite(req.params.token, userId);
       res.json({ success: true });
     } catch (error: any) {
-      console.error('Error declining invite:', error);
+      logger.error({ err: error }, 'Error declining invite');
       res.status(500).json({ error: sanitizeError(error) });
     }
   };
@@ -643,7 +644,7 @@ export class LeagueController {
       );
       res.json(result);
     } catch (error: any) {
-      console.error('Error in team enroll-and-pay:', error);
+      logger.error({ err: error }, 'Error in team enroll-and-pay');
       if (error.message.includes('already paid')) {
         return res.status(409).json({ error: error.message });
       }
@@ -663,7 +664,7 @@ export class LeagueController {
       );
       res.json(result);
     } catch (error: any) {
-      console.error('Error disqualifying team:', error);
+      logger.error({ err: error }, 'Error disqualifying team');
       res.status(500).json({ error: sanitizeError(error) });
     }
   };
@@ -677,7 +678,7 @@ export class LeagueController {
       const teams = await this.leagueService.getUserTeams(userId);
       res.json(teams);
     } catch (error: any) {
-      console.error('Error fetching user teams:', error);
+      logger.error({ err: error }, 'Error fetching user teams');
       res.status(500).json({ error: sanitizeError(error) });
     }
   };
@@ -698,7 +699,7 @@ export class LeagueController {
       }
       res.json(result);
     } catch (error: any) {
-      console.error('Error confirming attendance:', error);
+      logger.error({ err: error }, 'Error confirming attendance');
       res.status(500).json({ error: sanitizeError(error) });
     }
   };
@@ -715,7 +716,7 @@ export class LeagueController {
       }
       res.json(result);
     } catch (error: any) {
-      console.error('Error declining attendance:', error);
+      logger.error({ err: error }, 'Error declining attendance');
       res.status(500).json({ error: sanitizeError(error) });
     }
   };
@@ -729,7 +730,7 @@ export class LeagueController {
       const attendance = await this.attendanceService.getAttendanceForWeek(weekId);
       res.json(attendance);
     } catch (error: any) {
-      console.error('Error fetching week attendance:', error);
+      logger.error({ err: error }, 'Error fetching week attendance');
       res.status(500).json({ error: sanitizeError(error) });
     }
   };
@@ -748,7 +749,7 @@ export class LeagueController {
       const summary = await this.attendanceService.getAttendanceSummary(weekId, playersPerBay);
       res.json(summary);
     } catch (error: any) {
-      console.error('Error fetching attendance summary:', error);
+      logger.error({ err: error }, 'Error fetching attendance summary');
       res.status(500).json({ error: sanitizeError(error) });
     }
   };
@@ -772,7 +773,7 @@ export class LeagueController {
       const attendance = await this.attendanceService.updateAttendance(leaguePlayerId, weekId, status);
       res.json(attendance);
     } catch (error: any) {
-      console.error('Error updating attendance:', error);
+      logger.error({ err: error }, 'Error updating attendance');
       if (error.message.includes('locked') || error.message.includes('not found')) {
         return res.status(400).json({ error: error.message });
       }
@@ -795,7 +796,7 @@ export class LeagueController {
       const attendance = await this.attendanceService.getPlayerAttendance(userId, leagueId);
       res.json(attendance);
     } catch (error: any) {
-      console.error('Error fetching player attendance:', error);
+      logger.error({ err: error }, 'Error fetching player attendance');
       res.status(500).json({ error: sanitizeError(error) });
     }
   };
@@ -809,7 +810,7 @@ export class LeagueController {
       const result = await this.attendanceService.adjustCapacityHold(leagueId, weekId);
       res.json(result);
     } catch (error: any) {
-      console.error('Error adjusting capacity:', error);
+      logger.error({ err: error }, 'Error adjusting capacity');
       res.status(500).json({ error: sanitizeError(error) });
     }
   };
@@ -823,7 +824,7 @@ export class LeagueController {
       const holds = await this.capacityHoldService.getHoldsForLeague(leagueId);
       res.json(holds);
     } catch (error: any) {
-      console.error('Error fetching league holds:', error);
+      logger.error({ err: error }, 'Error fetching league holds');
       res.status(500).json({ error: sanitizeError(error) });
     }
   };
@@ -846,7 +847,7 @@ export class LeagueController {
       await this.capacityHoldService.suspendHold(weekHold.id);
       res.json({ success: true, message: 'Week skipped — hold suspended and bays released.' });
     } catch (error: any) {
-      console.error('Error skipping week:', error);
+      logger.error({ err: error }, 'Error skipping week');
       res.status(500).json({ error: sanitizeError(error) });
     }
   };
@@ -869,7 +870,7 @@ export class LeagueController {
       await this.capacityHoldService.activateHold(weekHold.id);
       res.json({ success: true, message: 'Week restored — hold reactivated.' });
     } catch (error: any) {
-      console.error('Error unskipping week:', error);
+      logger.error({ err: error }, 'Error unskipping week');
       res.status(500).json({ error: sanitizeError(error) });
     }
   };

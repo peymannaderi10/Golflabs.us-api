@@ -1,4 +1,5 @@
 import { fromZonedTime } from 'date-fns-tz';
+import { logger } from './logger';
 
 // Helper function to parse time string (e.g., "2:30 PM") and return hours and minutes
 export const parseTimeString = (timeStr: string): { hours: number; minutes: number } => {
@@ -17,7 +18,7 @@ export const parseTimeString = (timeStr: string): { hours: number; minutes: numb
     const hour24 = isPM ? (hours === 12 ? 12 : hours + 12) : (hours === 12 ? 0 : hours);
     return { hours: hour24, minutes };
   } catch (error) {
-    console.error('Error parsing time string:', timeStr, error);
+    logger.error({ err: error, timeStr }, 'Error parsing time string');
     throw new Error(`Invalid time format: ${timeStr}`);
   }
 };
@@ -34,7 +35,7 @@ export const createISOTimestamp = (date: string, timeStr: string, timezone: stri
 
     return utcDate.toISOString();
   } catch (error) {
-    console.error('Error creating timestamp:', { date, timeStr, timezone }, error);
+    logger.error({ err: error, date, timeStr, timezone }, 'Error creating timestamp');
     throw error;
   }
 }; 

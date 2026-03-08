@@ -11,6 +11,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.autoDeactivateLeagueMode = autoDeactivateLeagueMode;
 const database_1 = require("../config/database");
+const logger_1 = require("../shared/utils/logger");
 /**
  * Auto-deactivate league mode on bays after the league's end time + buffer.
  *
@@ -40,7 +41,7 @@ function autoDeactivateLeagueMode() {
                 .select('id, end_time, buffer_after_mins, location_id')
                 .in('id', leagueIds);
             if (leaguesError || !leagues) {
-                console.error('Auto-deactivate: Failed to fetch leagues:', leaguesError);
+                logger_1.logger.error({ err: leaguesError }, 'Auto-deactivate: Failed to fetch leagues');
                 return;
             }
             const now = new Date();
@@ -53,7 +54,7 @@ function autoDeactivateLeagueMode() {
                 deactivateTime.setHours(endHour, endMin + bufferMins, 0, 0);
                 if (now > deactivateTime) {
                     // Current time is past the league end + buffer, deactivate
-                    console.log(`Auto-deactivating league mode for league ${league.id} at location ${league.location_id} (end_time: ${league.end_time}, buffer: ${bufferMins}min)`);
+                    logger_1.logger.info({ leagueId: league.id, locationId: league.location_id, endTime: league.end_time, bufferMins }, 'Auto-deactivating league mode');
                     const { error: updateError } = yield database_1.supabase
                         .from('bays')
                         .update({
@@ -63,13 +64,13 @@ function autoDeactivateLeagueMode() {
                     })
                         .eq('league_mode_league_id', league.id);
                     if (updateError) {
-                        console.error(`Auto-deactivate: Failed to update bays for league ${league.id}:`, updateError);
+                        logger_1.logger.error({ err: updateError, leagueId: league.id }, 'Auto-deactivate: Failed to update bays');
                     }
                 }
             }
         }
         catch (error) {
-            console.error('Auto-deactivate league mode job error:', error);
+            logger_1.logger.error({ err: error }, 'Auto-deactivate league mode job error');
         }
     });
 }

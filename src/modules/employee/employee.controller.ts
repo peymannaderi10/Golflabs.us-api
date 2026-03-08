@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { employeeService } from './employee.service';
 import { ReportResponse, ReportQueryParams } from './employee.types';
+import { logger } from '../../shared/utils/logger';
 
 /**
  * Validate query parameters for report endpoints
@@ -61,7 +62,7 @@ export class EmployeeController {
 
             return res.json(createResponse(data, validation.params!));
         } catch (error: any) {
-            console.error('Error in getOverview:', error);
+            logger.error({ err: error }, 'Error in getOverview');
             return res.status(500).json({ success: false, error: error.message || 'Internal server error' });
         }
     }
@@ -82,7 +83,7 @@ export class EmployeeController {
 
             return res.json(createResponse(data, validation.params!));
         } catch (error: any) {
-            console.error('Error in getRevenueStats:', error);
+            logger.error({ err: error }, 'Error in getRevenueStats');
             return res.status(500).json({ success: false, error: error.message || 'Internal server error' });
         }
     }
@@ -103,7 +104,7 @@ export class EmployeeController {
 
             return res.json(createResponse(data, validation.params!));
         } catch (error: any) {
-            console.error('Error in getBookingStats:', error);
+            logger.error({ err: error }, 'Error in getBookingStats');
             return res.status(500).json({ success: false, error: error.message || 'Internal server error' });
         }
     }
@@ -124,7 +125,7 @@ export class EmployeeController {
 
             return res.json(createResponse(data, validation.params!));
         } catch (error: any) {
-            console.error('Error in getBayStats:', error);
+            logger.error({ err: error }, 'Error in getBayStats');
             return res.status(500).json({ success: false, error: error.message || 'Internal server error' });
         }
     }
@@ -145,7 +146,7 @@ export class EmployeeController {
 
             return res.json(createResponse(data, validation.params!));
         } catch (error: any) {
-            console.error('Error in getAccessLogStats:', error);
+            logger.error({ err: error }, 'Error in getAccessLogStats');
             return res.status(500).json({ success: false, error: error.message || 'Internal server error' });
         }
     }
@@ -174,7 +175,7 @@ export class EmployeeController {
             res.setHeader('Content-Disposition', `attachment; filename=report-${type}-${startDate}-${endDate}.csv`);
             return res.send(csv);
         } catch (error: any) {
-            console.error('Error in exportReport:', error);
+            logger.error({ err: error }, 'Error in exportReport');
             return res.status(500).json({ success: false, error: error.message || 'Internal server error' });
         }
     }
@@ -207,7 +208,7 @@ export class EmployeeController {
                 pageSize: pageSize ? parseInt(pageSize as string) : 10,
             });
         } catch (error: any) {
-            console.error('Error in getCustomers:', error);
+            logger.error({ err: error }, 'Error in getCustomers');
             return res.status(500).json({ success: false, error: error.message || 'Internal server error' });
         }
     }
@@ -245,7 +246,7 @@ export class EmployeeController {
 
             return res.json({ success: true });
         } catch (error: any) {
-            console.error('Error in updateCustomer:', error);
+            logger.error({ err: error }, 'Error in updateCustomer');
             return res.status(500).json({ success: false, error: error.message || 'Internal server error' });
         }
     }

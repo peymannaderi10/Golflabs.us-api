@@ -1,4 +1,5 @@
 import { supabase } from '../../config/database';
+import { logger } from '../../shared/utils/logger';
 
 export class BayService {
   async getBaysByLocationId(locationId: string) {
@@ -12,7 +13,7 @@ export class BayService {
       .eq('location_id', locationId);
 
     if (error) {
-      console.error('Error fetching bays:', error);
+      logger.error({ err: error }, 'Error fetching bays');
       throw new Error('Failed to fetch bays');
     }
 
@@ -35,7 +36,7 @@ export class BayService {
       .single();
 
     if (error) {
-      console.error('Error updating bay heartbeat:', error);
+      logger.error({ err: error }, 'Error updating bay heartbeat');
       throw new Error('Failed to update bay heartbeat');
     }
     
@@ -67,7 +68,7 @@ export class BayService {
       .single();
 
     if (error) {
-      console.error('Error updating bay status:', error);
+      logger.error({ err: error }, 'Error updating bay status');
       throw new Error('Failed to update bay status');
     }
 
@@ -101,7 +102,7 @@ export class BayService {
       .select('id, bay_number, name, league_mode_active, league_mode_league_id');
 
     if (error) {
-      console.error('Error activating league mode:', error);
+      logger.error({ err: error }, 'Error activating league mode');
       throw new Error('Failed to activate league mode');
     }
 
@@ -127,7 +128,7 @@ export class BayService {
       .select('id, bay_number, name, league_mode_active, league_mode_league_id');
 
     if (error) {
-      console.error('Error deactivating league mode:', error);
+      logger.error({ err: error }, 'Error deactivating league mode');
       throw new Error('Failed to deactivate league mode');
     }
 
@@ -154,7 +155,7 @@ export class BayService {
       .single();
 
     if (error) {
-      console.error('Error toggling bay league mode:', error);
+      logger.error({ err: error }, 'Error toggling bay league mode');
       throw new Error('Failed to toggle bay league mode');
     }
 

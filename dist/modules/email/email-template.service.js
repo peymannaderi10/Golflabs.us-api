@@ -16,6 +16,7 @@ exports.EmailTemplateService = void 0;
 const handlebars_1 = __importDefault(require("handlebars"));
 const date_fns_tz_1 = require("date-fns-tz");
 const database_1 = require("../../config/database");
+const logger_1 = require("../../shared/utils/logger");
 const email_template_defaults_1 = require("./email-template.defaults");
 const DEFAULT_BRAND = {
     brandName: 'GOLF LABS US',
@@ -71,7 +72,7 @@ class EmailTemplateService {
             }
             const { data, error } = yield query.maybeSingle();
             if (error) {
-                console.error(`Error fetching email template (${templateType}, loc=${locationId}):`, error);
+                logger_1.logger.error({ err: error, templateType, locationId }, 'Error fetching email template');
                 return null;
             }
             return data;
@@ -229,7 +230,7 @@ class EmailTemplateService {
                 .eq('is_active', true)
                 .order('template_type');
             if (error) {
-                console.error('Error fetching location templates:', error);
+                logger_1.logger.error({ err: error }, 'Error fetching location templates');
                 return [];
             }
             return (data || []);
@@ -266,7 +267,7 @@ class EmailTemplateService {
                     seeded++;
                 }
             }
-            console.log(`Seeded ${seeded} default email templates`);
+            logger_1.logger.info({ count: seeded }, 'Seeded default email templates');
             return seeded;
         });
     }

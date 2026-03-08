@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { agreementService } from './agreement.service';
+import { logger } from '../../shared/utils/logger';
 
 export class AgreementController {
   acceptAgreements = async (req: Request, res: Response) => {
@@ -62,7 +63,7 @@ export class AgreementController {
         count: result.count,
       });
     } catch (error: any) {
-      console.error('Error accepting agreements:', error);
+      logger.error({ err: error }, 'Error accepting agreements');
       if (error.message.includes('Missing required')) {
         return res.status(400).json({ error: error.message });
       }
@@ -88,7 +89,7 @@ export class AgreementController {
 
       res.json(result);
     } catch (error: any) {
-      console.error('Error checking agreements:', error);
+      logger.error({ err: error }, 'Error checking agreements');
       res.status(500).json({ error: error.message || 'Failed to check agreements' });
     }
   };

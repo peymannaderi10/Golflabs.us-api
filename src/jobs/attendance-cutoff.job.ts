@@ -1,5 +1,6 @@
 import { supabase } from '../config/database';
 import { AttendanceService } from '../modules/leagues/attendance.service';
+import { logger } from '../shared/utils/logger';
 
 const attendanceService = new AttendanceService();
 
@@ -59,20 +60,20 @@ export async function processAttendanceCutoffs(): Promise<void> {
 
             // 4. Lock attendance
             await attendanceService.lockAttendance(week.id);
-            console.log(`Locked attendance for league "${league.name}" Week ${week.week_number}`);
+            logger.info({ leagueId: league.id, leagueName: league.name, weekNumber: week.week_number }, 'Locked attendance');
 
             // 5. Optionally adjust capacity hold
             if (league.attendance_auto_adjust) {
               const result = await attendanceService.adjustCapacityHold(league.id, week.id);
               if (result.adjusted) {
-                console.log(`Auto-adjusted capacity for league "${league.name}" Week ${week.week_number}: ${result.originalBays} -> ${result.baysNeeded} bays`);
+                logger.info({ leagueId: league.id, leagueName: league.name, weekNumber: week.week_number, originalBays: result.originalBays, baysNeeded: result.baysNeeded }, 'Auto-adjusted capacity');
               } else {
-                console.log(`Capacity hold unchanged for league "${league.name}" Week ${week.week_number}: ${result.baysNeeded} needed, ${result.originalBays} reserved`);
+                logger.info({ leagueId: league.id, leagueName: league.name, weekNumber: week.week_number, baysNeeded: result.baysNeeded, originalBays: result.originalBays }, 'Capacity hold unchanged');
               }
             } else {
               // Log informational-only mode
               const summary = await attendanceService.getAttendanceSummary(week.id, league.players_per_bay || 2);
-              console.log(`Attendance locked (informational) for league "${league.name}" Week ${week.week_number}: ${summary.confirmed}/${summary.totalPlayers} confirmed, ${summary.baysNeeded} bays would be needed`);
+              logger.info({ leagueId: league.id, leagueName: league.name, weekNumber: week.week_number, confirmed: summary.confirmed, totalPlayers: summary.totalPlayers, baysNeeded: summary.baysNeeded }, 'Attendance locked (informational)');
             }
 
             // 6. Team min attendance check (informational)
@@ -91,20 +92,19 @@ export async function processAttendanceCutoffs(): Promise<void> {
 
               for (const [teamId, counts] of teamMap) {
                 if (counts.confirmed < league.team_min_attendance) {
-                  console.log(`Team ${teamId} has ${counts.confirmed}/${counts.total} confirmed — below min attendance of ${league.team_min_attendance} for Week ${week.week_number}`);
-                  // Informational only — no punitive action
+                  logger.info({ teamId, confirmed: counts.confirmed, total: counts.total, minAttendance: league.team_min_attendance, weekNumber: week.week_number }, 'Team below minimum attendance');
                 }
               }
             }
           } catch (weekErr) {
-            console.error(`Error processing attendance cutoff for week ${week.id}:`, weekErr);
+            logger.error({ err: weekErr, weekId: week.id }, 'Error processing attendance cutoff for week');
           }
         }
       } catch (leagueErr) {
-        console.error(`Error processing attendance cutoffs for league ${league.id}:`, leagueErr);
+        logger.error({ err: leagueErr, leagueId: league.id }, 'Error processing attendance cutoffs for league');
       }
     }
   } catch (err) {
-    console.error('Attendance cutoff job error:', err);
+    logger.error({ err }, 'Attendance cutoff job error');
   }
 }

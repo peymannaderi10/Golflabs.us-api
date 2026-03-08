@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { promotionService } from './promotion.service';
+import { logger } from '../../shared/utils/logger';
 
 export class PromotionController {
   /**
@@ -17,7 +18,7 @@ export class PromotionController {
       const promotions = await promotionService.getUserAvailablePromotions(userId);
       return res.json({ promotions });
     } catch (error) {
-      console.error('Error getting user promotions:', error);
+      logger.error({ err: error }, 'Error getting user promotions');
       return res.status(500).json({ 
         error: error instanceof Error ? error.message : 'Failed to get promotions' 
       });
@@ -39,7 +40,7 @@ export class PromotionController {
       const result = await promotionService.hasFirstBookingPromo(userId);
       return res.json(result);
     } catch (error) {
-      console.error('Error checking first booking promo:', error);
+      logger.error({ err: error }, 'Error checking first booking promo');
       return res.status(500).json({ 
         error: error instanceof Error ? error.message : 'Failed to check promotion' 
       });
@@ -78,7 +79,7 @@ export class PromotionController {
 
       return res.json(discount);
     } catch (error) {
-      console.error('Error calculating discount:', error);
+      logger.error({ err: error }, 'Error calculating discount');
       return res.status(500).json({ 
         error: error instanceof Error ? error.message : 'Failed to calculate discount' 
       });
@@ -109,7 +110,7 @@ export class PromotionController {
 
       return res.json({ success });
     } catch (error) {
-      console.error('Error applying promotion:', error);
+      logger.error({ err: error }, 'Error applying promotion');
       return res.status(500).json({ 
         error: error instanceof Error ? error.message : 'Failed to apply promotion' 
       });
@@ -149,7 +150,7 @@ export class PromotionController {
         }
       });
     } catch (error) {
-      console.error('Error redeeming promotion code:', error);
+      logger.error({ err: error }, 'Error redeeming promotion code');
       return res.status(400).json({ 
         error: error instanceof Error ? error.message : 'Failed to redeem code' 
       });
@@ -194,7 +195,7 @@ export class PromotionController {
 
       return res.json(discount);
     } catch (error) {
-      console.error('Error validating promo code:', error);
+      logger.error({ err: error }, 'Error validating promo code');
       return res.status(400).json({ 
         error: error instanceof Error ? error.message : 'Failed to validate code' 
       });
@@ -210,7 +211,7 @@ export class PromotionController {
       const promotions = await promotionService.getAllPromotions();
       return res.json({ promotions });
     } catch (error) {
-      console.error('Error getting all promotions:', error);
+      logger.error({ err: error }, 'Error getting all promotions');
       return res.status(500).json({ 
         error: error instanceof Error ? error.message : 'Failed to get promotions' 
       });

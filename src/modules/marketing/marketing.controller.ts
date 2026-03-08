@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { MarketingService, AudienceType, CampaignAction } from './marketing.service';
 import { AuthenticatedRequest } from '../auth/auth.middleware';
 import { sanitizeError } from '../../shared/utils/error.utils';
+import { logger } from '../../shared/utils/logger';
 
 const VALID_AUDIENCE_TYPES: AudienceType[] = [
   'all_customers', 'active_members', 'inactive_30d',
@@ -22,7 +23,7 @@ export class MarketingController {
       const campaigns = await MarketingService.getCampaigns(locationId as string);
       return res.json(campaigns);
     } catch (error: any) {
-      console.error('Error fetching campaigns:', error);
+      logger.error({ err: error }, 'Error fetching campaigns');
       return res.status(500).json({ error: sanitizeError(error) });
     }
   }
@@ -38,7 +39,7 @@ export class MarketingController {
 
       return res.json(detail);
     } catch (error: any) {
-      console.error('Error fetching campaign detail:', error);
+      logger.error({ err: error }, 'Error fetching campaign detail');
       return res.status(500).json({ error: sanitizeError(error) });
     }
   }
@@ -81,7 +82,7 @@ export class MarketingController {
 
       return res.json(campaign);
     } catch (error: any) {
-      console.error('Error creating campaign:', error);
+      logger.error({ err: error }, 'Error creating campaign');
       return res.status(500).json({ error: sanitizeError(error) });
     }
   }
@@ -102,7 +103,7 @@ export class MarketingController {
       const campaign = await MarketingService.updateDraft(id, subject, body, audienceType, templateId, scheduledFor);
       return res.json(campaign);
     } catch (error: any) {
-      console.error('Error updating campaign:', error);
+      logger.error({ err: error }, 'Error updating campaign');
       const status = error.message?.includes('Only draft') ? 400 : 500;
       return res.status(status).json({ error: error.message || 'Failed to update campaign' });
     }
@@ -114,7 +115,7 @@ export class MarketingController {
       const campaign = await MarketingService.sendCampaign(id);
       return res.json(campaign);
     } catch (error: any) {
-      console.error('Error sending campaign:', error);
+      logger.error({ err: error }, 'Error sending campaign');
       const status = error.message?.includes('Cannot send') ? 400 : 500;
       return res.status(status).json({ error: error.message || 'Failed to send campaign' });
     }
@@ -126,7 +127,7 @@ export class MarketingController {
       await MarketingService.deleteCampaign(id);
       return res.json({ success: true });
     } catch (error: any) {
-      console.error('Error deleting campaign:', error);
+      logger.error({ err: error }, 'Error deleting campaign');
       const status = error.message?.includes('Only draft') ? 400 : 500;
       return res.status(status).json({ error: error.message || 'Failed to delete campaign' });
     }
@@ -159,7 +160,7 @@ export class MarketingController {
 
       return res.json({ count });
     } catch (error: any) {
-      console.error('Error getting audience preview:', error);
+      logger.error({ err: error }, 'Error getting audience preview');
       return res.status(500).json({ error: sanitizeError(error) });
     }
   }
@@ -177,7 +178,7 @@ export class MarketingController {
       const templates = await MarketingService.getMarketingTemplates(locationId as string);
       return res.json(templates);
     } catch (error: any) {
-      console.error('Error fetching templates:', error);
+      logger.error({ err: error }, 'Error fetching templates');
       return res.status(500).json({ error: sanitizeError(error) });
     }
   }
@@ -188,7 +189,7 @@ export class MarketingController {
       const template = await MarketingService.getMarketingTemplate(id);
       return res.json(template);
     } catch (error: any) {
-      console.error('Error fetching template:', error);
+      logger.error({ err: error }, 'Error fetching template');
       const status = error.message?.includes('not found') ? 404 : 500;
       return res.status(status).json({ error: error.message || 'Internal server error' });
     }
@@ -203,7 +204,7 @@ export class MarketingController {
       const template = await MarketingService.createMarketingTemplate(locationId, name, htmlTemplate);
       return res.json(template);
     } catch (error: any) {
-      console.error('Error creating template:', error);
+      logger.error({ err: error }, 'Error creating template');
       return res.status(500).json({ error: sanitizeError(error) });
     }
   }
@@ -218,7 +219,7 @@ export class MarketingController {
       const template = await MarketingService.updateMarketingTemplate(id, name, htmlTemplate);
       return res.json(template);
     } catch (error: any) {
-      console.error('Error updating template:', error);
+      logger.error({ err: error }, 'Error updating template');
       return res.status(500).json({ error: sanitizeError(error) });
     }
   }
@@ -229,7 +230,7 @@ export class MarketingController {
       await MarketingService.deleteMarketingTemplate(id);
       return res.json({ success: true });
     } catch (error: any) {
-      console.error('Error deleting template:', error);
+      logger.error({ err: error }, 'Error deleting template');
       return res.status(500).json({ error: sanitizeError(error) });
     }
   }
@@ -260,7 +261,7 @@ export class MarketingController {
         'You have been successfully unsubscribed from marketing emails. You will still receive transactional emails (booking confirmations, reminders, etc.).'
       ));
     } catch (error: any) {
-      console.error('Unsubscribe error:', error);
+      logger.error({ err: error }, 'Unsubscribe error');
       return res.status(500).send(this.renderUnsubscribePage(
         'Error',
         'Something went wrong. Please try again later.'

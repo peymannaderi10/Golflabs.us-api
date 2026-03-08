@@ -14,6 +14,7 @@ const database_1 = require("../config/database");
 const resend_1 = require("../config/resend");
 const attendance_service_1 = require("../modules/leagues/attendance.service");
 const email_service_1 = require("../modules/email/email.service");
+const logger_1 = require("../shared/utils/logger");
 const attendanceService = new attendance_service_1.AttendanceService();
 /**
  * Attendance Reminder Job
@@ -120,18 +121,18 @@ function sendAttendanceReminders() {
                                 .eq('id', row.id);
                         }
                         catch (emailErr) {
-                            console.error(`Failed to send attendance reminder for row ${row.id}:`, emailErr);
+                            logger_1.logger.error({ err: emailErr, rowId: row.id }, 'Failed to send attendance reminder');
                         }
                     }
-                    console.log(`Sent ${rows.length} attendance reminders for league "${league.name}" Week ${week.week_number}`);
+                    logger_1.logger.info({ count: rows.length, leagueName: league.name, weekNumber: week.week_number }, 'Sent attendance reminders');
                 }
                 catch (leagueErr) {
-                    console.error(`Error processing attendance reminders for league ${league.id}:`, leagueErr);
+                    logger_1.logger.error({ err: leagueErr, leagueId: league.id }, 'Error processing attendance reminders for league');
                 }
             }
         }
         catch (err) {
-            console.error('Attendance reminder job error:', err);
+            logger_1.logger.error({ err }, 'Attendance reminder job error');
         }
     });
 }

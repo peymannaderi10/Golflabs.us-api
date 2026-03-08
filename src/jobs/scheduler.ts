@@ -7,6 +7,8 @@ import { autoDeactivateLeagueMode } from './league-mode-deactivate.job';
 import { sendAttendanceReminders } from './attendance-reminder.job';
 import { processAttendanceCutoffs } from './attendance-cutoff.job';
 import { processScheduledCampaigns } from './marketing-scheduler.job';
+import { enforceDataRetention } from './data-retention.job';
+import { logger } from '../shared/utils/logger';
 
 const intervals: NodeJS.Timeout[] = [];
 
@@ -23,13 +25,14 @@ export function startScheduler() {
     setInterval(sendAttendanceReminders, 5 * 60 * 1000),
     setInterval(processAttendanceCutoffs, 5 * 60 * 1000),
     setInterval(processScheduledCampaigns, 60 * 1000),
+    setInterval(enforceDataRetention, 24 * 60 * 60 * 1000),
   );
 
-  console.log('Background job scheduler started');
+  logger.info('Background job scheduler started');
 }
 
 export function stopScheduler() {
   intervals.forEach(clearInterval);
   intervals.length = 0;
-  console.log('Background job scheduler stopped');
+  logger.info('Background job scheduler stopped');
 } 

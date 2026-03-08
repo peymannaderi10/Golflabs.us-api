@@ -15,6 +15,12 @@ userRoutes.get('/users/:userId/profile',
   authenticateUser,
   controller.getUserProfile,
 );
+userRoutes.get('/users/:userId/export',
+  param('userId').isUUID().withMessage('userId must be a valid UUID'),
+  handleValidationErrors,
+  authenticateUser,
+  controller.exportUserData,
+);
 userRoutes.delete('/users/:userId/account',
   param('userId').isUUID().withMessage('userId must be a valid UUID'),
   handleValidationErrors,

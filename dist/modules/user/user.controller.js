@@ -11,6 +11,8 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.UserController = void 0;
 const user_service_1 = require("./user.service");
+const error_utils_1 = require("../../shared/utils/error.utils");
+const logger_1 = require("../../shared/utils/logger");
 class UserController {
     constructor() {
         this.deleteAccount = (req, res) => __awaiter(this, void 0, void 0, function* () {
@@ -27,7 +29,7 @@ class UserController {
                 res.json(result);
             }
             catch (error) {
-                console.error('Error in deleteAccount endpoint:', error);
+                logger_1.logger.error({ err: error }, 'Error in deleteAccount endpoint');
                 if (error.message === 'User not found') {
                     return res.status(404).json({ error: error.message });
                 }
@@ -35,6 +37,20 @@ class UserController {
                     return res.status(400).json({ error: error.message });
                 }
                 res.status(500).json({ error: 'An unexpected error occurred while deleting account' });
+            }
+        });
+        this.exportUserData = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            var _a;
+            try {
+                const { userId } = req.params;
+                if (((_a = req.user) === null || _a === void 0 ? void 0 : _a.id) !== userId) {
+                    return res.status(403).json({ error: 'You can only export your own data' });
+                }
+                const data = yield this.userService.exportUserData(userId);
+                res.json(data);
+            }
+            catch (error) {
+                res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
         this.getUserProfile = (req, res) => __awaiter(this, void 0, void 0, function* () {
@@ -51,7 +67,7 @@ class UserController {
                 res.json(profile);
             }
             catch (error) {
-                console.error('Error in getUserProfile endpoint:', error);
+                logger_1.logger.error({ err: error }, 'Error in getUserProfile endpoint');
                 if (error.message === 'User ID is required') {
                     return res.status(400).json({ error: error.message });
                 }

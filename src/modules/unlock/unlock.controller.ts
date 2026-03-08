@@ -3,6 +3,7 @@ import { SocketService } from '../sockets/socket.service';
 import { supabase } from '../../config/database';
 import { verifyUnlockToken } from '../../shared/utils/token.utils';
 import { sanitizeError } from '../../shared/utils/error.utils';
+import { logger } from '../../shared/utils/logger';
 
 export class UnlockController {
   private socketService: SocketService;
@@ -31,7 +32,7 @@ export class UnlockController {
         .order('bay_number', { ascending: true });
 
       if (baysError) {
-        console.error('Error fetching bays:', baysError);
+        logger.error({ err: baysError }, 'Error fetching bays');
         return res.status(500).json({ error: 'Failed to fetch bays' });
       }
 
@@ -46,13 +47,13 @@ export class UnlockController {
 
       // Try each bay until one successfully responds
       for (const bay of bays) {
-        console.log(`Attempting employee unlock on bay ${bay.name} (${bay.id})`);
+        logger.info({ bayName: bay.name, bayId: bay.id }, 'Attempting employee unlock on bay');
         
         const unlockSuccessful = await this.socketService.sendUnlockCommand(
           locationId,
           bay.id,
           5, // 5 seconds unlock duration
-          `employee-unlock-${Date.now()}` // Pseudo booking ID for logging
+          `employee-unlock` // Not a real booking -- access log is created separately with booking_id: null
         );
 
         if (unlockSuccessful) {
@@ -73,7 +74,7 @@ export class UnlockController {
             }
           });
 
-          console.log(`Employee unlock successful on bay ${bay.name}`);
+          logger.info({ bayName: bay.name }, 'Employee unlock successful on bay');
           return res.json({
             success: true,
             message: `Door unlocked successfully via ${bay.name}`,
@@ -84,14 +85,14 @@ export class UnlockController {
       }
 
       // If no bay responded successfully
-      console.error(`Employee unlock failed: No kiosk responded for location ${locationId}`);
+      logger.error({ locationId }, 'Employee unlock failed - no kiosk responded');
       return res.status(503).json({
         success: false,
         error: 'No kiosk responded to the unlock command. Please ensure at least one kiosk is online.'
       });
 
     } catch (error: any) {
-      console.error('Error in employee unlock:', error);
+      logger.error({ err: error }, 'Error in employee unlock');
       res.status(500).json({ error: sanitizeError(error) });
     }
   };
@@ -123,12 +124,12 @@ export class UnlockController {
         .single();
 
       if (bookingError || !booking) {
-        console.error(`Booking ${bookingId} not found:`, bookingError);
+        logger.error({ err: bookingError, bookingId }, 'Booking not found');
         return res.status(404).json({ error: 'Booking not found' });
       }
 
       if (booking.status !== 'confirmed') {
-        console.log(`Booking ${bookingId} has invalid status for unlock: ${booking.status}`);
+        logger.info({ bookingId, status: booking.status }, 'Booking has invalid status for unlock');
         return res.status(403).json({ error: 'Booking is not confirmed' });
       }
 
@@ -180,7 +181,7 @@ export class UnlockController {
         });
 
       if (logError) {
-        console.error('Error logging unlock attempt:', logError);
+        logger.error({ err: logError }, 'Error logging unlock attempt');
         // Don't fail the request, just log the error
       }
 
@@ -193,7 +194,7 @@ export class UnlockController {
       );
 
       if (!unlockSuccessful) {
-        console.error(`Unlock failed for booking ${bookingId}: Kiosk did not confirm.`);
+        logger.error({ bookingId }, 'Unlock failed - kiosk did not confirm');
         
         // Log the failure
         await supabase.from('access_logs').insert({
@@ -216,7 +217,7 @@ export class UnlockController {
         });
       }
 
-      console.log(`Door unlock command acknowledged as successful for booking ${bookingId}`);
+      logger.info({ bookingId }, 'Door unlock command acknowledged as successful');
       
       res.json({
         success: true,
@@ -226,7 +227,7 @@ export class UnlockController {
       });
 
     } catch (error: any) {
-      console.error('Error in unlock door:', error);
+      logger.error({ err: error }, 'Error in unlock door');
       res.status(500).json({ error: sanitizeError(error) });
     }
   };

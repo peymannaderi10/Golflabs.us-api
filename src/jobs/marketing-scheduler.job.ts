@@ -1,12 +1,13 @@
 import { MarketingService } from '../modules/marketing/marketing.service';
+import { logger } from '../shared/utils/logger';
 
 export async function processScheduledCampaigns() {
   try {
     const sent = await MarketingService.sendDueScheduledCampaigns();
     if (sent > 0) {
-      console.log(`Marketing scheduler: sent ${sent} scheduled campaign(s)`);
+      logger.info({ count: sent }, 'Sent scheduled campaigns');
     }
   } catch (error) {
-    console.error('Marketing scheduler error:', error);
+    logger.error({ err: error }, 'Marketing scheduler error');
   }
 }

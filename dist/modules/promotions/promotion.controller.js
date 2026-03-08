@@ -11,6 +11,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.promotionController = exports.PromotionController = void 0;
 const promotion_service_1 = require("./promotion.service");
+const logger_1 = require("../../shared/utils/logger");
 class PromotionController {
     /**
      * GET /promotions/user/:userId
@@ -27,7 +28,7 @@ class PromotionController {
                 return res.json({ promotions });
             }
             catch (error) {
-                console.error('Error getting user promotions:', error);
+                logger_1.logger.error({ err: error }, 'Error getting user promotions');
                 return res.status(500).json({
                     error: error instanceof Error ? error.message : 'Failed to get promotions'
                 });
@@ -49,7 +50,7 @@ class PromotionController {
                 return res.json(result);
             }
             catch (error) {
-                console.error('Error checking first booking promo:', error);
+                logger_1.logger.error({ err: error }, 'Error checking first booking promo');
                 return res.status(500).json({
                     error: error instanceof Error ? error.message : 'Failed to check promotion'
                 });
@@ -86,7 +87,7 @@ class PromotionController {
                 return res.json(discount);
             }
             catch (error) {
-                console.error('Error calculating discount:', error);
+                logger_1.logger.error({ err: error }, 'Error calculating discount');
                 return res.status(500).json({
                     error: error instanceof Error ? error.message : 'Failed to calculate discount'
                 });
@@ -116,7 +117,7 @@ class PromotionController {
                 return res.json({ success });
             }
             catch (error) {
-                console.error('Error applying promotion:', error);
+                logger_1.logger.error({ err: error }, 'Error applying promotion');
                 return res.status(500).json({
                     error: error instanceof Error ? error.message : 'Failed to apply promotion'
                 });
@@ -153,7 +154,7 @@ class PromotionController {
                 });
             }
             catch (error) {
-                console.error('Error redeeming promotion code:', error);
+                logger_1.logger.error({ err: error }, 'Error redeeming promotion code');
                 return res.status(400).json({
                     error: error instanceof Error ? error.message : 'Failed to redeem code'
                 });
@@ -187,7 +188,7 @@ class PromotionController {
                 return res.json(discount);
             }
             catch (error) {
-                console.error('Error validating promo code:', error);
+                logger_1.logger.error({ err: error }, 'Error validating promo code');
                 return res.status(400).json({
                     error: error instanceof Error ? error.message : 'Failed to validate code'
                 });
@@ -205,7 +206,7 @@ class PromotionController {
                 return res.json({ promotions });
             }
             catch (error) {
-                console.error('Error getting all promotions:', error);
+                logger_1.logger.error({ err: error }, 'Error getting all promotions');
                 return res.status(500).json({
                     error: error instanceof Error ? error.message : 'Failed to get promotions'
                 });

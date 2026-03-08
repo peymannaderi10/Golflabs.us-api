@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { PaymentService } from './payment.service';
+import { logger } from '../../shared/utils/logger';
 
 export class PaymentController {
   private paymentService: PaymentService;
@@ -29,7 +30,7 @@ export class PaymentController {
       const result = await this.paymentService.createPaymentIntent(bookingId, amount, promotionInfo, memberPricingInfo);
       res.json(result);
     } catch (error: any) {
-      console.error(`Error in /bookings/${req.params.bookingId}/create-payment-intent:`, error);
+      logger.error({ err: error, bookingId: req.params.bookingId }, 'Error in create-payment-intent');
       if (error.message === 'Booking not found.') {
         return res.status(404).json({ error: error.message });
       }
@@ -48,7 +49,7 @@ export class PaymentController {
       const result = await this.paymentService.updatePaymentIntent(req.body);
       res.json(result);
     } catch (error: any) {
-      console.error('Error updating payment intent:', error);
+      logger.error({ err: error }, 'Error updating payment intent');
       res.status(500).json({ 
         error: 'Failed to update payment intent',
         details: error.message
@@ -62,7 +63,7 @@ export class PaymentController {
       const result = await this.paymentService.getPaymentIntentStatus(paymentIntentId);
       res.json(result);
     } catch (error: any) {
-      console.error("Error retrieving payment intent:", error);
+      logger.error({ err: error }, 'Error retrieving payment intent');
       if (error.message === "Payment Intent ID is required") {
         return res.status(400).json({ error: error.message });
       }
@@ -76,7 +77,7 @@ export class PaymentController {
       const result = await this.paymentService.getSetupIntentStatus(setupIntentId);
       res.json(result);
     } catch (error: any) {
-      console.error('Error retrieving setup intent:', error);
+      logger.error({ err: error }, 'Error retrieving setup intent');
       if (error.message === 'Setup Intent ID is required') {
         return res.status(400).json({ error: error.message });
       }
@@ -90,7 +91,7 @@ export class PaymentController {
       const result = await this.paymentService.calculatePrice(locationId, startTime, endTime, userId);
       res.json(result);
     } catch (error: any) {
-      console.error('Error in /calculate-price:', error);
+      logger.error({ err: error }, 'Error in calculate-price');
       if (error.message.includes('required')) {
         return res.status(400).json({ error: error.message });
       }

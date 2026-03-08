@@ -1,6 +1,7 @@
 import Handlebars from 'handlebars';
 import { format, toZonedTime } from 'date-fns-tz';
 import { supabase } from '../../config/database';
+import { logger } from '../../shared/utils/logger';
 import { DEFAULT_TEMPLATES } from './email-template.defaults';
 import {
   EmailTemplateType,
@@ -78,7 +79,7 @@ export class EmailTemplateService {
 
     const { data, error } = await query.maybeSingle();
     if (error) {
-      console.error(`Error fetching email template (${templateType}, loc=${locationId}):`, error);
+      logger.error({ err: error, templateType, locationId }, 'Error fetching email template');
       return null;
     }
     return data as EmailTemplateRecord | null;
@@ -361,7 +362,7 @@ export class EmailTemplateService {
       .order('template_type');
 
     if (error) {
-      console.error('Error fetching location templates:', error);
+      logger.error({ err: error }, 'Error fetching location templates');
       return [];
     }
     return (data || []) as EmailTemplateRecord[];
@@ -397,7 +398,7 @@ export class EmailTemplateService {
         seeded++;
       }
     }
-    console.log(`Seeded ${seeded} default email templates`);
+    logger.info({ count: seeded }, 'Seeded default email templates');
     return seeded;
   }
 }

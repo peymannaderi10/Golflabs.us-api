@@ -1,5 +1,6 @@
 import { supabase } from '../../config/database';
 import { createISOTimestamp } from '../../shared/utils/date.utils';
+import { logger } from '../../shared/utils/logger';
 import {
     RevenueStats,
     BookingStats,
@@ -41,7 +42,7 @@ export class EmployeeService {
             .order('processed_at', { ascending: true });
 
         if (error) {
-            console.error('Error fetching revenue stats:', error);
+            logger.error({ err: error }, 'Error fetching revenue stats');
             throw error;
         }
 
@@ -105,7 +106,7 @@ export class EmployeeService {
             .neq('status', 'expired');
 
         if (error) {
-            console.error('Error fetching booking stats:', error);
+            logger.error({ err: error }, 'Error fetching booking stats');
             throw error;
         }
 
@@ -196,7 +197,7 @@ export class EmployeeService {
             .order('bay_number');
 
         if (baysError) {
-            console.error('Error fetching bays:', baysError);
+            logger.error({ err: baysError }, 'Error fetching bays');
             throw baysError;
         }
 
@@ -210,7 +211,7 @@ export class EmployeeService {
             .lte('start_time', endUTC);
 
         if (bookingsError) {
-            console.error('Error fetching bay bookings:', bookingsError);
+            logger.error({ err: bookingsError }, 'Error fetching bay bookings');
             throw bookingsError;
         }
 
@@ -298,7 +299,7 @@ export class EmployeeService {
             .lte('timestamp', endUTC);
 
         if (error) {
-            console.error('Error fetching access logs:', error);
+            logger.error({ err: error }, 'Error fetching access logs');
             throw error;
         }
 
@@ -456,7 +457,7 @@ export class EmployeeService {
         const { data: profiles, count, error } = await query;
 
         if (error) {
-            console.error('Error fetching customers:', error);
+            logger.error({ err: error }, 'Error fetching customers');
             throw error;
         }
 

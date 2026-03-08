@@ -1,6 +1,7 @@
 import { supabase } from '../../config/database';
 import { LeagueAttendance, AttendanceSummary, AttendanceStatus } from './league.types';
 import { CapacityHoldService } from '../bookings/capacity-hold.service';
+import { logger } from '../../shared/utils/logger';
 
 export class AttendanceService {
   private capacityHoldService = new CapacityHoldService();
@@ -38,7 +39,7 @@ export class AttendanceService {
       .eq('enrollment_status', 'active');
 
     if (playersError) {
-      console.error('Failed to fetch players for attendance generation:', playersError);
+      logger.error({ err: playersError }, 'Failed to fetch players for attendance generation');
       throw new Error(`Failed to fetch players: ${playersError.message}`);
     }
 
@@ -60,11 +61,11 @@ export class AttendanceService {
       .select();
 
     if (insertError) {
-      console.error('Failed to generate attendance rows:', insertError);
+      logger.error({ err: insertError }, 'Failed to generate attendance rows');
       throw new Error(`Failed to generate attendance rows: ${insertError.message}`);
     }
 
-    console.log(`Generated ${(inserted || []).length} attendance rows for week ${weekId}`);
+    logger.info({ count: (inserted || []).length, weekId }, 'Generated attendance rows for week');
     return (inserted || []) as LeagueAttendance[];
   }
 
@@ -248,11 +249,11 @@ export class AttendanceService {
       .eq('league_week_id', weekId);
 
     if (error) {
-      console.error('Failed to lock attendance:', error);
+      logger.error({ err: error }, 'Failed to lock attendance');
       throw new Error(`Failed to lock attendance: ${error.message}`);
     }
 
-    console.log(`Attendance locked for week ${weekId}`);
+    logger.info({ weekId }, 'Attendance locked for week');
   }
 
   /**
@@ -309,20 +310,20 @@ export class AttendanceService {
     // 5. If 0 confirmed, suspend the hold entirely
     if (summary.confirmed === 0) {
       await this.suspendHoldForWeek(weekId);
-      console.log(`Suspended hold for week ${weekId} — 0 confirmed players.`);
+      logger.info({ weekId }, 'Suspended hold for week - 0 confirmed players');
       return { adjusted: true, baysNeeded: 0, originalBays: originalReservedBays };
     }
 
     // 6. Compare: only reduce, never increase
     const baysNeeded = summary.baysNeeded;
     if (baysNeeded >= originalReservedBays) {
-      console.log(`Hold for week ${weekId} unchanged — ${baysNeeded} bays needed >= ${originalReservedBays} original.`);
+      logger.info({ weekId, baysNeeded, originalReservedBays }, 'Hold for week unchanged - bays needed >= original');
       return { adjusted: false, baysNeeded, originalBays: originalReservedBays };
     }
 
     // 7. Reduce the hold for this specific week
     await this.updateHoldForWeek(weekId, baysNeeded);
-    console.log(`Adjusted hold for week ${weekId}: ${originalReservedBays} -> ${baysNeeded} bays.`);
+    logger.info({ weekId, originalReservedBays, baysNeeded }, 'Adjusted hold for week');
     return { adjusted: true, baysNeeded, originalBays: originalReservedBays };
   }
 
@@ -355,7 +356,7 @@ export class AttendanceService {
       .eq('status', 'active');
 
     if (error) {
-      console.error('Failed to suspend hold for week:', error);
+      logger.error({ err: error }, 'Failed to suspend hold for week');
     }
   }
 
@@ -374,7 +375,7 @@ export class AttendanceService {
       .eq('status', 'active');
 
     if (error) {
-      console.error('Failed to update hold for week:', error);
+      logger.error({ err: error }, 'Failed to update hold for week');
       throw new Error(`Failed to update hold: ${error.message}`);
     }
   }

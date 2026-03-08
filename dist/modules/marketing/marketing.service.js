@@ -18,6 +18,7 @@ const handlebars_1 = __importDefault(require("handlebars"));
 const database_1 = require("../../config/database");
 const resend_1 = require("../../config/resend");
 const email_template_defaults_1 = require("../email/email-template.defaults");
+const logger_1 = require("../../shared/utils/logger");
 const BATCH_SIZE = 100;
 const UNSUBSCRIBE_SECRET = process.env.RESEND_WEBHOOK_SECRET || 'marketing-unsubscribe-fallback-secret';
 class MarketingService {
@@ -131,7 +132,8 @@ class MarketingService {
                 return { count: 0, recipients: [] };
             }
             const optedOutIds = yield this.getOptedOutUserIds(userIds);
-            const filteredIds = userIds.filter(id => !optedOutIds.has(id));
+            const optedInIds = yield this.getOptedInUserIds(userIds);
+            const filteredIds = userIds.filter(id => !optedOutIds.has(id) && optedInIds.has(id));
             if (filteredIds.length === 0) {
                 return { count: 0, recipients: [] };
             }
@@ -205,6 +207,18 @@ class MarketingService {
             return new Set((data || []).map(p => p.user_id));
         });
     }
+    static getOptedInUserIds(userIds) {
+        return __awaiter(this, void 0, void 0, function* () {
+            if (userIds.length === 0)
+                return new Set();
+            const { data } = yield database_1.supabase
+                .from('marketing_preferences')
+                .select('user_id')
+                .in('user_id', userIds)
+                .eq('email_opted_in', true);
+            return new Set((data || []).map(p => p.user_id));
+        });
+    }
     static getAllUserIds(locationId) {
         return __awaiter(this, void 0, void 0, function* () {
             const { data } = yield database_1.supabase
@@ -266,7 +280,7 @@ class MarketingService {
                 .eq('location_id', locationId)
                 .order('created_at', { ascending: false });
             if (error) {
-                console.error('Error fetching campaigns:', error);
+                logger_1.logger.error({ err: error }, 'Error fetching campaigns');
                 return [];
             }
             return (data || []);
@@ -280,7 +294,7 @@ class MarketingService {
                 .eq('id', campaignId)
                 .single();
             if (error || !campaign) {
-                console.error('Error fetching campaign detail:', error);
+                logger_1.logger.error({ err: error }, 'Error fetching campaign detail');
                 return null;
             }
             const { data: recipients } = yield database_1.supabase
@@ -475,25 +489,25 @@ class MarketingService {
                 try {
                     const result = yield resend_1.resend.batch.send(emails);
                     if (result.error) {
-                        console.error('Resend batch error:', result.error);
+                        logger_1.logger.error({ err: result.error }, 'Resend batch error');
                         failedCount += batch.length;
                         yield this.updateRecipientStatuses(campaign.id, batch, 'failed');
                     }
                     else {
                         sentCount += batch.length;
-                        console.log('Resend batch.send result.data:', JSON.stringify(result.data));
+                        logger_1.logger.info({ resultData: result.data }, 'Resend batch send result');
                         const rawData = result.data;
                         const messageIds = Array.isArray(rawData)
                             ? rawData
                             : Array.isArray(rawData === null || rawData === void 0 ? void 0 : rawData.data)
                                 ? rawData.data
                                 : [];
-                        console.log(`Batch send returned ${messageIds.length} message IDs for ${batch.length} recipients`);
+                        logger_1.logger.info({ messageIdCount: messageIds.length, recipientCount: batch.length }, 'Batch send returned message IDs');
                         yield this.storeMessageIds(campaign.id, batch, messageIds);
                     }
                 }
                 catch (err) {
-                    console.error('Resend batch exception:', err);
+                    logger_1.logger.error({ err }, 'Resend batch exception');
                     failedCount += batch.length;
                     yield this.updateRecipientStatuses(campaign.id, batch, 'failed');
                 }
@@ -513,7 +527,7 @@ class MarketingService {
                 .eq('id', campaign.id)
                 .select('*')
                 .single();
-            console.log(`Campaign ${campaign.id} complete: ${sentCount} sent, ${failedCount} failed`);
+            logger_1.logger.info({ campaignId: campaign.id, sentCount, failedCount }, 'Campaign send complete');
             return (updated || campaign);
         });
     }
@@ -529,7 +543,7 @@ class MarketingService {
                 const batch = rows.slice(i, i + BATCH_SIZE);
                 const { error } = yield database_1.supabase.from('campaign_recipients').insert(batch);
                 if (error) {
-                    console.error('Error inserting recipient rows:', error);
+                    logger_1.logger.error({ err: error }, 'Error inserting recipient rows');
                 }
             }
         });
@@ -701,7 +715,7 @@ class MarketingService {
                     sent++;
                 }
                 catch (err) {
-                    console.error(`Failed to send scheduled campaign ${c.id}:`, err);
+                    logger_1.logger.error({ err, campaignId: c.id }, 'Failed to send scheduled campaign');
                     yield database_1.supabase
                         .from('marketing_campaigns')
                         .update({ status: 'failed' })
@@ -740,10 +754,10 @@ class MarketingService {
                 email_opted_out_at: new Date().toISOString(),
             }, { onConflict: 'user_id' });
             if (error) {
-                console.error('Error unsubscribing user:', error);
+                logger_1.logger.error({ err: error }, 'Error unsubscribing user');
                 throw new Error('Failed to process unsubscribe');
             }
-            console.log(`User ${userId} unsubscribed from marketing emails`);
+            logger_1.logger.info({ userId }, 'User unsubscribed from marketing emails');
         });
     }
     // ------------------------------------------------------------------

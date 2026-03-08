@@ -11,6 +11,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.processTeamDeadlines = processTeamDeadlines;
 const league_service_1 = require("../modules/leagues/league.service");
+const logger_1 = require("../shared/utils/logger");
 const leagueService = new league_service_1.LeagueService();
 /**
  * Scheduled job: Process team league deadlines.
@@ -26,11 +27,11 @@ function processTeamDeadlines() {
         try {
             const result = yield leagueService.processTeamDeadlines();
             if (result.disqualified.length > 0) {
-                console.log(`[league-deadline] Disqualified ${result.disqualified.length} team(s):`, result.disqualified);
+                logger_1.logger.info({ count: result.disqualified.length, disqualified: result.disqualified }, 'Disqualified teams');
             }
         }
         catch (error) {
-            console.error('[league-deadline] Error processing team deadlines:', error);
+            logger_1.logger.error({ err: error }, 'Error processing team deadlines');
         }
     });
 }

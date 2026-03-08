@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { body, param, query } from 'express-validator';
 import { BookingController } from './booking.controller';
 import { SocketService } from '../sockets/socket.service';
-import { authenticateEmployee, authenticateUser, authenticateKiosk } from '../auth';
+import { authenticateEmployee, authenticateUser, authenticateKiosk, authenticateKioskOrEmployee } from '../auth';
 import { handleValidationErrors, validateUUID } from '../../shared/middleware/validation';
 
 export const createBookingRoutes = (socketService: SocketService): Router => {
@@ -23,12 +23,12 @@ export const createBookingRoutes = (socketService: SocketService): Router => {
   bookingRoutes.get('/capacity-holds', controller.getCapacityHolds);
   bookingRoutes.get('/capacity-holds/today', controller.getTodaysHold);
 
-  bookingRoutes.get('/:bookingId/extension-options', authenticateKiosk,
+  bookingRoutes.get('/:bookingId/extension-options', authenticateKioskOrEmployee,
     validateUUID('bookingId', 'param'),
     handleValidationErrors,
     controller.getExtensionOptions
   );
-  bookingRoutes.post('/:bookingId/extend', authenticateKiosk,
+  bookingRoutes.post('/:bookingId/extend', authenticateKioskOrEmployee,
     validateUUID('bookingId', 'param'),
     body('extensionMinutes').isInt({ min: 15 }).withMessage('extensionMinutes must be an integer >= 15'),
     handleValidationErrors,

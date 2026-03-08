@@ -1,5 +1,6 @@
 import { supabase } from '../../config/database';
 import { PricingRule } from '../../shared/types/common.types';
+import { logger } from '../../shared/utils/logger';
 
 export interface PricingRuleFull {
   id: string;
@@ -28,7 +29,7 @@ export class PricingService {
       .eq('location_id', locationId);
 
     if (error) {
-      console.error('Error fetching pricing rules:', error);
+      logger.error({ err: error }, 'Error fetching pricing rules');
       throw new Error('Failed to fetch pricing rules');
     }
 
@@ -56,7 +57,7 @@ export class PricingService {
       .order('created_at', { ascending: true });
 
     if (error) {
-      console.error('Error fetching pricing rules:', error);
+      logger.error({ err: error }, 'Error fetching pricing rules');
       throw new Error('Failed to fetch pricing rules');
     }
 
@@ -101,7 +102,7 @@ export class PricingService {
       .single();
 
     if (error || !data) {
-      console.error('Error creating pricing rule:', error);
+      logger.error({ err: error }, 'Error creating pricing rule');
       throw new Error('Failed to create pricing rule');
     }
 
@@ -147,7 +148,7 @@ export class PricingService {
       .single();
 
     if (error || !data) {
-      console.error('Error updating pricing rule:', error);
+      logger.error({ err: error }, 'Error updating pricing rule');
       throw new Error('Failed to update pricing rule');
     }
 
@@ -178,7 +179,7 @@ export class PricingService {
       .eq('id', ruleId);
 
     if (error) {
-      console.error('Error deleting pricing rule:', error);
+      logger.error({ err: error }, 'Error deleting pricing rule');
       throw new Error('Failed to delete pricing rule');
     }
   }

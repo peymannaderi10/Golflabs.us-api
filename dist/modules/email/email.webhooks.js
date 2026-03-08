@@ -14,17 +14,18 @@ const svix_1 = require("svix");
 const resend_1 = require("../../config/resend");
 const notification_service_1 = require("./notification.service");
 const marketing_service_1 = require("../marketing/marketing.service");
+const logger_1 = require("../../shared/utils/logger");
 function handleResendWebhook(req, res) {
     return __awaiter(this, void 0, void 0, function* () {
         if (!resend_1.resendConfig.webhookSecret) {
-            console.error('Resend webhook secret not configured');
+            logger_1.logger.error('Resend webhook secret not configured');
             return res.status(400).send('Webhook secret not configured');
         }
         const svixId = req.headers['svix-id'];
         const svixTimestamp = req.headers['svix-timestamp'];
         const svixSignature = req.headers['svix-signature'];
         if (!svixId || !svixTimestamp || !svixSignature) {
-            console.error('Missing Svix webhook headers');
+            logger_1.logger.error('Missing Svix webhook headers');
             return res.status(400).send('Missing webhook headers');
         }
         try {
@@ -39,7 +40,7 @@ function handleResendWebhook(req, res) {
             res.status(200).json({ received: true });
         }
         catch (error) {
-            console.error('Webhook verification failed:', error.message || error);
+            logger_1.logger.error({ err: error }, 'Webhook verification failed');
             res.status(400).send('Invalid webhook signature');
         }
     });
@@ -48,34 +49,34 @@ function processWebhookEvent(event) {
     return __awaiter(this, void 0, void 0, function* () {
         const messageId = event.data.email_id || event.data.message_id;
         if (!messageId) {
-            console.warn('Webhook event missing email_id/message_id:', JSON.stringify(event.data));
+            logger_1.logger.warn({ eventData: event.data }, 'Webhook event missing email_id/message_id');
             return;
         }
-        console.log(`Processing Resend webhook: ${event.type} for message ${messageId}`);
+        logger_1.logger.info({ eventType: event.type, messageId }, 'Processing Resend webhook');
         switch (event.type) {
             case 'email.sent':
                 break;
             case 'email.delivered':
                 yield notification_service_1.NotificationService.updateFromWebhook(messageId, 'delivered', new Date(event.created_at));
                 yield marketing_service_1.MarketingService.processTrackingWebhook(messageId, event.type);
-                console.log(`Email ${messageId} delivered`);
+                logger_1.logger.info({ messageId }, 'Email delivered');
                 break;
             case 'email.bounced':
                 yield notification_service_1.NotificationService.updateFromWebhook(messageId, 'bounced');
                 yield marketing_service_1.MarketingService.processTrackingWebhook(messageId, event.type);
-                console.log(`Email ${messageId} bounced`);
+                logger_1.logger.info({ messageId }, 'Email bounced');
                 break;
             case 'email.complained':
                 yield notification_service_1.NotificationService.updateFromWebhook(messageId, 'complained');
-                console.log(`Email ${messageId} marked as spam`);
+                logger_1.logger.info({ messageId }, 'Email marked as spam');
                 break;
             case 'email.opened':
             case 'email.clicked':
                 yield marketing_service_1.MarketingService.processTrackingWebhook(messageId, event.type);
-                console.log(`Email ${messageId} ${event.type === 'email.opened' ? 'opened' : 'clicked'}`);
+                logger_1.logger.info({ messageId, eventType: event.type }, 'Email tracking event');
                 break;
             default:
-                console.log(`Unhandled Resend webhook event type: ${event.type}`);
+                logger_1.logger.info({ eventType: event.type }, 'Unhandled Resend webhook event type');
         }
     });
 }

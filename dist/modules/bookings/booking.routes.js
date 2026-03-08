@@ -13,8 +13,8 @@ const createBookingRoutes = (socketService) => {
     bookingRoutes.get('/', controller.getBookings);
     bookingRoutes.get('/capacity-holds', controller.getCapacityHolds);
     bookingRoutes.get('/capacity-holds/today', controller.getTodaysHold);
-    bookingRoutes.get('/:bookingId/extension-options', auth_1.authenticateKiosk, (0, validation_1.validateUUID)('bookingId', 'param'), validation_1.handleValidationErrors, controller.getExtensionOptions);
-    bookingRoutes.post('/:bookingId/extend', auth_1.authenticateKiosk, (0, validation_1.validateUUID)('bookingId', 'param'), (0, express_validator_1.body)('extensionMinutes').isInt({ min: 15 }).withMessage('extensionMinutes must be an integer >= 15'), validation_1.handleValidationErrors, controller.extendBooking);
+    bookingRoutes.get('/:bookingId/extension-options', auth_1.authenticateKioskOrEmployee, (0, validation_1.validateUUID)('bookingId', 'param'), validation_1.handleValidationErrors, controller.getExtensionOptions);
+    bookingRoutes.post('/:bookingId/extend', auth_1.authenticateKioskOrEmployee, (0, validation_1.validateUUID)('bookingId', 'param'), (0, express_validator_1.body)('extensionMinutes').isInt({ min: 15 }).withMessage('extensionMinutes must be an integer >= 15'), validation_1.handleValidationErrors, controller.extendBooking);
     // Employee-only routes
     bookingRoutes.get('/employee', auth_1.authenticateEmployee, controller.getEmployeeBookings);
     bookingRoutes.get('/employee/customers/search', auth_1.authenticateEmployee, controller.searchCustomers);

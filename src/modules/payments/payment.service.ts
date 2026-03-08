@@ -283,7 +283,6 @@ export class PaymentService {
 
     const paymentIntent = await stripe.paymentIntents.update(paymentIntentId, {
       receipt_email: email,
-      metadata: { ...existing.metadata, firstName, lastName, phone },
     });
 
     return { success: true, paymentIntent };

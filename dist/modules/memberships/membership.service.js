@@ -24,6 +24,7 @@ exports.MembershipService = void 0;
 const database_1 = require("../../config/database");
 const stripe_1 = require("../../config/stripe");
 const email_service_1 = require("../email/email.service");
+const logger_1 = require("../../shared/utils/logger");
 class MembershipService {
     // =====================================================
     // PLAN CRUD (Employee)
@@ -77,7 +78,7 @@ class MembershipService {
                 .select()
                 .single();
             if (error) {
-                console.error('Error creating membership plan:', error);
+                logger_1.logger.error({ err: error }, 'Error creating membership plan');
                 throw new Error('Failed to create membership plan');
             }
             return plan;
@@ -158,7 +159,7 @@ class MembershipService {
                 .select()
                 .single();
             if (error) {
-                console.error('Error updating membership plan:', error);
+                logger_1.logger.error({ err: error }, 'Error updating membership plan');
                 throw new Error('Failed to update membership plan');
             }
             return updated;
@@ -173,7 +174,7 @@ class MembershipService {
                 .update({ is_active: false })
                 .eq('id', planId);
             if (error) {
-                console.error('Error deactivating membership plan:', error);
+                logger_1.logger.error({ err: error }, 'Error deactivating membership plan');
                 throw new Error('Failed to deactivate membership plan');
             }
         });
@@ -192,7 +193,7 @@ class MembershipService {
             }
             const { data, error } = yield query;
             if (error) {
-                console.error('Error fetching membership plans:', error);
+                logger_1.logger.error({ err: error }, 'Error fetching membership plans');
                 throw new Error('Failed to fetch membership plans');
             }
             return data || [];
@@ -249,11 +250,11 @@ class MembershipService {
                         yield stripe_1.stripe.subscriptions.cancel(row.stripe_subscription_id);
                     }
                     catch (cancelErr) {
-                        console.warn(`Failed to cancel orphaned Stripe subscription ${row.stripe_subscription_id}:`, cancelErr.message);
+                        logger_1.logger.warn({ stripeSubscriptionId: row.stripe_subscription_id, err: cancelErr }, 'Failed to cancel orphaned Stripe subscription');
                     }
                     yield database_1.supabase.from('memberships').delete().eq('id', row.id);
                 }
-                console.log(`Cleaned up ${incompleteRows.length} incomplete membership(s) for user ${userId}`);
+                logger_1.logger.info({ count: incompleteRows.length, userId }, 'Cleaned up incomplete memberships');
             }
             // 3. Ensure Stripe Customer
             const { data: profile, error: profileErr } = yield database_1.supabase
@@ -271,7 +272,7 @@ class MembershipService {
                 }
                 catch (err) {
                     if (err.code === 'resource_missing') {
-                        console.warn(`Stored Stripe customer ${stripeCustomerId} not found, creating new one for user ${userId}`);
+                        logger_1.logger.warn({ stripeCustomerId, userId }, 'Stored Stripe customer not found, creating new one');
                         stripeCustomerId = null;
                     }
                     else {
@@ -323,7 +324,7 @@ class MembershipService {
                 .select('id')
                 .single();
             if (membershipErr) {
-                console.error('Error creating membership record:', membershipErr);
+                logger_1.logger.error({ err: membershipErr }, 'Error creating membership record');
                 yield stripe_1.stripe.subscriptions.cancel(subscription.id);
                 throw new Error('Failed to create membership');
             }
@@ -383,15 +384,15 @@ class MembershipService {
                                 amount: refundAmount,
                                 reason: 'requested_by_customer',
                             });
-                            console.log(`Issued prorated refund of $${(refundAmount / 100).toFixed(2)} for membership ${membershipId}`);
+                            logger_1.logger.info({ refundAmountDollars: (refundAmount / 100).toFixed(2), membershipId }, 'Issued prorated refund');
                         }
                         else {
-                            console.warn(`No charge found on latest invoice for membership ${membershipId}, skipping refund`);
+                            logger_1.logger.warn({ membershipId }, 'No charge found on latest invoice, skipping refund');
                         }
                     }
                 }
                 catch (refundErr) {
-                    console.error(`Error processing prorated refund for membership ${membershipId}:`, refundErr);
+                    logger_1.logger.error({ err: refundErr, membershipId }, 'Error processing prorated refund');
                 }
                 yield database_1.supabase
                     .from('memberships')
@@ -496,7 +497,7 @@ class MembershipService {
                 yield email_service_1.EmailService.sendMembershipCanceledEmail(membership.location_id, emailData);
             }
             catch (err) {
-                console.error('Failed to send membership cancellation email:', err);
+                logger_1.logger.error({ err }, 'Failed to send membership cancellation email');
             }
         });
     }
@@ -513,7 +514,7 @@ class MembershipService {
                 .in('status', ['active', 'trialing', 'past_due', 'incomplete'])
                 .maybeSingle();
             if (error) {
-                console.error('Error fetching user membership:', error);
+                logger_1.logger.error({ err: error }, 'Error fetching user membership');
                 throw new Error('Failed to fetch membership');
             }
             if (!data)
@@ -528,7 +529,7 @@ class MembershipService {
                     }
                 }
                 catch (syncErr) {
-                    console.error('Auto-sync from Stripe failed:', syncErr);
+                    logger_1.logger.error({ err: syncErr }, 'Auto-sync from Stripe failed');
                 }
             }
             const { membership_plans } = data, membership = __rest(data, ["membership_plans"]);
@@ -558,7 +559,7 @@ class MembershipService {
                 return data;
             }
             catch (err) {
-                console.error(`Failed to sync subscription ${stripeSubscriptionId} from Stripe:`, err);
+                logger_1.logger.error({ err, stripeSubscriptionId }, 'Failed to sync subscription from Stripe');
                 return null;
             }
         });
@@ -573,7 +574,7 @@ class MembershipService {
                 .eq('location_id', locationId)
                 .order('created_at', { ascending: false });
             if (error) {
-                console.error('Error fetching subscribers:', error);
+                logger_1.logger.error({ err: error }, 'Error fetching subscribers');
                 throw new Error('Failed to fetch subscribers');
             }
             return data || [];
@@ -593,7 +594,7 @@ class MembershipService {
                 amount,
             });
             if (error) {
-                console.error('Error logging membership usage:', error);
+                logger_1.logger.error({ err: error }, 'Error logging membership usage');
             }
         });
     }
@@ -607,7 +608,7 @@ class MembershipService {
                 .in('status', ['active', 'trialing'])
                 .maybeSingle();
             if (error) {
-                console.error('Error fetching active membership:', error);
+                logger_1.logger.error({ err: error }, 'Error fetching active membership');
                 return null;
             }
             if (!data)
@@ -669,7 +670,7 @@ class MembershipService {
                 .update(updateFields)
                 .eq('location_id', locationId);
             if (error) {
-                console.error('Error updating location settings:', error);
+                logger_1.logger.error({ err: error }, 'Error updating location settings');
                 throw new Error('Failed to update settings');
             }
         });

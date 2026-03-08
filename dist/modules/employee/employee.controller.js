@@ -11,6 +11,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.employeeController = exports.EmployeeController = void 0;
 const employee_service_1 = require("./employee.service");
+const logger_1 = require("../../shared/utils/logger");
 /**
  * Validate query parameters for report endpoints
  */
@@ -64,7 +65,7 @@ class EmployeeController {
                 return res.json(createResponse(data, validation.params));
             }
             catch (error) {
-                console.error('Error in getOverview:', error);
+                logger_1.logger.error({ err: error }, 'Error in getOverview');
                 return res.status(500).json({ success: false, error: error.message || 'Internal server error' });
             }
         });
@@ -85,7 +86,7 @@ class EmployeeController {
                 return res.json(createResponse(data, validation.params));
             }
             catch (error) {
-                console.error('Error in getRevenueStats:', error);
+                logger_1.logger.error({ err: error }, 'Error in getRevenueStats');
                 return res.status(500).json({ success: false, error: error.message || 'Internal server error' });
             }
         });
@@ -106,7 +107,7 @@ class EmployeeController {
                 return res.json(createResponse(data, validation.params));
             }
             catch (error) {
-                console.error('Error in getBookingStats:', error);
+                logger_1.logger.error({ err: error }, 'Error in getBookingStats');
                 return res.status(500).json({ success: false, error: error.message || 'Internal server error' });
             }
         });
@@ -127,7 +128,7 @@ class EmployeeController {
                 return res.json(createResponse(data, validation.params));
             }
             catch (error) {
-                console.error('Error in getBayStats:', error);
+                logger_1.logger.error({ err: error }, 'Error in getBayStats');
                 return res.status(500).json({ success: false, error: error.message || 'Internal server error' });
             }
         });
@@ -148,7 +149,7 @@ class EmployeeController {
                 return res.json(createResponse(data, validation.params));
             }
             catch (error) {
-                console.error('Error in getAccessLogStats:', error);
+                logger_1.logger.error({ err: error }, 'Error in getAccessLogStats');
                 return res.status(500).json({ success: false, error: error.message || 'Internal server error' });
             }
         });
@@ -175,7 +176,7 @@ class EmployeeController {
                 return res.send(csv);
             }
             catch (error) {
-                console.error('Error in exportReport:', error);
+                logger_1.logger.error({ err: error }, 'Error in exportReport');
                 return res.status(500).json({ success: false, error: error.message || 'Internal server error' });
             }
         });
@@ -207,7 +208,7 @@ class EmployeeController {
                 });
             }
             catch (error) {
-                console.error('Error in getCustomers:', error);
+                logger_1.logger.error({ err: error }, 'Error in getCustomers');
                 return res.status(500).json({ success: false, error: error.message || 'Internal server error' });
             }
         });
@@ -245,7 +246,7 @@ class EmployeeController {
                 return res.json({ success: true });
             }
             catch (error) {
-                console.error('Error in updateCustomer:', error);
+                logger_1.logger.error({ err: error }, 'Error in updateCustomer');
                 return res.status(500).json({ success: false, error: error.message || 'Internal server error' });
             }
         });

@@ -11,6 +11,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.handleExpiredReservations = handleExpiredReservations;
 const database_1 = require("../config/database");
+const logger_1 = require("../shared/utils/logger");
 // Function to handle expired reservations
 function handleExpiredReservations() {
     return __awaiter(this, void 0, void 0, function* () {
@@ -22,13 +23,13 @@ function handleExpiredReservations() {
                 .lt('expires_at', now)
                 .eq('status', 'reserved');
             if (error) {
-                console.error('Error handling expired reservations:', error);
+                logger_1.logger.error({ err: error }, 'Error handling expired reservations');
                 return;
             }
-            console.log('Checked for expired reservations');
+            logger_1.logger.info('Checked for expired reservations');
         }
         catch (error) {
-            console.error('Error in handleExpiredReservations:', error);
+            logger_1.logger.error({ err: error }, 'Error in handleExpiredReservations');
         }
     });
 }

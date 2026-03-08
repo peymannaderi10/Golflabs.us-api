@@ -11,6 +11,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.dispatchNotifications = dispatchNotifications;
 const email_service_1 = require("../modules/email/email.service");
+const logger_1 = require("../shared/utils/logger");
 /**
  * Dispatch pending email notifications
  * This function is called by the scheduler to process and send queued emails
@@ -20,11 +21,11 @@ function dispatchNotifications() {
         try {
             const dispatched = yield email_service_1.EmailService.dispatchPendingNotifications();
             if (dispatched > 0) {
-                console.log(`[Notification Job] Dispatched ${dispatched} notifications`);
+                logger_1.logger.info({ count: dispatched }, 'Dispatched notifications');
             }
         }
         catch (error) {
-            console.error('[Notification Job] Error dispatching notifications:', error);
+            logger_1.logger.error({ err: error }, 'Error dispatching notifications');
         }
     });
 }

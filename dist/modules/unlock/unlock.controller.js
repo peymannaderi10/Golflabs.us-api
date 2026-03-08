@@ -13,6 +13,7 @@ exports.UnlockController = void 0;
 const database_1 = require("../../config/database");
 const token_utils_1 = require("../../shared/utils/token.utils");
 const error_utils_1 = require("../../shared/utils/error.utils");
+const logger_1 = require("../../shared/utils/logger");
 class UnlockController {
     constructor(socketService) {
         /**
@@ -33,7 +34,7 @@ class UnlockController {
                     .eq('status', 'available')
                     .order('bay_number', { ascending: true });
                 if (baysError) {
-                    console.error('Error fetching bays:', baysError);
+                    logger_1.logger.error({ err: baysError }, 'Error fetching bays');
                     return res.status(500).json({ error: 'Failed to fetch bays' });
                 }
                 if (!bays || bays.length === 0) {
@@ -45,9 +46,9 @@ class UnlockController {
                 const employeeId = ((_a = req.user) === null || _a === void 0 ? void 0 : _a.id) || 'unknown';
                 // Try each bay until one successfully responds
                 for (const bay of bays) {
-                    console.log(`Attempting employee unlock on bay ${bay.name} (${bay.id})`);
+                    logger_1.logger.info({ bayName: bay.name, bayId: bay.id }, 'Attempting employee unlock on bay');
                     const unlockSuccessful = yield this.socketService.sendUnlockCommand(locationId, bay.id, 5, // 5 seconds unlock duration
-                    `employee-unlock-${Date.now()}` // Pseudo booking ID for logging
+                    `employee-unlock` // Not a real booking -- access log is created separately with booking_id: null
                     );
                     if (unlockSuccessful) {
                         // Log the successful unlock
@@ -66,7 +67,7 @@ class UnlockController {
                                 bay_number: bay.bay_number
                             }
                         });
-                        console.log(`Employee unlock successful on bay ${bay.name}`);
+                        logger_1.logger.info({ bayName: bay.name }, 'Employee unlock successful on bay');
                         return res.json({
                             success: true,
                             message: `Door unlocked successfully via ${bay.name}`,
@@ -76,14 +77,14 @@ class UnlockController {
                     }
                 }
                 // If no bay responded successfully
-                console.error(`Employee unlock failed: No kiosk responded for location ${locationId}`);
+                logger_1.logger.error({ locationId }, 'Employee unlock failed - no kiosk responded');
                 return res.status(503).json({
                     success: false,
                     error: 'No kiosk responded to the unlock command. Please ensure at least one kiosk is online.'
                 });
             }
             catch (error) {
-                console.error('Error in employee unlock:', error);
+                logger_1.logger.error({ err: error }, 'Error in employee unlock');
                 res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
@@ -108,11 +109,11 @@ class UnlockController {
                     .eq('id', bookingId)
                     .single();
                 if (bookingError || !booking) {
-                    console.error(`Booking ${bookingId} not found:`, bookingError);
+                    logger_1.logger.error({ err: bookingError, bookingId }, 'Booking not found');
                     return res.status(404).json({ error: 'Booking not found' });
                 }
                 if (booking.status !== 'confirmed') {
-                    console.log(`Booking ${bookingId} has invalid status for unlock: ${booking.status}`);
+                    logger_1.logger.info({ bookingId, status: booking.status }, 'Booking has invalid status for unlock');
                     return res.status(403).json({ error: 'Booking is not confirmed' });
                 }
                 // Check if booking is currently active (within the time window)
@@ -157,14 +158,14 @@ class UnlockController {
                     }
                 });
                 if (logError) {
-                    console.error('Error logging unlock attempt:', logError);
+                    logger_1.logger.error({ err: logError }, 'Error logging unlock attempt');
                     // Don't fail the request, just log the error
                 }
                 // Send unlock command to kiosk via websocket
                 const unlockSuccessful = yield this.socketService.sendUnlockCommand(booking.location_id, booking.bay_id, 5, // 5 seconds unlock duration
                 bookingId);
                 if (!unlockSuccessful) {
-                    console.error(`Unlock failed for booking ${bookingId}: Kiosk did not confirm.`);
+                    logger_1.logger.error({ bookingId }, 'Unlock failed - kiosk did not confirm');
                     // Log the failure
                     yield database_1.supabase.from('access_logs').insert({
                         location_id: booking.location_id,
@@ -184,7 +185,7 @@ class UnlockController {
                         error: 'The door unlock system is currently offline or the lock is unreachable. Please try again in a moment. If the problem persists, please contact support.'
                     });
                 }
-                console.log(`Door unlock command acknowledged as successful for booking ${bookingId}`);
+                logger_1.logger.info({ bookingId }, 'Door unlock command acknowledged as successful');
                 res.json({
                     success: true,
                     message: 'Access granted! The door is now unlocked.',
@@ -193,7 +194,7 @@ class UnlockController {
                 });
             }
             catch (error) {
-                console.error('Error in unlock door:', error);
+                logger_1.logger.error({ err: error }, 'Error in unlock door');
                 res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });

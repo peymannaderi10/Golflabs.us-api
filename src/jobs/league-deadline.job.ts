@@ -1,4 +1,5 @@
 import { LeagueService } from '../modules/leagues/league.service';
+import { logger } from '../shared/utils/logger';
 
 const leagueService = new LeagueService();
 
@@ -16,9 +17,9 @@ export async function processTeamDeadlines(): Promise<void> {
     const result = await leagueService.processTeamDeadlines();
 
     if (result.disqualified.length > 0) {
-      console.log(`[league-deadline] Disqualified ${result.disqualified.length} team(s):`, result.disqualified);
+      logger.info({ count: result.disqualified.length, disqualified: result.disqualified }, 'Disqualified teams');
     }
   } catch (error) {
-    console.error('[league-deadline] Error processing team deadlines:', error);
+    logger.error({ err: error }, 'Error processing team deadlines');
   }
 }

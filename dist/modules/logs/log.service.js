@@ -11,6 +11,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.LogService = void 0;
 const database_1 = require("../../config/database");
+const logger_1 = require("../../shared/utils/logger");
 class LogService {
     createAccessLog(logData) {
         return __awaiter(this, void 0, void 0, function* () {
@@ -35,7 +36,7 @@ class LogService {
                     }
                 }
                 catch (lookupError) {
-                    console.warn('Could not look up user_id from booking:', lookupError);
+                    logger_1.logger.warn({ err: lookupError }, 'Could not look up user_id from booking');
                     // Continue without the user_id - don't fail the log creation
                 }
             }
@@ -45,7 +46,7 @@ class LogService {
                 .select()
                 .single();
             if (error) {
-                console.error('Error creating access log:', error);
+                logger_1.logger.error({ err: error }, 'Error creating access log');
                 throw new Error('Failed to create access log');
             }
             return data;
@@ -115,7 +116,7 @@ class LogService {
             const { data, error, count } = yield query
                 .range(offset, offset + pageSize - 1);
             if (error) {
-                console.error('Error fetching access logs:', error);
+                logger_1.logger.error({ err: error }, 'Error fetching access logs');
                 throw new Error('Failed to fetch access logs');
             }
             return {

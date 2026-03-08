@@ -12,6 +12,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.employeeService = exports.EmployeeService = void 0;
 const database_1 = require("../../config/database");
 const date_utils_1 = require("../../shared/utils/date.utils");
+const logger_1 = require("../../shared/utils/logger");
 class EmployeeService {
     /**
      * Get revenue statistics for a location within a date range
@@ -37,7 +38,7 @@ class EmployeeService {
                 .lte('processed_at', endUTC)
                 .order('processed_at', { ascending: true });
             if (error) {
-                console.error('Error fetching revenue stats:', error);
+                logger_1.logger.error({ err: error }, 'Error fetching revenue stats');
                 throw error;
             }
             // Aggregate daily revenue
@@ -94,7 +95,7 @@ class EmployeeService {
                 .neq('status', 'abandoned')
                 .neq('status', 'expired');
             if (error) {
-                console.error('Error fetching booking stats:', error);
+                logger_1.logger.error({ err: error }, 'Error fetching booking stats');
                 throw error;
             }
             const allBookings = bookings || [];
@@ -176,7 +177,7 @@ class EmployeeService {
                 .is('deleted_at', null)
                 .order('bay_number');
             if (baysError) {
-                console.error('Error fetching bays:', baysError);
+                logger_1.logger.error({ err: baysError }, 'Error fetching bays');
                 throw baysError;
             }
             // Get confirmed bookings for each bay
@@ -188,7 +189,7 @@ class EmployeeService {
                 .gte('start_time', startUTC)
                 .lte('start_time', endUTC);
             if (bookingsError) {
-                console.error('Error fetching bay bookings:', bookingsError);
+                logger_1.logger.error({ err: bookingsError }, 'Error fetching bay bookings');
                 throw bookingsError;
             }
             // Calculate operating hours for utilization calculation
@@ -265,7 +266,7 @@ class EmployeeService {
                 .gte('timestamp', startUTC)
                 .lte('timestamp', endUTC);
             if (error) {
-                console.error('Error fetching access logs:', error);
+                logger_1.logger.error({ err: error }, 'Error fetching access logs');
                 throw error;
             }
             const allLogs = logs || [];
@@ -409,7 +410,7 @@ class EmployeeService {
             query = query.order(sortColumn, { ascending: sortOrder === 'asc' });
             const { data: profiles, count, error } = yield query;
             if (error) {
-                console.error('Error fetching customers:', error);
+                logger_1.logger.error({ err: error }, 'Error fetching customers');
                 throw error;
             }
             // Fetch stats for these users at this location

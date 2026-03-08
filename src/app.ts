@@ -25,6 +25,7 @@ import { BookingController } from './modules/bookings/booking.controller';
 import { SocketService } from './modules/sockets/socket.service';
 import { authenticateUser } from './modules/auth';
 import { logger } from './shared/utils/logger';
+import { breachMonitor } from './shared/middleware/breach-monitor';
 
 export const app = express();
 export const httpServer = createServer(app);
@@ -104,6 +105,7 @@ const globalRateLimit = rateLimit({
   skip: (req) => req.path === '/health',
 });
 app.use(globalRateLimit);
+app.use(breachMonitor);
 
 const LONG_RUNNING_PATHS = ['/employee/marketing/campaigns'];
 

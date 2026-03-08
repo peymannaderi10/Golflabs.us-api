@@ -1,5 +1,6 @@
 import { supabase } from '../../config/database';
 import { CreateNotificationParams, NotificationRecord } from './email.types';
+import { logger } from '../../shared/utils/logger';
 
 export class NotificationService {
   /**
@@ -27,7 +28,7 @@ export class NotificationService {
       .single();
 
     if (error) {
-      console.error('Error creating notification:', error);
+      logger.error({ err: error }, 'Error creating notification');
       throw new Error(`Failed to create notification: ${error.message}`);
     }
 
@@ -50,7 +51,7 @@ export class NotificationService {
       .limit(limit);
 
     if (error) {
-      console.error('Error fetching pending notifications:', error);
+      logger.error({ err: error }, 'Error fetching pending notifications');
       throw new Error(`Failed to fetch pending notifications: ${error.message}`);
     }
 
@@ -71,7 +72,7 @@ export class NotificationService {
       .eq('id', notificationId);
 
     if (error) {
-      console.error(`Error marking notification ${notificationId} as sent:`, error);
+      logger.error({ err: error, notificationId }, 'Error marking notification as sent');
       throw new Error(`Failed to mark notification as sent: ${error.message}`);
     }
   }
@@ -89,7 +90,7 @@ export class NotificationService {
       .eq('id', notificationId);
 
     if (error) {
-      console.error(`Error marking notification ${notificationId} as failed:`, error);
+      logger.error({ err: error, notificationId }, 'Error marking notification as failed');
     }
   }
 
@@ -118,7 +119,7 @@ export class NotificationService {
       .eq('resend_message_id', resendMessageId);
 
     if (error) {
-      console.error(`Error updating notification status from webhook:`, error);
+      logger.error({ err: error, resendMessageId }, 'Error updating notification status from webhook');
     }
   }
 
@@ -133,7 +134,7 @@ export class NotificationService {
       .eq('type', type);
 
     if (error) {
-      console.error('Error checking notification existence:', error);
+      logger.error({ err: error }, 'Error checking notification existence');
       return false;
     }
 
@@ -181,22 +182,18 @@ export class NotificationService {
       .single();
 
     if (error) {
-      console.error(`Error fetching booking data for ${bookingId}:`, error);
+      logger.error({ err: error, bookingId }, 'Error fetching booking data');
       return null;
     }
 
     if (!data) {
-      console.error(`No booking found for ${bookingId}`);
+      logger.error({ bookingId }, 'No booking found');
       return null;
     }
 
     // Check if we have the required related data
     if (!data.user_profiles || !data.bays || !data.locations) {
-      console.error(`Missing related data for booking ${bookingId}:`, {
-        hasUser: !!data.user_profiles,
-        hasBay: !!data.bays,
-        hasLocation: !!data.locations
-      });
+      logger.error({ bookingId, hasUser: !!data.user_profiles, hasBay: !!data.bays, hasLocation: !!data.locations }, 'Missing related data for booking');
       return null;
     }
 
@@ -206,7 +203,7 @@ export class NotificationService {
     const location = Array.isArray(data.locations) ? data.locations[0] : data.locations;
 
     if (!userProfile || !bay || !location) {
-      console.error(`Missing required nested data for booking ${bookingId}`);
+      logger.error({ bookingId }, 'Missing required nested data for booking');
       return null;
     }
 

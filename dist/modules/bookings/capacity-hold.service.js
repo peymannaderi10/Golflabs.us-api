@@ -11,6 +11,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.CapacityHoldService = void 0;
 const database_1 = require("../../config/database");
+const logger_1 = require("../../shared/utils/logger");
 class CapacityHoldService {
     /**
      * Generate capacity holds for all weeks of a league.
@@ -37,10 +38,10 @@ class CapacityHoldService {
                 .from('capacity_holds')
                 .insert(rows);
             if (error) {
-                console.error('Failed to generate capacity holds:', error);
+                logger_1.logger.error({ err: error }, 'Failed to generate capacity holds');
                 throw new Error(`Failed to generate capacity holds: ${error.message}`);
             }
-            console.log(`Generated ${rows.length} capacity holds for league ${leagueId}`);
+            logger_1.logger.info({ count: rows.length, leagueId }, 'Generated capacity holds for league');
         });
     }
     /**
@@ -54,7 +55,7 @@ class CapacityHoldService {
                 .eq('league_id', leagueId)
                 .eq('status', 'active');
             if (error) {
-                console.error('Failed to release holds for league:', error);
+                logger_1.logger.error({ err: error }, 'Failed to release holds for league');
                 throw new Error(`Failed to release holds: ${error.message}`);
             }
         });
@@ -100,7 +101,7 @@ class CapacityHoldService {
                 .eq('hold_date', date)
                 .eq('status', 'active');
             if (error) {
-                console.error('Failed to fetch capacity holds:', error);
+                logger_1.logger.error({ err: error }, 'Failed to fetch capacity holds');
                 return [];
             }
             return (data || []).map((h) => {

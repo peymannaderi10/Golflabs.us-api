@@ -1,4 +1,5 @@
 import { supabase } from '../config/database';
+import { logger } from '../shared/utils/logger';
 
 // Function to handle expired reservations
 export async function handleExpiredReservations() {
@@ -11,12 +12,12 @@ export async function handleExpiredReservations() {
       .eq('status', 'reserved');
 
     if (error) {
-      console.error('Error handling expired reservations:', error);
+      logger.error({ err: error }, 'Error handling expired reservations');
       return;
     }
 
-    console.log('Checked for expired reservations');
+    logger.info('Checked for expired reservations');
   } catch (error) {
-    console.error('Error in handleExpiredReservations:', error);
+    logger.error({ err: error }, 'Error in handleExpiredReservations');
   }
 } 

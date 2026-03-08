@@ -11,16 +11,17 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.processScheduledCampaigns = processScheduledCampaigns;
 const marketing_service_1 = require("../modules/marketing/marketing.service");
+const logger_1 = require("../shared/utils/logger");
 function processScheduledCampaigns() {
     return __awaiter(this, void 0, void 0, function* () {
         try {
             const sent = yield marketing_service_1.MarketingService.sendDueScheduledCampaigns();
             if (sent > 0) {
-                console.log(`Marketing scheduler: sent ${sent} scheduled campaign(s)`);
+                logger_1.logger.info({ count: sent }, 'Sent scheduled campaigns');
             }
         }
         catch (error) {
-            console.error('Marketing scheduler error:', error);
+            logger_1.logger.error({ err: error }, 'Marketing scheduler error');
         }
     });
 }

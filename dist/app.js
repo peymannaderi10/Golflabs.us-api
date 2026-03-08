@@ -41,6 +41,7 @@ const booking_controller_1 = require("./modules/bookings/booking.controller");
 const socket_service_1 = require("./modules/sockets/socket.service");
 const auth_1 = require("./modules/auth");
 const logger_1 = require("./shared/utils/logger");
+const breach_monitor_1 = require("./shared/middleware/breach-monitor");
 exports.app = (0, express_1.default)();
 exports.httpServer = (0, http_1.createServer)(exports.app);
 exports.app.set('trust proxy', 1);
@@ -108,6 +109,7 @@ const globalRateLimit = (0, express_rate_limit_1.default)({
     skip: (req) => req.path === '/health',
 });
 exports.app.use(globalRateLimit);
+exports.app.use(breach_monitor_1.breachMonitor);
 const LONG_RUNNING_PATHS = ['/employee/marketing/campaigns'];
 exports.app.use((req, res, next) => {
     const isLongRunning = LONG_RUNNING_PATHS.some((p) => req.path.startsWith(p) && req.method === 'POST');

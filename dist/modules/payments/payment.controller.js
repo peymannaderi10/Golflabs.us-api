@@ -11,6 +11,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.PaymentController = void 0;
 const payment_service_1 = require("./payment.service");
+const logger_1 = require("../../shared/utils/logger");
 class PaymentController {
     constructor() {
         this.createPaymentIntent = (req, res) => __awaiter(this, void 0, void 0, function* () {
@@ -32,7 +33,7 @@ class PaymentController {
                 res.json(result);
             }
             catch (error) {
-                console.error(`Error in /bookings/${req.params.bookingId}/create-payment-intent:`, error);
+                logger_1.logger.error({ err: error, bookingId: req.params.bookingId }, 'Error in create-payment-intent');
                 if (error.message === 'Booking not found.') {
                     return res.status(404).json({ error: error.message });
                 }
@@ -51,7 +52,7 @@ class PaymentController {
                 res.json(result);
             }
             catch (error) {
-                console.error('Error updating payment intent:', error);
+                logger_1.logger.error({ err: error }, 'Error updating payment intent');
                 res.status(500).json({
                     error: 'Failed to update payment intent',
                     details: error.message
@@ -65,7 +66,7 @@ class PaymentController {
                 res.json(result);
             }
             catch (error) {
-                console.error("Error retrieving payment intent:", error);
+                logger_1.logger.error({ err: error }, 'Error retrieving payment intent');
                 if (error.message === "Payment Intent ID is required") {
                     return res.status(400).json({ error: error.message });
                 }
@@ -79,7 +80,7 @@ class PaymentController {
                 res.json(result);
             }
             catch (error) {
-                console.error('Error retrieving setup intent:', error);
+                logger_1.logger.error({ err: error }, 'Error retrieving setup intent');
                 if (error.message === 'Setup Intent ID is required') {
                     return res.status(400).json({ error: error.message });
                 }
@@ -93,7 +94,7 @@ class PaymentController {
                 res.json(result);
             }
             catch (error) {
-                console.error('Error in /calculate-price:', error);
+                logger_1.logger.error({ err: error }, 'Error in calculate-price');
                 if (error.message.includes('required')) {
                     return res.status(400).json({ error: error.message });
                 }

@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { LocationService } from './location.service';
+import { logger } from '../../shared/utils/logger';
 
 export class LocationController {
   private locationService: LocationService;
@@ -13,7 +14,7 @@ export class LocationController {
       const locations = await this.locationService.getAllLocations();
       res.json(locations);
     } catch (error: any) {
-      console.error('Error in /locations endpoint:', error);
+      logger.error({ err: error }, 'Error in /locations endpoint');
       res.status(500).json({ error: 'An unexpected error occurred' });
     }
   };
@@ -24,7 +25,7 @@ export class LocationController {
       const location = await this.locationService.getLocationById(locationId);
       res.json(location);
     } catch (error: any) {
-      console.error(`Error in /locations/${req.params.locationId} endpoint:`, error);
+      logger.error({ err: error, locationId: req.params.locationId }, 'Error in get location endpoint');
       if (error.message === 'Location ID is required') {
         return res.status(400).json({ error: error.message });
       }
@@ -49,7 +50,7 @@ export class LocationController {
       const location = await this.locationService.updateLocation(locationId, updates);
       res.json(location);
     } catch (error: any) {
-      console.error(`Error updating location ${req.params.locationId}:`, error);
+      logger.error({ err: error, locationId: req.params.locationId }, 'Error updating location');
       if (error.message === 'Location ID is required') {
         return res.status(400).json({ error: error.message });
       }

@@ -1,4 +1,5 @@
 import { supabase } from '../../config/database';
+import { logger } from '../../shared/utils/logger';
 
 export interface AccessLogData {
   bay_id: string;
@@ -41,7 +42,7 @@ export class LogService {
           }
         }
       } catch (lookupError) {
-        console.warn('Could not look up user_id from booking:', lookupError);
+        logger.warn({ err: lookupError }, 'Could not look up user_id from booking');
         // Continue without the user_id - don't fail the log creation
       }
     }
@@ -56,7 +57,7 @@ export class LogService {
       .single();
 
     if (error) {
-      console.error('Error creating access log:', error);
+      logger.error({ err: error }, 'Error creating access log');
       throw new Error('Failed to create access log');
     }
 
@@ -138,7 +139,7 @@ export class LogService {
       .range(offset, offset + pageSize - 1);
 
     if (error) {
-      console.error('Error fetching access logs:', error);
+      logger.error({ err: error }, 'Error fetching access logs');
       throw new Error('Failed to fetch access logs');
     }
 

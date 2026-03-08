@@ -15,6 +15,7 @@ const stripe_1 = require("../../config/stripe");
 const email_service_1 = require("../email/email.service");
 const capacity_hold_service_1 = require("../bookings/capacity-hold.service");
 const handicap_utils_1 = require("./handicap.utils");
+const logger_1 = require("../../shared/utils/logger");
 class LeagueService {
     constructor() {
         this.capacityHoldService = new capacity_hold_service_1.CapacityHoldService();
@@ -80,7 +81,7 @@ class LeagueService {
                     .insert(courseRows)
                     .select();
                 if (coursesError) {
-                    console.error('Failed to create league courses:', coursesError);
+                    logger_1.logger.error({ err: coursesError }, 'Failed to create league courses');
                 }
                 else {
                     createdCourses = coursesData || [];
@@ -118,7 +119,7 @@ class LeagueService {
                 .insert(weeks)
                 .select('id, date');
             if (weeksError) {
-                console.error('Failed to create league weeks:', weeksError);
+                logger_1.logger.error({ err: weeksError }, 'Failed to create league weeks');
                 // Non-fatal — league is still created
             }
             // Generate capacity holds for each league week
@@ -132,7 +133,7 @@ class LeagueService {
                     });
                 }
                 catch (holdError) {
-                    console.error('Failed to generate capacity holds:', holdError.message);
+                    logger_1.logger.error({ err: holdError }, 'Failed to generate capacity holds');
                     // Non-fatal — league is still created
                 }
             }
@@ -242,7 +243,7 @@ class LeagueService {
                     });
                 }
                 catch (holdError) {
-                    console.error('Failed to update capacity holds:', holdError.message);
+                    logger_1.logger.error({ err: holdError }, 'Failed to update capacity holds');
                 }
             }
             return league;
@@ -264,7 +265,7 @@ class LeagueService {
                 yield this.capacityHoldService.releaseHoldsForLeague(leagueId);
             }
             catch (holdError) {
-                console.error('Failed to release capacity holds:', holdError.message);
+                logger_1.logger.error({ err: holdError }, 'Failed to release capacity holds');
             }
             return league;
         });
@@ -330,7 +331,7 @@ class LeagueService {
                 league_player_id: player.id,
             });
             if (standingsError) {
-                console.error('Failed to create standings row:', standingsError);
+                logger_1.logger.error({ err: standingsError }, 'Failed to create standings row');
             }
             return player;
         });
@@ -558,7 +559,7 @@ class LeagueService {
                     yield this.recalculateTeamStandings(leagueId);
                 }
                 catch (teamError) {
-                    console.error(`Error recalculating team standings:`, teamError.message);
+                    logger_1.logger.error({ err: teamError }, 'Error recalculating team standings');
                 }
             }
             // Generate weekly prize payouts if prize pot is configured
@@ -568,7 +569,7 @@ class LeagueService {
                     payouts = yield this.generateWeekPayouts(leagueId, weekId);
                 }
                 catch (payoutError) {
-                    console.error(`Error generating payouts for week ${weekId}:`, payoutError.message);
+                    logger_1.logger.error({ err: payoutError, weekId }, 'Error generating payouts for week');
                     // Don't fail the whole finalize if payout generation fails
                 }
             }
@@ -1788,7 +1789,7 @@ class LeagueService {
                 .select('league_player_id, strokes')
                 .eq('league_week_id', weekId);
             if (scoresError || !weekScores || weekScores.length === 0) {
-                console.log(`No scores found for week ${weekId}, skipping payout generation.`);
+                logger_1.logger.info({ weekId }, 'No scores found for week, skipping payout generation');
                 return [];
             }
             // Aggregate per player
@@ -2010,7 +2011,7 @@ class LeagueService {
                 description,
             });
             if (error) {
-                console.error(`Failed to insert prize contribution:`, error);
+                logger_1.logger.error({ err: error }, 'Failed to insert prize contribution');
                 // Don't throw — contribution tracking failure shouldn't break enrollment
             }
         });
@@ -2095,7 +2096,7 @@ class LeagueService {
                     league_team_id: team.id,
                 });
                 if (playerError) {
-                    console.error('Failed to create captain player record:', playerError);
+                    logger_1.logger.error({ err: playerError }, 'Failed to create captain player record');
                 }
             }
             return team;
@@ -2218,7 +2219,7 @@ class LeagueService {
                     playersPerTeam: league.players_per_team,
                     acceptUrl: `${frontendUrl}/team-invite/${invite.invite_token}`,
                     declineUrl: `${frontendUrl}/team-invite/${invite.invite_token}?action=decline`,
-                }).catch(err => console.error('Failed to send team invite email:', err));
+                }).catch(err => logger_1.logger.error({ err }, 'Failed to send team invite email'));
             }
             return { invited, errors };
         });
@@ -2280,7 +2281,7 @@ class LeagueService {
                 league_team_id: team.id,
             }, { onConflict: 'league_id,user_id' });
             if (playerError) {
-                console.error('Failed to create player record on invite accept:', playerError);
+                logger_1.logger.error({ err: playerError }, 'Failed to create player record on invite accept');
             }
             // Check if all invites are now accepted
             yield this.checkAndTransitionTeamStatus(team.id);
@@ -2657,7 +2658,7 @@ class LeagueService {
                         refundedPlayers.push(member.display_name);
                     }
                     catch (refundError) {
-                        console.error(`Failed to refund player ${member.id}:`, refundError.message);
+                        logger_1.logger.error({ err: refundError, playerId: member.id }, 'Failed to refund player');
                     }
                 }
                 // Mark all team members as withdrawn
@@ -2734,7 +2735,7 @@ class LeagueService {
                             disqualified.push(`${team.team_name} (league: ${league.name})`);
                         }
                         catch (err) {
-                            console.error(`Failed to disqualify team ${team.id}:`, err.message);
+                            logger_1.logger.error({ err, teamId: team.id }, 'Failed to disqualify team');
                         }
                     }
                 }

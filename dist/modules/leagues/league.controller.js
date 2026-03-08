@@ -14,6 +14,7 @@ const league_service_1 = require("./league.service");
 const attendance_service_1 = require("./attendance.service");
 const capacity_hold_service_1 = require("../bookings/capacity-hold.service");
 const error_utils_1 = require("../../shared/utils/error.utils");
+const logger_1 = require("../../shared/utils/logger");
 class LeagueController {
     constructor(socketService) {
         // =====================================================
@@ -25,7 +26,7 @@ class LeagueController {
                 res.status(201).json(league);
             }
             catch (error) {
-                console.error('Error creating league:', error);
+                logger_1.logger.error({ err: error }, 'Error creating league');
                 res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
@@ -39,7 +40,7 @@ class LeagueController {
                 res.json(leagues);
             }
             catch (error) {
-                console.error('Error fetching leagues:', error);
+                logger_1.logger.error({ err: error }, 'Error fetching leagues');
                 res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
@@ -49,7 +50,7 @@ class LeagueController {
                 res.json(league);
             }
             catch (error) {
-                console.error('Error fetching league:', error);
+                logger_1.logger.error({ err: error }, 'Error fetching league');
                 res.status(404).json({ error: error.message });
             }
         });
@@ -59,7 +60,7 @@ class LeagueController {
                 res.json(league);
             }
             catch (error) {
-                console.error('Error updating league:', error);
+                logger_1.logger.error({ err: error }, 'Error updating league');
                 res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
@@ -69,7 +70,7 @@ class LeagueController {
                 res.json(league);
             }
             catch (error) {
-                console.error('Error activating league:', error);
+                logger_1.logger.error({ err: error }, 'Error activating league');
                 res.status(400).json({ error: error.message });
             }
         });
@@ -82,7 +83,7 @@ class LeagueController {
                 res.status(201).json(course);
             }
             catch (error) {
-                console.error('Error adding course:', error);
+                logger_1.logger.error({ err: error }, 'Error adding course');
                 res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
@@ -92,7 +93,7 @@ class LeagueController {
                 res.json(courses);
             }
             catch (error) {
-                console.error('Error fetching courses:', error);
+                logger_1.logger.error({ err: error }, 'Error fetching courses');
                 res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
@@ -102,7 +103,7 @@ class LeagueController {
                 res.json(course);
             }
             catch (error) {
-                console.error('Error updating course:', error);
+                logger_1.logger.error({ err: error }, 'Error updating course');
                 res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
@@ -112,7 +113,7 @@ class LeagueController {
                 res.json({ success: true });
             }
             catch (error) {
-                console.error('Error deleting course:', error);
+                logger_1.logger.error({ err: error }, 'Error deleting course');
                 res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
@@ -126,7 +127,7 @@ class LeagueController {
                 res.json(week);
             }
             catch (error) {
-                console.error('Error assigning course to week:', error);
+                logger_1.logger.error({ err: error }, 'Error assigning course to week');
                 res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
@@ -139,7 +140,7 @@ class LeagueController {
                 res.status(201).json(player);
             }
             catch (error) {
-                console.error('Error enrolling player:', error);
+                logger_1.logger.error({ err: error }, 'Error enrolling player');
                 if (error.message.includes('already enrolled')) {
                     return res.status(409).json({ error: error.message });
                 }
@@ -155,7 +156,7 @@ class LeagueController {
                 res.json(players);
             }
             catch (error) {
-                console.error('Error fetching players:', error);
+                logger_1.logger.error({ err: error }, 'Error fetching players');
                 res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
@@ -165,7 +166,7 @@ class LeagueController {
                 res.json({ success: true });
             }
             catch (error) {
-                console.error('Error withdrawing player:', error);
+                logger_1.logger.error({ err: error }, 'Error withdrawing player');
                 res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
@@ -185,7 +186,7 @@ class LeagueController {
                 res.json({ success: true });
             }
             catch (error) {
-                console.error('Error overriding handicap:', error);
+                logger_1.logger.error({ err: error }, 'Error overriding handicap');
                 res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
@@ -198,7 +199,7 @@ class LeagueController {
                 res.json(weeks);
             }
             catch (error) {
-                console.error('Error fetching weeks:', error);
+                logger_1.logger.error({ err: error }, 'Error fetching weeks');
                 res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
@@ -208,7 +209,7 @@ class LeagueController {
                 res.json(week);
             }
             catch (error) {
-                console.error('Error activating week:', error);
+                logger_1.logger.error({ err: error }, 'Error activating week');
                 res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
@@ -226,7 +227,7 @@ class LeagueController {
                 res.json(result);
             }
             catch (error) {
-                console.error('Error finalizing week:', error);
+                logger_1.logger.error({ err: error }, 'Error finalizing week');
                 res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
@@ -270,7 +271,7 @@ class LeagueController {
                 res.json(result);
             }
             catch (error) {
-                console.error('Error submitting score:', error);
+                logger_1.logger.error({ err: error }, 'Error submitting score');
                 const status = error.message.includes('not found') || error.message.includes('Must be active') || error.message.includes('Cannot submit') || error.message.includes('exceeds') ? 400 : 500;
                 res.status(status).json({ error: error.message });
             }
@@ -281,7 +282,7 @@ class LeagueController {
                 res.json(scores);
             }
             catch (error) {
-                console.error('Error fetching week scores:', error);
+                logger_1.logger.error({ err: error }, 'Error fetching week scores');
                 res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
@@ -291,7 +292,7 @@ class LeagueController {
                 res.json(scorecard);
             }
             catch (error) {
-                console.error('Error fetching player scorecard:', error);
+                logger_1.logger.error({ err: error }, 'Error fetching player scorecard');
                 res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
@@ -306,7 +307,7 @@ class LeagueController {
                 res.json({ success: true });
             }
             catch (error) {
-                console.error('Error confirming score:', error);
+                logger_1.logger.error({ err: error }, 'Error confirming score');
                 res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
@@ -318,7 +319,7 @@ class LeagueController {
                 res.json({ success: true, confirmed: count });
             }
             catch (error) {
-                console.error('Error confirming week scores:', error);
+                logger_1.logger.error({ err: error }, 'Error confirming week scores');
                 res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
@@ -334,7 +335,7 @@ class LeagueController {
                 res.json({ success: true });
             }
             catch (error) {
-                console.error('Error overriding score:', error);
+                logger_1.logger.error({ err: error }, 'Error overriding score');
                 res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
@@ -347,7 +348,7 @@ class LeagueController {
                 res.json(standings);
             }
             catch (error) {
-                console.error('Error fetching standings:', error);
+                logger_1.logger.error({ err: error }, 'Error fetching standings');
                 res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
@@ -357,7 +358,7 @@ class LeagueController {
                 res.json(leaderboard);
             }
             catch (error) {
-                console.error('Error fetching live leaderboard:', error);
+                logger_1.logger.error({ err: error }, 'Error fetching live leaderboard');
                 res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
@@ -367,7 +368,7 @@ class LeagueController {
                 res.json(leaderboard);
             }
             catch (error) {
-                console.error('Error fetching team leaderboard:', error);
+                logger_1.logger.error({ err: error }, 'Error fetching team leaderboard');
                 res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
@@ -384,7 +385,7 @@ class LeagueController {
                 res.json(result);
             }
             catch (error) {
-                console.error('Error in enroll-and-pay:', error);
+                logger_1.logger.error({ err: error }, 'Error in enroll-and-pay');
                 if (error.message.includes('already enrolled') || error.message.includes('full')) {
                     return res.status(409).json({ error: error.message });
                 }
@@ -407,7 +408,7 @@ class LeagueController {
                 res.json(leagues);
             }
             catch (error) {
-                console.error('Error fetching user leagues:', error);
+                logger_1.logger.error({ err: error }, 'Error fetching user leagues');
                 res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
@@ -428,7 +429,7 @@ class LeagueController {
                 res.json(state);
             }
             catch (error) {
-                console.error('Error fetching league state for kiosk:', error);
+                logger_1.logger.error({ err: error }, 'Error fetching league state for kiosk');
                 res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
@@ -441,7 +442,7 @@ class LeagueController {
                 res.json(summary);
             }
             catch (error) {
-                console.error('Error fetching prize pool summary:', error);
+                logger_1.logger.error({ err: error }, 'Error fetching prize pool summary');
                 res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
@@ -451,7 +452,7 @@ class LeagueController {
                 res.json(history);
             }
             catch (error) {
-                console.error('Error fetching player prize history:', error);
+                logger_1.logger.error({ err: error }, 'Error fetching player prize history');
                 res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
@@ -463,7 +464,7 @@ class LeagueController {
                 res.json({ success: true });
             }
             catch (error) {
-                console.error('Error confirming week payouts:', error);
+                logger_1.logger.error({ err: error }, 'Error confirming week payouts');
                 res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
@@ -475,7 +476,7 @@ class LeagueController {
                 res.json({ success: true });
             }
             catch (error) {
-                console.error('Error confirming payout:', error);
+                logger_1.logger.error({ err: error }, 'Error confirming payout');
                 res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
@@ -492,7 +493,7 @@ class LeagueController {
                 res.status(201).json(team);
             }
             catch (error) {
-                console.error('Error creating team:', error);
+                logger_1.logger.error({ err: error }, 'Error creating team');
                 if (error.message.includes('already on a team') || error.message.includes('already exists')) {
                     return res.status(409).json({ error: error.message });
                 }
@@ -508,7 +509,7 @@ class LeagueController {
                 res.json(teams);
             }
             catch (error) {
-                console.error('Error fetching teams:', error);
+                logger_1.logger.error({ err: error }, 'Error fetching teams');
                 res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
@@ -518,7 +519,7 @@ class LeagueController {
                 res.json(team);
             }
             catch (error) {
-                console.error('Error fetching team:', error);
+                logger_1.logger.error({ err: error }, 'Error fetching team');
                 res.status(404).json({ error: error.message });
             }
         });
@@ -535,7 +536,7 @@ class LeagueController {
                 res.json(result);
             }
             catch (error) {
-                console.error('Error inviting teammates:', error);
+                logger_1.logger.error({ err: error }, 'Error inviting teammates');
                 if (error.message.includes('Only the team captain') || error.message.includes('no longer accepting')) {
                     return res.status(403).json({ error: error.message });
                 }
@@ -548,7 +549,7 @@ class LeagueController {
                 res.json(invite);
             }
             catch (error) {
-                console.error('Error fetching invite:', error);
+                logger_1.logger.error({ err: error }, 'Error fetching invite');
                 res.status(404).json({ error: error.message });
             }
         });
@@ -562,7 +563,7 @@ class LeagueController {
                 res.json(result);
             }
             catch (error) {
-                console.error('Error accepting invite:', error);
+                logger_1.logger.error({ err: error }, 'Error accepting invite');
                 if (error.message.includes('not sent to you') || error.message.includes('already been')) {
                     return res.status(400).json({ error: error.message });
                 }
@@ -579,7 +580,7 @@ class LeagueController {
                 res.json({ success: true });
             }
             catch (error) {
-                console.error('Error declining invite:', error);
+                logger_1.logger.error({ err: error }, 'Error declining invite');
                 res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
@@ -593,7 +594,7 @@ class LeagueController {
                 res.json(result);
             }
             catch (error) {
-                console.error('Error in team enroll-and-pay:', error);
+                logger_1.logger.error({ err: error }, 'Error in team enroll-and-pay');
                 if (error.message.includes('already paid')) {
                     return res.status(409).json({ error: error.message });
                 }
@@ -610,7 +611,7 @@ class LeagueController {
                 res.json(result);
             }
             catch (error) {
-                console.error('Error disqualifying team:', error);
+                logger_1.logger.error({ err: error }, 'Error disqualifying team');
                 res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
@@ -624,7 +625,7 @@ class LeagueController {
                 res.json(teams);
             }
             catch (error) {
-                console.error('Error fetching user teams:', error);
+                logger_1.logger.error({ err: error }, 'Error fetching user teams');
                 res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
@@ -644,7 +645,7 @@ class LeagueController {
                 res.json(result);
             }
             catch (error) {
-                console.error('Error confirming attendance:', error);
+                logger_1.logger.error({ err: error }, 'Error confirming attendance');
                 res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
@@ -661,7 +662,7 @@ class LeagueController {
                 res.json(result);
             }
             catch (error) {
-                console.error('Error declining attendance:', error);
+                logger_1.logger.error({ err: error }, 'Error declining attendance');
                 res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
@@ -675,7 +676,7 @@ class LeagueController {
                 res.json(attendance);
             }
             catch (error) {
-                console.error('Error fetching week attendance:', error);
+                logger_1.logger.error({ err: error }, 'Error fetching week attendance');
                 res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
@@ -692,7 +693,7 @@ class LeagueController {
                 res.json(summary);
             }
             catch (error) {
-                console.error('Error fetching attendance summary:', error);
+                logger_1.logger.error({ err: error }, 'Error fetching attendance summary');
                 res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
@@ -713,7 +714,7 @@ class LeagueController {
                 res.json(attendance);
             }
             catch (error) {
-                console.error('Error updating attendance:', error);
+                logger_1.logger.error({ err: error }, 'Error updating attendance');
                 if (error.message.includes('locked') || error.message.includes('not found')) {
                     return res.status(400).json({ error: error.message });
                 }
@@ -734,7 +735,7 @@ class LeagueController {
                 res.json(attendance);
             }
             catch (error) {
-                console.error('Error fetching player attendance:', error);
+                logger_1.logger.error({ err: error }, 'Error fetching player attendance');
                 res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
@@ -748,7 +749,7 @@ class LeagueController {
                 res.json(result);
             }
             catch (error) {
-                console.error('Error adjusting capacity:', error);
+                logger_1.logger.error({ err: error }, 'Error adjusting capacity');
                 res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
@@ -762,7 +763,7 @@ class LeagueController {
                 res.json(holds);
             }
             catch (error) {
-                console.error('Error fetching league holds:', error);
+                logger_1.logger.error({ err: error }, 'Error fetching league holds');
                 res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
@@ -782,7 +783,7 @@ class LeagueController {
                 res.json({ success: true, message: 'Week skipped — hold suspended and bays released.' });
             }
             catch (error) {
-                console.error('Error skipping week:', error);
+                logger_1.logger.error({ err: error }, 'Error skipping week');
                 res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
@@ -802,7 +803,7 @@ class LeagueController {
                 res.json({ success: true, message: 'Week restored — hold reactivated.' });
             }
             catch (error) {
-                console.error('Error unskipping week:', error);
+                logger_1.logger.error({ err: error }, 'Error unskipping week');
                 res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });

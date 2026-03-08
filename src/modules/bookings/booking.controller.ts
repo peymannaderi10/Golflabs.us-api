@@ -3,6 +3,7 @@ import { BookingService } from './booking.service';
 import { CapacityHoldService } from './capacity-hold.service';
 import { SocketService } from '../sockets/socket.service';
 import { sanitizeError } from '../../shared/utils/error.utils';
+import { logger } from '../../shared/utils/logger';
 
 export class BookingController {
   private bookingService: BookingService;
@@ -20,7 +21,7 @@ export class BookingController {
       const result = await this.bookingService.reserveBooking(req.body);
       res.status(201).json(result);
     } catch (error: any) {
-      console.error("Error in /bookings/reserve:", error);
+      logger.error({ err: error }, 'Error in /bookings/reserve');
       res.status(500).json({ error: sanitizeError(error) });
     }
   };
@@ -36,7 +37,7 @@ export class BookingController {
       const bookings = await this.bookingService.getBookings(locationId as string, date as string, startTime as string | undefined);
       res.json(bookings);
     } catch (error: any) {
-      console.error('Error in /bookings endpoint:', error);
+      logger.error({ err: error }, 'Error in /bookings endpoint');
       res.status(500).json({ error: 'An unexpected error occurred' });
     }
   };
@@ -55,7 +56,7 @@ export class BookingController {
       );
       res.json(holds);
     } catch (error: any) {
-      console.error('Error fetching capacity holds:', error);
+      logger.error({ err: error }, 'Error fetching capacity holds');
       res.status(500).json({ error: 'Failed to fetch capacity holds' });
     }
   };
@@ -71,7 +72,7 @@ export class BookingController {
       const hold = await this.capacityHoldService.getTodaysHold(locationId as string);
       res.json(hold);
     } catch (error: any) {
-      console.error('Error fetching today\'s hold:', error);
+      logger.error({ err: error }, 'Error fetching today\'s hold');
       res.status(500).json({ error: 'Failed to fetch today\'s hold' });
     }
   };
@@ -82,7 +83,7 @@ export class BookingController {
       const result = await this.bookingService.getUserReservedBookings(userId);
       res.json(result);
     } catch (error: any) {
-      console.error(`Error in /users/${req.params.userId}/bookings/reserved endpoint:`, error);
+      logger.error({ err: error, userId: req.params.userId }, 'Error in user reserved bookings endpoint');
       res.status(500).json({ error: 'An unexpected error occurred' });
     }
   };
@@ -93,7 +94,7 @@ export class BookingController {
       const bookings = await this.bookingService.getUserFutureBookings(userId);
       res.json(bookings);
     } catch (error: any) {
-      console.error(`Error in /users/${req.params.userId}/bookings/future endpoint:`, error);
+      logger.error({ err: error, userId: req.params.userId }, 'Error in user future bookings endpoint');
       res.status(500).json({ error: 'An unexpected error occurred' });
     }
   };
@@ -104,7 +105,7 @@ export class BookingController {
       const bookings = await this.bookingService.getUserPastBookings(userId);
       res.json(bookings);
     } catch (error: any) {
-      console.error(`Error in /users/${req.params.userId}/bookings/past endpoint:`, error);
+      logger.error({ err: error, userId: req.params.userId }, 'Error in user past bookings endpoint');
       res.status(500).json({ error: 'An unexpected error occurred' });
     }
   };
@@ -121,7 +122,7 @@ export class BookingController {
         this.socketService.triggerBookingUpdate(result.locationId, result.bayId, bookingId);
       }
     } catch (error: any) {
-      console.error(`Error cancelling booking ${req.params.bookingId}:`, error);
+      logger.error({ err: error, bookingId: req.params.bookingId }, 'Error cancelling booking');
       res.status(500).json({ error: sanitizeError(error) });
     }
   };
@@ -144,7 +145,7 @@ export class BookingController {
       );
       res.json(bookings);
     } catch (error: any) {
-      console.error('Error in employee bookings endpoint:', error);
+      logger.error({ err: error }, 'Error in employee bookings endpoint');
       res.status(500).json({ error: sanitizeError(error) });
     }
   };
@@ -160,7 +161,7 @@ export class BookingController {
       const customers = await this.bookingService.searchCustomersByEmail(email as string, locationId as string);
       res.json(customers);
     } catch (error: any) {
-      console.error('Error in customer search endpoint:', error);
+      logger.error({ err: error }, 'Error in customer search endpoint');
       res.status(500).json({ error: sanitizeError(error) });
     }
   };
@@ -183,7 +184,7 @@ export class BookingController {
         this.socketService.triggerBookingUpdate(result.locationId, result.bayId, bookingId);
       }
     } catch (error: any) {
-      console.error(`Error in employee cancel booking ${req.params.bookingId}:`, error);
+      logger.error({ err: error, bookingId: req.params.bookingId }, 'Error in employee cancel booking');
       res.status(500).json({ error: sanitizeError(error) });
     }
   };
@@ -200,7 +201,7 @@ export class BookingController {
         this.socketService.triggerBookingUpdate(result.locationId, result.bayId, bookingId);
       }
     } catch (error: any) {
-      console.error(`Error cancelling reserved booking ${req.params.bookingId}:`, error);
+      logger.error({ err: error, bookingId: req.params.bookingId }, 'Error cancelling reserved booking');
       res.status(500).json({ error: sanitizeError(error) });
     }
   };
@@ -212,7 +213,7 @@ export class BookingController {
       const result = await this.bookingService.getExtensionOptions(bookingId);
       res.json(result);
     } catch (error: any) {
-      console.error(`Error getting extension options for booking ${req.params.bookingId}:`, error);
+      logger.error({ err: error, bookingId: req.params.bookingId }, 'Error getting extension options for booking');
       if (error.message === 'Booking not found') {
         return res.status(404).json({ error: error.message });
       }
@@ -240,7 +241,7 @@ export class BookingController {
         this.socketService.triggerBookingUpdate(result.locationId, result.bayId, bookingId);
       }
     } catch (error: any) {
-      console.error(`Error extending booking ${req.params.bookingId}:`, error);
+      logger.error({ err: error, bookingId: req.params.bookingId }, 'Error extending booking');
       if (error.message === 'Booking not found') {
         return res.status(404).json({ error: error.message });
       }
@@ -282,7 +283,7 @@ export class BookingController {
         this.socketService.triggerBookingUpdate(result.locationId, result.bayId, bookingId);
       }
     } catch (error: any) {
-      console.error(`Error in employee extend booking ${req.params.bookingId}:`, error);
+      logger.error({ err: error, bookingId: req.params.bookingId }, 'Error in employee extend booking');
       if (error.message === 'Booking not found') {
         return res.status(404).json({ error: error.message });
       }
@@ -313,7 +314,7 @@ export class BookingController {
         this.socketService.triggerBookingUpdate(result.locationId, result.bayId, result.bookingId);
       }
     } catch (error: any) {
-      console.error('Error in employee create booking:', error);
+      logger.error({ err: error }, 'Error in employee create booking');
       res.status(400).json({ error: error.message || 'Failed to create booking' });
     }
   };

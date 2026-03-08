@@ -1,4 +1,5 @@
 import { supabase } from '../config/database';
+import { logger } from '../shared/utils/logger';
 
 /**
  * Auto-deactivate league mode on bays after the league's end time + buffer.
@@ -32,7 +33,7 @@ export async function autoDeactivateLeagueMode() {
       .in('id', leagueIds);
 
     if (leaguesError || !leagues) {
-      console.error('Auto-deactivate: Failed to fetch leagues:', leaguesError);
+      logger.error({ err: leaguesError }, 'Auto-deactivate: Failed to fetch leagues');
       return;
     }
 
@@ -49,7 +50,7 @@ export async function autoDeactivateLeagueMode() {
 
       if (now > deactivateTime) {
         // Current time is past the league end + buffer, deactivate
-        console.log(`Auto-deactivating league mode for league ${league.id} at location ${league.location_id} (end_time: ${league.end_time}, buffer: ${bufferMins}min)`);
+        logger.info({ leagueId: league.id, locationId: league.location_id, endTime: league.end_time, bufferMins }, 'Auto-deactivating league mode');
 
         const { error: updateError } = await supabase
           .from('bays')
@@ -61,11 +62,11 @@ export async function autoDeactivateLeagueMode() {
           .eq('league_mode_league_id', league.id);
 
         if (updateError) {
-          console.error(`Auto-deactivate: Failed to update bays for league ${league.id}:`, updateError);
+          logger.error({ err: updateError, leagueId: league.id }, 'Auto-deactivate: Failed to update bays');
         }
       }
     }
   } catch (error) {
-    console.error('Auto-deactivate league mode job error:', error);
+    logger.error({ err: error }, 'Auto-deactivate league mode job error');
   }
 }

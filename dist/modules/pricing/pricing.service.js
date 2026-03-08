@@ -11,6 +11,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.PricingService = void 0;
 const database_1 = require("../../config/database");
+const logger_1 = require("../../shared/utils/logger");
 class PricingService {
     getPricingRules(locationId) {
         return __awaiter(this, void 0, void 0, function* () {
@@ -22,7 +23,7 @@ class PricingService {
                 .select('name, hourly_rate, start_time, end_time, days_of_week')
                 .eq('location_id', locationId);
             if (error) {
-                console.error('Error fetching pricing rules:', error);
+                logger_1.logger.error({ err: error }, 'Error fetching pricing rules');
                 throw new Error('Failed to fetch pricing rules');
             }
             // Format the pricing rules to match the frontend's expected format
@@ -47,7 +48,7 @@ class PricingService {
                 .eq('location_id', locationId)
                 .order('created_at', { ascending: true });
             if (error) {
-                console.error('Error fetching pricing rules:', error);
+                logger_1.logger.error({ err: error }, 'Error fetching pricing rules');
                 throw new Error('Failed to fetch pricing rules');
             }
             return data.map(rule => {
@@ -97,7 +98,7 @@ class PricingService {
                 .select('*')
                 .single();
             if (error || !data) {
-                console.error('Error creating pricing rule:', error);
+                logger_1.logger.error({ err: error }, 'Error creating pricing rule');
                 throw new Error('Failed to create pricing rule');
             }
             return {
@@ -148,7 +149,7 @@ class PricingService {
                 .select('*')
                 .single();
             if (error || !data) {
-                console.error('Error updating pricing rule:', error);
+                logger_1.logger.error({ err: error }, 'Error updating pricing rule');
                 throw new Error('Failed to update pricing rule');
             }
             return {
@@ -177,7 +178,7 @@ class PricingService {
                 .delete()
                 .eq('id', ruleId);
             if (error) {
-                console.error('Error deleting pricing rule:', error);
+                logger_1.logger.error({ err: error }, 'Error deleting pricing rule');
                 throw new Error('Failed to delete pricing rule');
             }
         });

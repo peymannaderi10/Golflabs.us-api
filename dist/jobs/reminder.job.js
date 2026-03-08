@@ -14,6 +14,7 @@ const database_1 = require("../config/database");
 const resend_1 = require("../config/resend");
 const email_service_1 = require("../modules/email/email.service");
 const token_utils_1 = require("../shared/utils/token.utils");
+const logger_1 = require("../shared/utils/logger");
 /**
  * Process booking reminders for sessions starting in the next 16 minutes.
  * - Ideal: 14-16 min window sends ~15 min before booking
@@ -25,7 +26,7 @@ function enqueueReminders() {
             const now = Date.now();
             const windowStart = new Date(now).toISOString(); // from now
             const windowEnd = new Date(now + 16 * 60 * 1000).toISOString(); // up to 16 min from now
-            console.log(`[Reminder Job] Looking for bookings starting between ${windowStart} and ${windowEnd}`);
+            logger_1.logger.info({ windowStart, windowEnd }, 'Looking for bookings in reminder window');
             // Find confirmed bookings starting in ~15 minutes
             const { data: upcomingBookings, error } = yield database_1.supabase
                 .from('bookings')
@@ -34,13 +35,13 @@ function enqueueReminders() {
                 .gte('start_time', windowStart)
                 .lte('start_time', windowEnd);
             if (error) {
-                console.error('[Reminder Job] Error fetching upcoming bookings:', error);
+                logger_1.logger.error({ err: error }, 'Error fetching upcoming bookings');
                 return;
             }
             if (!upcomingBookings || upcomingBookings.length === 0) {
                 return;
             }
-            console.log(`[Reminder Job] Found ${upcomingBookings.length} bookings needing reminders`);
+            logger_1.logger.info({ count: upcomingBookings.length }, 'Found bookings needing reminders');
             // BATCH OPERATION: Check which bookings already have reminder notifications
             const bookingIds = upcomingBookings.map(booking => booking.id);
             const { data: existingReminders, error: reminderError } = yield database_1.supabase
@@ -49,7 +50,7 @@ function enqueueReminders() {
                 .in('booking_id', bookingIds)
                 .eq('type', 'reminder');
             if (reminderError) {
-                console.error('[Reminder Job] Error checking existing reminders:', reminderError);
+                logger_1.logger.error({ err: reminderError }, 'Error checking existing reminders');
                 return;
             }
             // Create a Set for fast lookup of existing reminders
@@ -57,10 +58,10 @@ function enqueueReminders() {
             // Filter out bookings that already have reminders
             const bookingsNeedingReminders = upcomingBookings.filter(booking => !existingReminderIds.has(booking.id));
             if (bookingsNeedingReminders.length === 0) {
-                console.log('[Reminder Job] All upcoming bookings already have reminders');
+                logger_1.logger.info('All upcoming bookings already have reminders');
                 return;
             }
-            console.log(`[Reminder Job] Processing ${bookingsNeedingReminders.length} bookings without reminders`);
+            logger_1.logger.info({ count: bookingsNeedingReminders.length }, 'Processing bookings without reminders');
             for (const booking of bookingsNeedingReminders) {
                 try {
                     const token = (0, token_utils_1.createUnlockToken)(booking.id, booking.start_time, booking.end_time);
@@ -74,20 +75,20 @@ function enqueueReminders() {
                     })
                         .eq('id', booking.id);
                     if (updateError) {
-                        console.error(`[Reminder Job] Error updating unlock token for booking ${booking.id}:`, updateError);
+                        logger_1.logger.error({ err: updateError, bookingId: booking.id }, 'Error updating unlock token');
                         continue;
                     }
                     // Queue the reminder email
                     yield email_service_1.EmailService.sendReminderEmail(booking.id, token, unlockLink);
-                    console.log(`[Reminder Job] Queued reminder for booking ${booking.id}`);
+                    logger_1.logger.info({ bookingId: booking.id }, 'Queued reminder for booking');
                 }
                 catch (error) {
-                    console.error(`[Reminder Job] Error processing reminder for booking ${booking.id}:`, error);
+                    logger_1.logger.error({ err: error, bookingId: booking.id }, 'Error processing reminder for booking');
                 }
             }
         }
         catch (error) {
-            console.error('[Reminder Job] Error in enqueueReminders:', error);
+            logger_1.logger.error({ err: error }, 'Error in enqueueReminders');
         }
     });
 }

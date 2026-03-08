@@ -1,4 +1,5 @@
 import { supabase } from '../../config/database';
+import { logger } from '../../shared/utils/logger';
 
 export type HoldType = 'all_bays' | 'num_bays' | 'pct_capacity';
 export type HoldStatus = 'active' | 'suspended' | 'released';
@@ -64,11 +65,11 @@ export class CapacityHoldService {
       .insert(rows);
 
     if (error) {
-      console.error('Failed to generate capacity holds:', error);
+      logger.error({ err: error }, 'Failed to generate capacity holds');
       throw new Error(`Failed to generate capacity holds: ${error.message}`);
     }
 
-    console.log(`Generated ${rows.length} capacity holds for league ${leagueId}`);
+    logger.info({ count: rows.length, leagueId }, 'Generated capacity holds for league');
   }
 
   /**
@@ -82,7 +83,7 @@ export class CapacityHoldService {
       .eq('status', 'active');
 
     if (error) {
-      console.error('Failed to release holds for league:', error);
+      logger.error({ err: error }, 'Failed to release holds for league');
       throw new Error(`Failed to release holds: ${error.message}`);
     }
   }
@@ -128,7 +129,7 @@ export class CapacityHoldService {
       .eq('status', 'active');
 
     if (error) {
-      console.error('Failed to fetch capacity holds:', error);
+      logger.error({ err: error }, 'Failed to fetch capacity holds');
       return [];
     }
 

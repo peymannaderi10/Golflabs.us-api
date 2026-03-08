@@ -2,6 +2,7 @@ import { supabase } from '../config/database';
 import { resendConfig } from '../config/resend';
 import { AttendanceService } from '../modules/leagues/attendance.service';
 import { EmailService } from '../modules/email/email.service';
+import { logger } from '../shared/utils/logger';
 
 const attendanceService = new AttendanceService();
 
@@ -123,16 +124,16 @@ export async function sendAttendanceReminders(): Promise<void> {
               .update({ reminder_sent_at: new Date().toISOString() })
               .eq('id', row.id);
           } catch (emailErr) {
-            console.error(`Failed to send attendance reminder for row ${row.id}:`, emailErr);
+            logger.error({ err: emailErr, rowId: row.id }, 'Failed to send attendance reminder');
           }
         }
 
-        console.log(`Sent ${rows.length} attendance reminders for league "${league.name}" Week ${week.week_number}`);
+        logger.info({ count: rows.length, leagueName: league.name, weekNumber: week.week_number }, 'Sent attendance reminders');
       } catch (leagueErr) {
-        console.error(`Error processing attendance reminders for league ${league.id}:`, leagueErr);
+        logger.error({ err: leagueErr, leagueId: league.id }, 'Error processing attendance reminders for league');
       }
     }
   } catch (err) {
-    console.error('Attendance reminder job error:', err);
+    logger.error({ err }, 'Attendance reminder job error');
   }
 }

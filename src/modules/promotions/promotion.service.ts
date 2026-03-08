@@ -1,5 +1,6 @@
 import { supabase } from '../../config/database';
 import { createISOTimestamp } from '../../shared/utils/date.utils';
+import { logger } from '../../shared/utils/logger';
 import { 
   Promotion, 
   UserPromotion, 
@@ -29,7 +30,7 @@ export class PromotionService {
       .order('created_at', { ascending: false });
 
     if (error) {
-      console.error('Error fetching user promotions:', error);
+      logger.error({ err: error }, 'Error fetching user promotions');
       throw new Error('Failed to fetch user promotions');
     }
 
@@ -112,7 +113,7 @@ export class PromotionService {
     });
 
     if (error) {
-      console.error('Error calculating promotion discount:', error);
+      logger.error({ err: error }, 'Error calculating promotion discount');
       // Return no discount on error, don't fail the booking
       return {
         promotionId: null,
@@ -251,7 +252,7 @@ export class PromotionService {
         .single();
 
       if (locationError || !location) {
-        console.error('Error fetching location for discount calculation:', locationError);
+        logger.error({ err: locationError }, 'Error fetching location for discount calculation');
         return this.fallbackDiscountCalculation(promotion, date, startTime, endTime, originalAmount);
       }
 
@@ -275,7 +276,7 @@ export class PromotionService {
         .eq('is_active', true);
 
       if (rulesError || !rules || rules.length === 0) {
-        console.error('Error fetching pricing rules for discount calculation:', rulesError);
+        logger.error({ err: rulesError }, 'Error fetching pricing rules for discount calculation');
         return this.fallbackDiscountCalculation(promotion, date, startTime, endTime, originalAmount);
       }
 
@@ -341,7 +342,7 @@ export class PromotionService {
       discountAmount = Math.min(discountAmount, originalAmount);
       const finalAmount = Math.max(0, originalAmount - discountAmount);
 
-      console.log(`Discount calculation: ${freeMinutes} free minutes = $${discountAmount.toFixed(2)} discount (original: $${originalAmount})`);
+      logger.info({ freeMinutes, discountAmount: discountAmount.toFixed(2), originalAmount }, 'Discount calculation complete');
 
       return {
         promotionId: promotion.id,
@@ -354,7 +355,7 @@ export class PromotionService {
       };
 
     } catch (error) {
-      console.error('Error calculating discount with pricing:', error);
+      logger.error({ err: error }, 'Error calculating discount with pricing');
       return this.fallbackDiscountCalculation(promotion, date, startTime, endTime, originalAmount);
     }
   }
@@ -426,11 +427,11 @@ export class PromotionService {
     });
 
     if (error) {
-      console.error('Error applying promotion to booking:', error);
+      logger.error({ err: error }, 'Error applying promotion to booking');
       throw new Error('Failed to apply promotion');
     }
 
-    console.log(`Applied promotion ${promotionId} to booking ${bookingId} for user ${userId}`);
+    logger.info({ promotionId, bookingId, userId }, 'Applied promotion to booking');
     return true;
   }
 
@@ -482,7 +483,7 @@ export class PromotionService {
         .single();
 
       if (locationError || !location) {
-        console.error('Error fetching location for promo code calculation:', locationError);
+        logger.error({ err: locationError }, 'Error fetching location for promo code calculation');
         return this.fallbackDiscountCalculation(promotion, date, startTime, endTime, originalAmount);
       }
 
@@ -533,7 +534,7 @@ export class PromotionService {
         .eq('is_active', true);
 
       if (rulesError || !rules || rules.length === 0) {
-        console.error('Error fetching pricing rules for promo code calculation:', rulesError);
+        logger.error({ err: rulesError }, 'Error fetching pricing rules for promo code calculation');
         return this.fallbackDiscountCalculation(promotion, date, startTime, endTime, originalAmount);
       }
 
@@ -597,7 +598,7 @@ export class PromotionService {
       };
 
     } catch (error) {
-      console.error('Error calculating discount for promo code:', error);
+      logger.error({ err: error }, 'Error calculating discount for promo code');
       return this.fallbackDiscountCalculation(promotion, date, startTime, endTime, originalAmount);
     }
   }
@@ -618,7 +619,7 @@ export class PromotionService {
       if (error.code === '23505') {
         throw new Error('This promotion has already been assigned to you');
       }
-      console.error('Error assigning promotion:', error);
+      logger.error({ err: error }, 'Error assigning promotion');
       throw new Error('Failed to assign promotion');
     }
 
@@ -635,7 +636,7 @@ export class PromotionService {
       .order('created_at', { ascending: false });
 
     if (error) {
-      console.error('Error fetching promotions:', error);
+      logger.error({ err: error }, 'Error fetching promotions');
       throw new Error('Failed to fetch promotions');
     }
 

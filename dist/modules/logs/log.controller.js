@@ -11,6 +11,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.LogController = void 0;
 const log_service_1 = require("./log.service");
+const logger_1 = require("../../shared/utils/logger");
 class LogController {
     constructor() {
         this.logAccess = (req, res) => __awaiter(this, void 0, void 0, function* () {
@@ -20,7 +21,7 @@ class LogController {
                 res.status(201).json(newLog);
             }
             catch (error) {
-                console.error('Error in logAccess controller:', error.message);
+                logger_1.logger.error({ err: error }, 'Error in logAccess controller');
                 res.status(500).json({ message: 'Failed to log access event', error: error.message });
             }
         });
@@ -47,7 +48,7 @@ class LogController {
                 res.json(result);
             }
             catch (error) {
-                console.error('Error in getAccessLogs controller:', error);
+                logger_1.logger.error({ err: error }, 'Error in getAccessLogs controller');
                 res.status(500).json({ error: error.message || 'Failed to fetch access logs' });
             }
         });

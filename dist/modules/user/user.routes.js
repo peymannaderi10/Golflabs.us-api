@@ -10,4 +10,5 @@ exports.userRoutes = (0, express_1.Router)();
 const controller = new user_controller_1.UserController();
 // User management routes
 exports.userRoutes.get('/users/:userId/profile', (0, express_validator_1.param)('userId').isUUID().withMessage('userId must be a valid UUID'), validation_1.handleValidationErrors, auth_1.authenticateUser, controller.getUserProfile);
+exports.userRoutes.get('/users/:userId/export', (0, express_validator_1.param)('userId').isUUID().withMessage('userId must be a valid UUID'), validation_1.handleValidationErrors, auth_1.authenticateUser, controller.exportUserData);
 exports.userRoutes.delete('/users/:userId/account', (0, express_validator_1.param)('userId').isUUID().withMessage('userId must be a valid UUID'), validation_1.handleValidationErrors, auth_1.authenticateUser, controller.deleteAccount);

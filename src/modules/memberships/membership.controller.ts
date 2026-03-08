@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { AuthenticatedRequest } from '../auth/auth.middleware';
 import { MembershipService } from './membership.service';
 import { sanitizeError } from '../../shared/utils/error.utils';
+import { logger } from '../../shared/utils/logger';
 
 export class MembershipController {
   private service = new MembershipService();
@@ -18,7 +19,7 @@ export class MembershipController {
       const plans = await this.service.getPlansForLocation(locationId as string);
       res.json(plans);
     } catch (error: any) {
-      console.error('Error fetching membership plans:', error);
+      logger.error({ err: error }, 'Error fetching membership plans');
       res.status(500).json({ error: sanitizeError(error) });
     }
   };
@@ -32,7 +33,7 @@ export class MembershipController {
       const membership = await this.service.getUserMembership(userId, locationId as string);
       res.json({ membership });
     } catch (error: any) {
-      console.error('Error fetching user membership:', error);
+      logger.error({ err: error }, 'Error fetching user membership');
       res.status(500).json({ error: sanitizeError(error) });
     }
   };
@@ -54,7 +55,7 @@ export class MembershipController {
       const result = await this.service.subscribe(userId, planId, billingInterval);
       res.json(result);
     } catch (error: any) {
-      console.error('Error subscribing:', error);
+      logger.error({ err: error }, 'Error subscribing');
       if (error.message?.includes('already have')) {
         return res.status(409).json({ error: error.message });
       }
@@ -83,7 +84,7 @@ export class MembershipController {
         res.json({ success: true, message: 'Membership will be canceled at the end of the billing period' });
       }
     } catch (error: any) {
-      console.error('Error canceling membership:', error);
+      logger.error({ err: error }, 'Error canceling membership');
       if (error.message === 'Access denied') return res.status(403).json({ error: error.message });
       res.status(500).json({ error: sanitizeError(error) });
     }
@@ -101,7 +102,7 @@ export class MembershipController {
       await this.service.changePlan(membershipId, userId, newPlanId);
       res.json({ success: true, message: 'Plan changed successfully' });
     } catch (error: any) {
-      console.error('Error changing plan:', error);
+      logger.error({ err: error }, 'Error changing plan');
       if (error.message === 'Access denied') return res.status(403).json({ error: error.message });
       res.status(500).json({ error: sanitizeError(error) });
     }
@@ -116,7 +117,7 @@ export class MembershipController {
       const plan = await this.service.createPlan(req.body);
       res.status(201).json(plan);
     } catch (error: any) {
-      console.error('Error creating plan:', error);
+      logger.error({ err: error }, 'Error creating plan');
       res.status(500).json({ error: sanitizeError(error) });
     }
   };
@@ -127,7 +128,7 @@ export class MembershipController {
       const plan = await this.service.updatePlan(planId, req.body);
       res.json(plan);
     } catch (error: any) {
-      console.error('Error updating plan:', error);
+      logger.error({ err: error }, 'Error updating plan');
       res.status(500).json({ error: sanitizeError(error) });
     }
   };
@@ -138,7 +139,7 @@ export class MembershipController {
       await this.service.deactivatePlan(planId);
       res.json({ success: true });
     } catch (error: any) {
-      console.error('Error deactivating plan:', error);
+      logger.error({ err: error }, 'Error deactivating plan');
       res.status(500).json({ error: sanitizeError(error) });
     }
   };
@@ -151,7 +152,7 @@ export class MembershipController {
       const subscribers = await this.service.getSubscribersForLocation(locationId as string);
       res.json(subscribers);
     } catch (error: any) {
-      console.error('Error fetching subscribers:', error);
+      logger.error({ err: error }, 'Error fetching subscribers');
       res.status(500).json({ error: sanitizeError(error) });
     }
   };
@@ -166,7 +167,7 @@ export class MembershipController {
       const settings = await this.service.getLocationMembershipSettings(locationId);
       res.json(settings);
     } catch (error: any) {
-      console.error('Error fetching location membership settings:', error);
+      logger.error({ err: error }, 'Error fetching location membership settings');
       res.status(500).json({ error: sanitizeError(error) });
     }
   };
@@ -177,7 +178,7 @@ export class MembershipController {
       await this.service.updateLocationMembershipSettings(locationId, req.body);
       res.json({ success: true });
     } catch (error: any) {
-      console.error('Error updating location membership settings:', error);
+      logger.error({ err: error }, 'Error updating location membership settings');
       res.status(500).json({ error: sanitizeError(error) });
     }
   };

@@ -12,6 +12,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.marketingController = exports.MarketingController = void 0;
 const marketing_service_1 = require("./marketing.service");
 const error_utils_1 = require("../../shared/utils/error.utils");
+const logger_1 = require("../../shared/utils/logger");
 const VALID_AUDIENCE_TYPES = [
     'all_customers', 'active_members', 'inactive_30d',
     'all_users', 'no_bookings', 'non_members', 'high_spenders',
@@ -29,7 +30,7 @@ class MarketingController {
                 return res.json(campaigns);
             }
             catch (error) {
-                console.error('Error fetching campaigns:', error);
+                logger_1.logger.error({ err: error }, 'Error fetching campaigns');
                 return res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
@@ -45,7 +46,7 @@ class MarketingController {
                 return res.json(detail);
             }
             catch (error) {
-                console.error('Error fetching campaign detail:', error);
+                logger_1.logger.error({ err: error }, 'Error fetching campaign detail');
                 return res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
@@ -75,7 +76,7 @@ class MarketingController {
                 return res.json(campaign);
             }
             catch (error) {
-                console.error('Error creating campaign:', error);
+                logger_1.logger.error({ err: error }, 'Error creating campaign');
                 return res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
@@ -96,7 +97,7 @@ class MarketingController {
                 return res.json(campaign);
             }
             catch (error) {
-                console.error('Error updating campaign:', error);
+                logger_1.logger.error({ err: error }, 'Error updating campaign');
                 const status = ((_a = error.message) === null || _a === void 0 ? void 0 : _a.includes('Only draft')) ? 400 : 500;
                 return res.status(status).json({ error: error.message || 'Failed to update campaign' });
             }
@@ -111,7 +112,7 @@ class MarketingController {
                 return res.json(campaign);
             }
             catch (error) {
-                console.error('Error sending campaign:', error);
+                logger_1.logger.error({ err: error }, 'Error sending campaign');
                 const status = ((_a = error.message) === null || _a === void 0 ? void 0 : _a.includes('Cannot send')) ? 400 : 500;
                 return res.status(status).json({ error: error.message || 'Failed to send campaign' });
             }
@@ -126,7 +127,7 @@ class MarketingController {
                 return res.json({ success: true });
             }
             catch (error) {
-                console.error('Error deleting campaign:', error);
+                logger_1.logger.error({ err: error }, 'Error deleting campaign');
                 const status = ((_a = error.message) === null || _a === void 0 ? void 0 : _a.includes('Only draft')) ? 400 : 500;
                 return res.status(status).json({ error: error.message || 'Failed to delete campaign' });
             }
@@ -150,7 +151,7 @@ class MarketingController {
                 return res.json({ count });
             }
             catch (error) {
-                console.error('Error getting audience preview:', error);
+                logger_1.logger.error({ err: error }, 'Error getting audience preview');
                 return res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
@@ -169,7 +170,7 @@ class MarketingController {
                 return res.json(templates);
             }
             catch (error) {
-                console.error('Error fetching templates:', error);
+                logger_1.logger.error({ err: error }, 'Error fetching templates');
                 return res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
@@ -183,7 +184,7 @@ class MarketingController {
                 return res.json(template);
             }
             catch (error) {
-                console.error('Error fetching template:', error);
+                logger_1.logger.error({ err: error }, 'Error fetching template');
                 const status = ((_a = error.message) === null || _a === void 0 ? void 0 : _a.includes('not found')) ? 404 : 500;
                 return res.status(status).json({ error: error.message || 'Internal server error' });
             }
@@ -200,7 +201,7 @@ class MarketingController {
                 return res.json(template);
             }
             catch (error) {
-                console.error('Error creating template:', error);
+                logger_1.logger.error({ err: error }, 'Error creating template');
                 return res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
@@ -217,7 +218,7 @@ class MarketingController {
                 return res.json(template);
             }
             catch (error) {
-                console.error('Error updating template:', error);
+                logger_1.logger.error({ err: error }, 'Error updating template');
                 return res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
@@ -230,7 +231,7 @@ class MarketingController {
                 return res.json({ success: true });
             }
             catch (error) {
-                console.error('Error deleting template:', error);
+                logger_1.logger.error({ err: error }, 'Error deleting template');
                 return res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
@@ -250,7 +251,7 @@ class MarketingController {
                 return res.send(this.renderUnsubscribePage('Unsubscribed', 'You have been successfully unsubscribed from marketing emails. You will still receive transactional emails (booking confirmations, reminders, etc.).'));
             }
             catch (error) {
-                console.error('Unsubscribe error:', error);
+                logger_1.logger.error({ err: error }, 'Unsubscribe error');
                 return res.status(500).send(this.renderUnsubscribePage('Error', 'Something went wrong. Please try again later.'));
             }
         });

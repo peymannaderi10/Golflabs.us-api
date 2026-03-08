@@ -1,4 +1,5 @@
 import { supabase } from '../../config/database';
+import { logger } from '../../shared/utils/logger';
 
 interface LocationSettingsRow {
   memberships_enabled: boolean;
@@ -57,7 +58,7 @@ export class LocationService {
       .order('name', { ascending: true });
 
     if (error) {
-      console.error('Error fetching locations:', error);
+      logger.error({ err: error }, 'Error fetching locations');
       throw new Error('Failed to fetch locations');
     }
 
@@ -93,7 +94,7 @@ export class LocationService {
       .single();
 
     if (error || !data) {
-      console.error(`Location ${locationId} not found:`, error);
+      logger.error({ err: error, locationId }, 'Location not found');
       throw new Error('Location not found');
     }
 
@@ -141,7 +142,7 @@ export class LocationService {
       .single();
 
     if (error || !data) {
-      console.error(`Error updating location ${locationId}:`, error);
+      logger.error({ err: error, locationId }, 'Error updating location');
       throw new Error('Failed to update location');
     }
 

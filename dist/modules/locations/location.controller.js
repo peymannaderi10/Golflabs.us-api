@@ -11,6 +11,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.LocationController = void 0;
 const location_service_1 = require("./location.service");
+const logger_1 = require("../../shared/utils/logger");
 class LocationController {
     constructor() {
         this.getAllLocations = (req, res) => __awaiter(this, void 0, void 0, function* () {
@@ -19,7 +20,7 @@ class LocationController {
                 res.json(locations);
             }
             catch (error) {
-                console.error('Error in /locations endpoint:', error);
+                logger_1.logger.error({ err: error }, 'Error in /locations endpoint');
                 res.status(500).json({ error: 'An unexpected error occurred' });
             }
         });
@@ -30,7 +31,7 @@ class LocationController {
                 res.json(location);
             }
             catch (error) {
-                console.error(`Error in /locations/${req.params.locationId} endpoint:`, error);
+                logger_1.logger.error({ err: error, locationId: req.params.locationId }, 'Error in get location endpoint');
                 if (error.message === 'Location ID is required') {
                     return res.status(400).json({ error: error.message });
                 }
@@ -57,7 +58,7 @@ class LocationController {
                 res.json(location);
             }
             catch (error) {
-                console.error(`Error updating location ${req.params.locationId}:`, error);
+                logger_1.logger.error({ err: error, locationId: req.params.locationId }, 'Error updating location');
                 if (error.message === 'Location ID is required') {
                     return res.status(400).json({ error: error.message });
                 }

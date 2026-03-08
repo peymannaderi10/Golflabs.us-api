@@ -12,6 +12,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.agreementService = exports.AgreementService = void 0;
 const crypto_1 = require("crypto");
 const database_1 = require("../../config/database");
+const logger_1 = require("../../shared/utils/logger");
 const REQUIRED_AGREEMENT_TYPES = [
     'terms_of_service',
     'privacy_policy',
@@ -46,7 +47,7 @@ class AgreementService {
                 .eq('booking_id', bookingId)
                 .eq('user_id', userId);
             if (checkError) {
-                console.error('Error checking existing agreements:', checkError);
+                logger_1.logger.error({ err: checkError }, 'Error checking existing agreements');
                 throw new Error('Failed to check existing agreements');
             }
             if (existing && existing.length >= REQUIRED_AGREEMENT_TYPES.length) {
@@ -72,10 +73,10 @@ class AgreementService {
                 .insert(rows)
                 .select();
             if (error) {
-                console.error('Error recording agreements:', error);
+                logger_1.logger.error({ err: error }, 'Error recording agreements');
                 throw new Error('Failed to record agreements');
             }
-            console.log(`Recorded ${data.length} agreements for ${signerName} (${signerEmail}), booking ${bookingId}`);
+            logger_1.logger.info({ count: data.length, signerName, signerEmail, bookingId }, 'Recorded agreements');
             return { alreadyRecorded: false, count: data.length };
         });
     }
@@ -90,7 +91,7 @@ class AgreementService {
                 .eq('booking_id', bookingId)
                 .eq('user_id', userId);
             if (error) {
-                console.error('Error checking agreements:', error);
+                logger_1.logger.error({ err: error }, 'Error checking agreements');
                 throw new Error('Failed to check agreements');
             }
             const acceptedTypes = (data || []).map((row) => row.agreement_type);

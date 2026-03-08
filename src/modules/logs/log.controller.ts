@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { LogService } from './log.service';
+import { logger } from '../../shared/utils/logger';
 
 export class LogController {
   private logService: LogService;
@@ -19,7 +20,7 @@ export class LogController {
 
       res.status(201).json(newLog);
     } catch (error: any) {
-      console.error('Error in logAccess controller:', error.message);
+      logger.error({ err: error }, 'Error in logAccess controller');
       res.status(500).json({ message: 'Failed to log access event', error: error.message });
     }
   };
@@ -49,7 +50,7 @@ export class LogController {
 
       res.json(result);
     } catch (error: any) {
-      console.error('Error in getAccessLogs controller:', error);
+      logger.error({ err: error }, 'Error in getAccessLogs controller');
       res.status(500).json({ error: error.message || 'Failed to fetch access logs' });
     }
   };

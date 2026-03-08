@@ -11,6 +11,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.agreementController = exports.AgreementController = void 0;
 const agreement_service_1 = require("./agreement.service");
+const logger_1 = require("../../shared/utils/logger");
 class AgreementController {
     constructor() {
         this.acceptAgreements = (req, res) => __awaiter(this, void 0, void 0, function* () {
@@ -59,7 +60,7 @@ class AgreementController {
                 });
             }
             catch (error) {
-                console.error('Error accepting agreements:', error);
+                logger_1.logger.error({ err: error }, 'Error accepting agreements');
                 if (error.message.includes('Missing required')) {
                     return res.status(400).json({ error: error.message });
                 }
@@ -79,7 +80,7 @@ class AgreementController {
                 res.json(result);
             }
             catch (error) {
-                console.error('Error checking agreements:', error);
+                logger_1.logger.error({ err: error }, 'Error checking agreements');
                 res.status(500).json({ error: error.message || 'Failed to check agreements' });
             }
         });

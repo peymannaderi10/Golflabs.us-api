@@ -3,6 +3,7 @@ import { resendConfig } from '../config/resend';
 import { EmailService } from '../modules/email/email.service';
 import { NotificationService } from '../modules/email/notification.service';
 import { createUnlockToken } from '../shared/utils/token.utils';
+import { logger } from '../shared/utils/logger';
 
 /**
  * Process booking reminders for sessions starting in the next 16 minutes.
@@ -15,7 +16,7 @@ export async function enqueueReminders(): Promise<void> {
     const windowStart = new Date(now).toISOString(); // from now
     const windowEnd = new Date(now + 16 * 60 * 1000).toISOString(); // up to 16 min from now
 
-    console.log(`[Reminder Job] Looking for bookings starting between ${windowStart} and ${windowEnd}`);
+    logger.info({ windowStart, windowEnd }, 'Looking for bookings in reminder window');
 
     // Find confirmed bookings starting in ~15 minutes
     const { data: upcomingBookings, error } = await supabase
@@ -26,7 +27,7 @@ export async function enqueueReminders(): Promise<void> {
       .lte('start_time', windowEnd);
 
     if (error) {
-      console.error('[Reminder Job] Error fetching upcoming bookings:', error);
+      logger.error({ err: error }, 'Error fetching upcoming bookings');
       return;
     }
 
@@ -34,7 +35,7 @@ export async function enqueueReminders(): Promise<void> {
       return;
     }
 
-    console.log(`[Reminder Job] Found ${upcomingBookings.length} bookings needing reminders`);
+    logger.info({ count: upcomingBookings.length }, 'Found bookings needing reminders');
 
     // BATCH OPERATION: Check which bookings already have reminder notifications
     const bookingIds = upcomingBookings.map(booking => booking.id);
@@ -45,7 +46,7 @@ export async function enqueueReminders(): Promise<void> {
       .eq('type', 'reminder');
 
     if (reminderError) {
-      console.error('[Reminder Job] Error checking existing reminders:', reminderError);
+      logger.error({ err: reminderError }, 'Error checking existing reminders');
       return;
     }
 
@@ -60,11 +61,11 @@ export async function enqueueReminders(): Promise<void> {
     );
 
     if (bookingsNeedingReminders.length === 0) {
-      console.log('[Reminder Job] All upcoming bookings already have reminders');
+      logger.info('All upcoming bookings already have reminders');
       return;
     }
 
-    console.log(`[Reminder Job] Processing ${bookingsNeedingReminders.length} bookings without reminders`);
+    logger.info({ count: bookingsNeedingReminders.length }, 'Processing bookings without reminders');
 
     for (const booking of bookingsNeedingReminders) {
       try {
@@ -81,19 +82,19 @@ export async function enqueueReminders(): Promise<void> {
           .eq('id', booking.id);
 
         if (updateError) {
-          console.error(`[Reminder Job] Error updating unlock token for booking ${booking.id}:`, updateError);
+          logger.error({ err: updateError, bookingId: booking.id }, 'Error updating unlock token');
           continue;
         }
 
         // Queue the reminder email
         await EmailService.sendReminderEmail(booking.id, token, unlockLink);
 
-        console.log(`[Reminder Job] Queued reminder for booking ${booking.id}`);
+        logger.info({ bookingId: booking.id }, 'Queued reminder for booking');
       } catch (error) {
-        console.error(`[Reminder Job] Error processing reminder for booking ${booking.id}:`, error);
+        logger.error({ err: error, bookingId: booking.id }, 'Error processing reminder for booking');
       }
     }
   } catch (error) {
-    console.error('[Reminder Job] Error in enqueueReminders:', error);
+    logger.error({ err: error }, 'Error in enqueueReminders');
   }
 } 

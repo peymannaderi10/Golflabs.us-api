@@ -11,6 +11,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.NotificationService = void 0;
 const database_1 = require("../../config/database");
+const logger_1 = require("../../shared/utils/logger");
 class NotificationService {
     /**
      * Create a new notification record
@@ -37,7 +38,7 @@ class NotificationService {
                 .select('id')
                 .single();
             if (error) {
-                console.error('Error creating notification:', error);
+                logger_1.logger.error({ err: error }, 'Error creating notification');
                 throw new Error(`Failed to create notification: ${error.message}`);
             }
             return data.id;
@@ -58,7 +59,7 @@ class NotificationService {
                 .order('created_at', { ascending: true })
                 .limit(limit);
             if (error) {
-                console.error('Error fetching pending notifications:', error);
+                logger_1.logger.error({ err: error }, 'Error fetching pending notifications');
                 throw new Error(`Failed to fetch pending notifications: ${error.message}`);
             }
             return data || [];
@@ -78,7 +79,7 @@ class NotificationService {
             })
                 .eq('id', notificationId);
             if (error) {
-                console.error(`Error marking notification ${notificationId} as sent:`, error);
+                logger_1.logger.error({ err: error, notificationId }, 'Error marking notification as sent');
                 throw new Error(`Failed to mark notification as sent: ${error.message}`);
             }
         });
@@ -96,7 +97,7 @@ class NotificationService {
             })
                 .eq('id', notificationId);
             if (error) {
-                console.error(`Error marking notification ${notificationId} as failed:`, error);
+                logger_1.logger.error({ err: error, notificationId }, 'Error marking notification as failed');
             }
         });
     }
@@ -120,7 +121,7 @@ class NotificationService {
                 .update(updateData)
                 .eq('resend_message_id', resendMessageId);
             if (error) {
-                console.error(`Error updating notification status from webhook:`, error);
+                logger_1.logger.error({ err: error, resendMessageId }, 'Error updating notification status from webhook');
             }
         });
     }
@@ -135,7 +136,7 @@ class NotificationService {
                 .eq('booking_id', bookingId)
                 .eq('type', type);
             if (error) {
-                console.error('Error checking notification existence:', error);
+                logger_1.logger.error({ err: error }, 'Error checking notification existence');
                 return false;
             }
             return (count || 0) > 0;
@@ -170,20 +171,16 @@ class NotificationService {
                 .eq('id', bookingId)
                 .single();
             if (error) {
-                console.error(`Error fetching booking data for ${bookingId}:`, error);
+                logger_1.logger.error({ err: error, bookingId }, 'Error fetching booking data');
                 return null;
             }
             if (!data) {
-                console.error(`No booking found for ${bookingId}`);
+                logger_1.logger.error({ bookingId }, 'No booking found');
                 return null;
             }
             // Check if we have the required related data
             if (!data.user_profiles || !data.bays || !data.locations) {
-                console.error(`Missing related data for booking ${bookingId}:`, {
-                    hasUser: !!data.user_profiles,
-                    hasBay: !!data.bays,
-                    hasLocation: !!data.locations
-                });
+                logger_1.logger.error({ bookingId, hasUser: !!data.user_profiles, hasBay: !!data.bays, hasLocation: !!data.locations }, 'Missing related data for booking');
                 return null;
             }
             // Supabase joins return arrays, so get the first element
@@ -191,7 +188,7 @@ class NotificationService {
             const bay = Array.isArray(data.bays) ? data.bays[0] : data.bays;
             const location = Array.isArray(data.locations) ? data.locations[0] : data.locations;
             if (!userProfile || !bay || !location) {
-                console.error(`Missing required nested data for booking ${bookingId}`);
+                logger_1.logger.error({ bookingId }, 'Missing required nested data for booking');
                 return null;
             }
             return {

@@ -3,6 +3,7 @@ import Handlebars from 'handlebars';
 import { supabase } from '../../config/database';
 import { resend, resendConfig } from '../../config/resend';
 import { DEFAULT_TEMPLATES } from '../email/email-template.defaults';
+import { logger } from '../../shared/utils/logger';
 
 export type AudienceType =
   | 'all_customers' | 'active_members' | 'inactive_30d'
@@ -168,7 +169,8 @@ export class MarketingService {
     }
 
     const optedOutIds = await this.getOptedOutUserIds(userIds);
-    const filteredIds = userIds.filter(id => !optedOutIds.has(id));
+    const optedInIds = await this.getOptedInUserIds(userIds);
+    const filteredIds = userIds.filter(id => !optedOutIds.has(id) && optedInIds.has(id));
 
     if (filteredIds.length === 0) {
       return { count: 0, recipients: [] };
@@ -249,6 +251,18 @@ export class MarketingService {
     return new Set((data || []).map(p => p.user_id));
   }
 
+  private static async getOptedInUserIds(userIds: string[]): Promise<Set<string>> {
+    if (userIds.length === 0) return new Set();
+
+    const { data } = await supabase
+      .from('marketing_preferences')
+      .select('user_id')
+      .in('user_id', userIds)
+      .eq('email_opted_in', true);
+
+    return new Set((data || []).map(p => p.user_id));
+  }
+
   private static async getAllUserIds(locationId: string): Promise<string[]> {
     const { data } = await supabase
       .from('user_profiles')
@@ -312,7 +326,7 @@ export class MarketingService {
       .order('created_at', { ascending: false });
 
     if (error) {
-      console.error('Error fetching campaigns:', error);
+      logger.error({ err: error }, 'Error fetching campaigns');
       return [];
     }
     return (data || []) as Campaign[];
@@ -326,7 +340,7 @@ export class MarketingService {
       .single();
 
     if (error || !campaign) {
-      console.error('Error fetching campaign detail:', error);
+      logger.error({ err: error }, 'Error fetching campaign detail');
       return null;
     }
 
@@ -587,23 +601,23 @@ export class MarketingService {
         const result = await resend.batch.send(emails);
 
         if (result.error) {
-          console.error('Resend batch error:', result.error);
+          logger.error({ err: result.error }, 'Resend batch error');
           failedCount += batch.length;
           await this.updateRecipientStatuses(campaign.id, batch, 'failed');
         } else {
           sentCount += batch.length;
-          console.log('Resend batch.send result.data:', JSON.stringify(result.data));
+          logger.info({ resultData: result.data }, 'Resend batch send result');
           const rawData = result.data as any;
           const messageIds: Array<{ id: string }> = Array.isArray(rawData)
             ? rawData
             : Array.isArray(rawData?.data)
               ? rawData.data
               : [];
-          console.log(`Batch send returned ${messageIds.length} message IDs for ${batch.length} recipients`);
+          logger.info({ messageIdCount: messageIds.length, recipientCount: batch.length }, 'Batch send returned message IDs');
           await this.storeMessageIds(campaign.id, batch, messageIds);
         }
       } catch (err) {
-        console.error('Resend batch exception:', err);
+        logger.error({ err }, 'Resend batch exception');
         failedCount += batch.length;
         await this.updateRecipientStatuses(campaign.id, batch, 'failed');
       }
@@ -627,7 +641,7 @@ export class MarketingService {
       .select('*')
       .single();
 
-    console.log(`Campaign ${campaign.id} complete: ${sentCount} sent, ${failedCount} failed`);
+    logger.info({ campaignId: campaign.id, sentCount, failedCount }, 'Campaign send complete');
     return (updated || campaign) as Campaign;
   }
 
@@ -643,7 +657,7 @@ export class MarketingService {
       const batch = rows.slice(i, i + BATCH_SIZE);
       const { error } = await supabase.from('campaign_recipients').insert(batch);
       if (error) {
-        console.error('Error inserting recipient rows:', error);
+        logger.error({ err: error }, 'Error inserting recipient rows');
       }
     }
   }
@@ -846,7 +860,7 @@ export class MarketingService {
         await this.executeSend(updatedCampaign, recipients, htmlBody, campaign.subject, apiUrl);
         sent++;
       } catch (err) {
-        console.error(`Failed to send scheduled campaign ${c.id}:`, err);
+        logger.error({ err, campaignId: c.id }, 'Failed to send scheduled campaign');
         await supabase
           .from('marketing_campaigns')
           .update({ status: 'failed' })
@@ -891,11 +905,11 @@ export class MarketingService {
       );
 
     if (error) {
-      console.error('Error unsubscribing user:', error);
+      logger.error({ err: error }, 'Error unsubscribing user');
       throw new Error('Failed to process unsubscribe');
     }
 
-    console.log(`User ${userId} unsubscribed from marketing emails`);
+    logger.info({ userId }, 'User unsubscribed from marketing emails');
   }
 
   // ------------------------------------------------------------------

@@ -16,6 +16,7 @@ exports.SocketService = void 0;
 const crypto_1 = __importDefault(require("crypto"));
 const booking_service_1 = require("../bookings/booking.service");
 const database_1 = require("../../config/database");
+const logger_1 = require("../../shared/utils/logger");
 /**
  * Service to manage WebSocket connections and broadcasts.
  */
@@ -23,7 +24,7 @@ class SocketService {
     constructor(io) {
         this.io = io;
         this.bookingService = new booking_service_1.BookingService();
-        console.log('SocketService initialized.');
+        logger_1.logger.info('SocketService initialized');
     }
     isValidKioskKey(key) {
         const expectedKey = process.env.KIOSK_API_KEY;
@@ -40,13 +41,13 @@ class SocketService {
      */
     init() {
         this.io.on('connection', (socket) => {
-            console.log('A client connected:', socket.id);
+            logger_1.logger.info({ socketId: socket.id }, 'A client connected');
             // Validate kiosk API key from handshake auth, then join rooms
             socket.on('register_kiosk', (payload) => {
                 var _a;
                 const kioskKey = (_a = socket.handshake.auth) === null || _a === void 0 ? void 0 : _a.kioskKey;
                 if (!this.isValidKioskKey(kioskKey)) {
-                    console.warn(`Socket ${socket.id} failed kiosk auth for register_kiosk`);
+                    logger_1.logger.warn({ socketId: socket.id }, 'Socket failed kiosk auth for register_kiosk');
                     socket.emit('auth_error', { message: 'Invalid or missing kiosk API key' });
                     return;
                 }
@@ -56,7 +57,7 @@ class SocketService {
                     socket.join(bayRoom);
                     socket.join(locationRoom);
                     socket.data.isKiosk = true;
-                    console.log(`Socket ${socket.id} (Bay ${payload.bayId}) joined rooms: ${bayRoom}, ${locationRoom}`);
+                    logger_1.logger.info({ socketId: socket.id, bayId: payload.bayId, bayRoom, locationRoom }, 'Socket joined rooms');
                 }
             });
             // Only allow booking requests from authenticated kiosk sockets
@@ -66,7 +67,7 @@ class SocketService {
                     return;
                 }
                 if (payload.locationId && payload.bayId) {
-                    console.log(`Kiosk ${socket.id} requested initial bookings for bay ${payload.bayId}.`);
+                    logger_1.logger.info({ socketId: socket.id, bayId: payload.bayId }, 'Kiosk requested initial bookings');
                     this.sendAllBookingsUpdate(payload.locationId, payload.bayId);
                 }
             });
@@ -79,11 +80,11 @@ class SocketService {
                 if (payload.locationId && payload.leagueId) {
                     const room = `location-${payload.locationId}-league-${payload.leagueId}`;
                     socket.join(room);
-                    console.log(`Socket ${socket.id} joined league room: ${room}`);
+                    logger_1.logger.info({ socketId: socket.id, room }, 'Socket joined league room');
                 }
             });
             socket.on('disconnect', () => {
-                console.log('Client disconnected:', socket.id);
+                logger_1.logger.info({ socketId: socket.id }, 'Client disconnected');
             });
         });
     }
@@ -97,7 +98,7 @@ class SocketService {
         return __awaiter(this, void 0, void 0, function* () {
             if (!locationId || !bayId)
                 return;
-            console.log(`Triggering booking update for location: ${locationId}, bay: ${bayId}${bookingId ? `, booking: ${bookingId}` : ''}`);
+            logger_1.logger.info({ locationId, bayId, bookingId }, 'Triggering booking update');
             try {
                 if (bookingId) {
                     // Send only the specific booking that changed
@@ -109,7 +110,7 @@ class SocketService {
                 }
             }
             catch (error) {
-                console.error(`Failed to trigger booking update for location ${locationId}, bay ${bayId}:`, error.message);
+                logger_1.logger.error({ err: error, locationId, bayId }, 'Failed to trigger booking update');
             }
         });
     }
@@ -127,13 +128,13 @@ class SocketService {
                 .eq('bay_id', bayId)
                 .single();
             if (error || !booking) {
-                console.error(`Could not fetch booking ${bookingId} for update:`, error);
+                logger_1.logger.error({ err: error, bookingId }, 'Could not fetch booking for update');
                 return;
             }
             // Get location timezone for proper time formatting
             const dateForLocation = yield this.getTodayForLocation(locationId);
             if (!dateForLocation) {
-                console.error(`Could not determine date for location ${locationId}, aborting broadcast.`);
+                logger_1.logger.error({ locationId }, 'Could not determine date for location, aborting broadcast');
                 return;
             }
             // Format the booking time for display
@@ -175,7 +176,7 @@ class SocketService {
             };
             const room = `location-${locationId}-bay-${bayId}`;
             this.io.to(room).emit('booking_update', payload);
-            console.log(`Broadcasted ${payload.action} booking update to room ${room} for booking ${bookingId}.`);
+            logger_1.logger.info({ action: payload.action, room, bookingId }, 'Broadcasted booking update');
         });
     }
     /**
@@ -186,7 +187,7 @@ class SocketService {
             // We need to get the current date in the location's specific timezone
             const dateForLocation = yield this.getTodayForLocation(locationId);
             if (!dateForLocation) {
-                console.error(`Could not determine date for location ${locationId}, aborting broadcast.`);
+                logger_1.logger.error({ locationId }, 'Could not determine date for location, aborting broadcast');
                 return;
             }
             const bookings = yield this.bookingService.getBookings(locationId, dateForLocation);
@@ -210,7 +211,7 @@ class SocketService {
             };
             const room = `location-${locationId}-bay-${bayId}`;
             this.io.to(room).emit('bookings_updated', payload);
-            console.log(`Broadcasted bookings_updated to room ${room} with ${bayBookings.length} bookings for bay ${bayId} on date ${dateForLocation}.`);
+            logger_1.logger.info({ room, bookingCount: bayBookings.length, bayId, date: dateForLocation }, 'Broadcasted bookings_updated');
         });
     }
     /**
@@ -227,7 +228,7 @@ class SocketService {
                 .eq('id', locationId)
                 .single();
             if (error || !location) {
-                console.error(`Could not fetch timezone for location ${locationId}:`, error);
+                logger_1.logger.error({ err: error, locationId }, 'Could not fetch timezone for location');
                 return null;
             }
             // 'en-CA' gives the YYYY-MM-DD format needed by the getBookings method.
@@ -244,7 +245,7 @@ class SocketService {
     emitScoreUpdate(locationId, leagueId, payload) {
         const room = `location-${locationId}-league-${leagueId}`;
         this.io.to(room).emit('league_score_update', payload);
-        console.log(`Broadcasted league_score_update to room ${room} for player ${payload.player.displayName}, hole ${payload.holeNumber}.`);
+        logger_1.logger.info({ room, playerName: payload.player.displayName, holeNumber: payload.holeNumber }, 'Broadcasted league_score_update');
     }
     /**
      * Broadcasts updated standings to all clients in the league room.
@@ -253,7 +254,7 @@ class SocketService {
     emitStandingsUpdate(locationId, leagueId, payload) {
         const room = `location-${locationId}-league-${leagueId}`;
         this.io.to(room).emit('league_standings_update', payload);
-        console.log(`Broadcasted league_standings_update to room ${room} with ${payload.standings.length} players.`);
+        logger_1.logger.info({ room, playerCount: payload.standings.length }, 'Broadcasted league_standings_update');
     }
     /**
      * Sends an unlock command to the specified kiosk and waits for a response.
@@ -278,25 +279,25 @@ class SocketService {
                 // Find sockets for the target kiosk
                 const sockets = yield this.io.in(room).fetchSockets();
                 if (sockets.length === 0) {
-                    console.error(`No kiosk connected in room: ${room}`);
+                    logger_1.logger.error({ room }, 'No kiosk connected in room');
                     return resolve(false);
                 }
                 const kioskSocket = sockets[0]; // Assuming one kiosk per room
-                console.log(`Sending unlock command to kiosk ${kioskSocket.id} in room ${room}`);
+                logger_1.logger.info({ kioskSocketId: kioskSocket.id, room }, 'Sending unlock command to kiosk');
                 // Emit with a timeout and acknowledgment callback
                 const response = yield kioskSocket.timeout(10000).emitWithAck('unlock', payload);
                 if (response.success) {
-                    console.log(`Kiosk ${kioskSocket.id} confirmed unlock success.`);
+                    logger_1.logger.info({ kioskSocketId: kioskSocket.id }, 'Kiosk confirmed unlock success');
                     resolve(true);
                 }
                 else {
-                    console.error(`Kiosk ${kioskSocket.id} reported unlock failure: ${response.error}`);
+                    logger_1.logger.error({ kioskSocketId: kioskSocket.id, error: response.error }, 'Kiosk reported unlock failure');
                     resolve(false);
                 }
             }
             catch (e) {
                 // This catch block handles timeout errors or other socket errors
-                console.error(`Did not receive unlock confirmation from room ${room}. Error: ${e.message}`);
+                logger_1.logger.error({ err: e, room }, 'Did not receive unlock confirmation from room');
                 resolve(false);
             }
         }));
@@ -308,7 +309,7 @@ class SocketService {
     broadcastToLocation(locationId, event, payload) {
         const room = `location-${locationId}`;
         this.io.to(room).emit(event, payload);
-        console.log(`Broadcasted ${event} to room ${room}`);
+        logger_1.logger.info({ event, room }, 'Broadcasted event to room');
     }
 }
 exports.SocketService = SocketService;

@@ -1,4 +1,5 @@
 import { EmailService } from '../modules/email/email.service';
+import { logger } from '../shared/utils/logger';
 
 /**
  * Dispatch pending email notifications
@@ -9,9 +10,9 @@ export async function dispatchNotifications(): Promise<void> {
     const dispatched = await EmailService.dispatchPendingNotifications();
     
     if (dispatched > 0) {
-      console.log(`[Notification Job] Dispatched ${dispatched} notifications`);
+      logger.info({ count: dispatched }, 'Dispatched notifications');
     }
   } catch (error) {
-    console.error('[Notification Job] Error dispatching notifications:', error);
+    logger.error({ err: error }, 'Error dispatching notifications');
   }
 } 

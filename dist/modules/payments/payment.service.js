@@ -258,7 +258,6 @@ class PaymentService {
             const existing = yield stripe_1.stripe.paymentIntents.retrieve(paymentIntentId);
             const paymentIntent = yield stripe_1.stripe.paymentIntents.update(paymentIntentId, {
                 receipt_email: email,
-                metadata: Object.assign(Object.assign({}, existing.metadata), { firstName, lastName, phone }),
             });
             return { success: true, paymentIntent };
         });

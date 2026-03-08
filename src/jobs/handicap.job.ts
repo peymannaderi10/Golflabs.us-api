@@ -1,5 +1,6 @@
 import { supabase } from '../config/database';
 import { LeagueService } from '../modules/leagues/league.service';
+import { logger } from '../shared/utils/logger';
 
 /**
  * Handicap Recalculation Job
@@ -17,7 +18,7 @@ import { LeagueService } from '../modules/leagues/league.service';
  * This scheduled job serves as a backup to catch any missed recalculations.
  */
 export async function recalculateAllHandicaps(): Promise<void> {
-  console.log('[Handicap Job] Starting handicap recalculation for all active leagues...');
+  logger.info('Starting handicap recalculation for all active leagues');
 
   try {
     const leagueService = new LeagueService();
@@ -30,26 +31,26 @@ export async function recalculateAllHandicaps(): Promise<void> {
       .eq('handicap_enabled', true);
 
     if (error) {
-      console.error('[Handicap Job] Failed to fetch active leagues:', error);
+      logger.error({ err: error }, 'Failed to fetch active leagues');
       return;
     }
 
     if (!activeLeagues || activeLeagues.length === 0) {
-      console.log('[Handicap Job] No active leagues with handicaps enabled. Skipping.');
+      logger.info('No active leagues with handicaps enabled, skipping');
       return;
     }
 
     for (const league of activeLeagues) {
       try {
         await leagueService.recalculateHandicaps(league.id);
-        console.log(`[Handicap Job] Recalculated handicaps for league: ${league.name} (${league.id})`);
+        logger.info({ leagueId: league.id, leagueName: league.name }, 'Recalculated handicaps for league');
       } catch (leagueError: any) {
-        console.error(`[Handicap Job] Error recalculating handicaps for league ${league.name}:`, leagueError.message);
+        logger.error({ err: leagueError, leagueId: league.id, leagueName: league.name }, 'Error recalculating handicaps for league');
       }
     }
 
-    console.log(`[Handicap Job] Completed. Processed ${activeLeagues.length} league(s).`);
+    logger.info({ count: activeLeagues.length }, 'Handicap recalculation completed');
   } catch (error: any) {
-    console.error('[Handicap Job] Unexpected error:', error.message);
+    logger.error({ err: error }, 'Unexpected handicap job error');
   }
 }
