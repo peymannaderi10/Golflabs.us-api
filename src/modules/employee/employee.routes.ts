@@ -3,6 +3,7 @@ import { employeeController } from './employee.controller';
 import { LocationController } from '../locations/location.controller';
 import { PricingController } from '../pricing/pricing.controller';
 import { LogController } from '../logs/log.controller';
+import { userTypesController } from '../user-types/user-types.controller';
 import { authenticateEmployee } from '../auth';
 
 const router = Router();
@@ -102,5 +103,29 @@ router.delete('/pricing-rules/:ruleId', authenticateEmployee, (req, res) => pric
  * Get access logs for a location (requires employee authentication)
  */
 router.get('/access-logs', authenticateEmployee, (req, res) => logController.getAccessLogs(req, res));
+
+/**
+ * GET /employee/user-types?locationId=...
+ * List user types for a location
+ */
+router.get('/user-types', authenticateEmployee, (req, res) => userTypesController.getByLocation(req, res));
+
+/**
+ * POST /employee/locations/:locationId/user-types
+ * Create a new user type
+ */
+router.post('/locations/:locationId/user-types', authenticateEmployee, (req, res) => userTypesController.create(req, res));
+
+/**
+ * PUT /employee/user-types/:id
+ * Update a user type
+ */
+router.put('/user-types/:id', authenticateEmployee, (req, res) => userTypesController.update(req, res));
+
+/**
+ * DELETE /employee/user-types/:id
+ * Delete a user type
+ */
+router.delete('/user-types/:id', authenticateEmployee, (req, res) => userTypesController.delete(req, res));
 
 export const employeeRoutes = router;

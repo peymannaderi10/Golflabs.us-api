@@ -570,14 +570,26 @@ export class EmployeeService {
             }
         };
     }
-    async updateCustomer(id: string, updates: { fullName?: string; phone?: string; email?: string; userType?: string }): Promise<void> {
+    async updateCustomer(id: string, updates: { fullName?: string; phone?: string; email?: string; userType?: string }, locationId?: string): Promise<void> {
         const updateData: Record<string, any> = {
             full_name: updates.fullName,
             phone: updates.phone,
             email: updates.email,
         };
 
-        if (updates.userType && ['regular', 'student', 'instructor'].includes(updates.userType)) {
+        if (updates.userType) {
+            if (locationId) {
+                const { data: validType } = await supabase
+                    .from('user_types')
+                    .select('slug')
+                    .eq('location_id', locationId)
+                    .eq('slug', updates.userType)
+                    .single();
+
+                if (!validType) {
+                    throw new Error(`Invalid user type: "${updates.userType}"`);
+                }
+            }
             updateData.user_type = updates.userType;
         }
 

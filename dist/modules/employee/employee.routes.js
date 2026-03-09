@@ -6,6 +6,7 @@ const employee_controller_1 = require("./employee.controller");
 const location_controller_1 = require("../locations/location.controller");
 const pricing_controller_1 = require("../pricing/pricing.controller");
 const log_controller_1 = require("../logs/log.controller");
+const user_types_controller_1 = require("../user-types/user-types.controller");
 const auth_1 = require("../auth");
 const router = (0, express_1.Router)();
 const locationController = new location_controller_1.LocationController();
@@ -88,4 +89,24 @@ router.delete('/pricing-rules/:ruleId', auth_1.authenticateEmployee, (req, res) 
  * Get access logs for a location (requires employee authentication)
  */
 router.get('/access-logs', auth_1.authenticateEmployee, (req, res) => logController.getAccessLogs(req, res));
+/**
+ * GET /employee/user-types?locationId=...
+ * List user types for a location
+ */
+router.get('/user-types', auth_1.authenticateEmployee, (req, res) => user_types_controller_1.userTypesController.getByLocation(req, res));
+/**
+ * POST /employee/locations/:locationId/user-types
+ * Create a new user type
+ */
+router.post('/locations/:locationId/user-types', auth_1.authenticateEmployee, (req, res) => user_types_controller_1.userTypesController.create(req, res));
+/**
+ * PUT /employee/user-types/:id
+ * Update a user type
+ */
+router.put('/user-types/:id', auth_1.authenticateEmployee, (req, res) => user_types_controller_1.userTypesController.update(req, res));
+/**
+ * DELETE /employee/user-types/:id
+ * Delete a user type
+ */
+router.delete('/user-types/:id', auth_1.authenticateEmployee, (req, res) => user_types_controller_1.userTypesController.delete(req, res));
 exports.employeeRoutes = router;

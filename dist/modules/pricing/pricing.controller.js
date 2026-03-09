@@ -54,7 +54,7 @@ class PricingController {
             }
             catch (error) {
                 logger_1.logger.error({ err: error }, 'Error in createPricingRule endpoint');
-                if (error.message === 'Location ID is required' || error.message === 'Failed to create pricing rule') {
+                if (error.message.includes('overlaps') || error.message === 'Location ID is required' || error.message === 'Failed to create pricing rule') {
                     return res.status(400).json({ error: error.message });
                 }
                 res.status(500).json({ error: 'An unexpected error occurred' });
@@ -69,7 +69,7 @@ class PricingController {
             }
             catch (error) {
                 logger_1.logger.error({ err: error }, 'Error in updatePricingRule endpoint');
-                if (error.message === 'Pricing rule ID is required' || error.message === 'Failed to update pricing rule') {
+                if (error.message.includes('overlaps') || error.message === 'Pricing rule ID is required' || error.message === 'Failed to update pricing rule') {
                     return res.status(400).json({ error: error.message });
                 }
                 res.status(500).json({ error: 'An unexpected error occurred' });

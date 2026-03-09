@@ -241,13 +241,14 @@ class EmployeeController {
         return __awaiter(this, void 0, void 0, function* () {
             try {
                 const { id } = req.params;
-                const { fullName, phone, email, userType } = req.body;
-                yield employee_service_1.employeeService.updateCustomer(id, { fullName, phone, email, userType });
+                const { fullName, phone, email, userType, locationId } = req.body;
+                yield employee_service_1.employeeService.updateCustomer(id, { fullName, phone, email, userType }, locationId);
                 return res.json({ success: true });
             }
             catch (error) {
                 logger_1.logger.error({ err: error }, 'Error in updateCustomer');
-                return res.status(500).json({ success: false, error: error.message || 'Internal server error' });
+                const status = error.message.includes('Invalid user type') ? 400 : 500;
+                return res.status(status).json({ success: false, error: error.message || 'Internal server error' });
             }
         });
     }

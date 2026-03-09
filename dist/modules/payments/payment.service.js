@@ -14,6 +14,7 @@ const stripe_1 = require("../../config/stripe");
 const database_1 = require("../../config/database");
 const membership_service_1 = require("../memberships/membership.service");
 const logger_1 = require("../../shared/utils/logger");
+const pricing_utils_1 = require("../../shared/utils/pricing.utils");
 class PaymentService {
     createPaymentIntent(bookingId, amount, promotionInfo, memberPricingInfo) {
         return __awaiter(this, void 0, void 0, function* () {
@@ -308,40 +309,16 @@ class PaymentService {
                 throw new Error('Invalid location ID');
             }
             const timezone = location.timezone || 'America/New_York';
-            const { data: rules, error: rulesError } = yield database_1.supabase
-                .from('pricing_rules')
-                .select('name, hourly_rate, start_time, end_time, days_of_week')
-                .eq('location_id', locationId);
-            if (rulesError)
-                throw rulesError;
-            if (!rules || rules.length === 0) {
-                throw new Error('No pricing rules found for this location');
-            }
+            const ctx = yield (0, pricing_utils_1.fetchPricingContext)(locationId, userId);
+            const { userTypeRules, defaultRules } = (0, pricing_utils_1.splitRules)(ctx.allRules, ctx.userType, ctx.defaultSlug, false);
             let total = 0;
             const breakdown = [];
             let cursorTime = new Date(startDate);
             let currentSegment = null;
             while (cursorTime < endDate) {
-                // Convert UTC time to local time for pricing rule determination
-                const localHour = parseInt(cursorTime.toLocaleString('en-US', {
-                    hour: '2-digit',
-                    hour12: false,
-                    timeZone: timezone
-                }));
-                // Determine which rate applies based on LOCAL time
-                let rule;
-                if (localHour >= 9 || localHour < 2) {
-                    // Standard Rate: 9am-2am (local time)
-                    rule = rules.find(r => r.name === "Standard Rate");
-                }
-                else {
-                    // Off-Peak Rate: 2am-9am (local time)
-                    rule = rules.find(r => r.name === "Off-Peak Rate");
-                }
-                if (!rule) {
-                    throw new Error(`No pricing rule found for ${cursorTime.toISOString()} (local hour: ${localHour})`);
-                }
-                const priceForSlot = (rule.hourly_rate * 100) / 4; // price in cents for 15 mins
+                const { localHour, dow } = (0, pricing_utils_1.localSlotInfo)(cursorTime, timezone);
+                const rule = (0, pricing_utils_1.findRuleForSlot)(userTypeRules, defaultRules, localHour, dow);
+                const priceForSlot = (rule.hourly_rate * 100) / 4;
                 if (!currentSegment || currentSegment.rateName !== rule.name) {
                     if (currentSegment) {
                         breakdown.push({

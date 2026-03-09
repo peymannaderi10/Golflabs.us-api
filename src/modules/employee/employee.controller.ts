@@ -240,14 +240,15 @@ export class EmployeeController {
     async updateCustomer(req: Request, res: Response) {
         try {
             const { id } = req.params;
-            const { fullName, phone, email, userType } = req.body;
+            const { fullName, phone, email, userType, locationId } = req.body;
 
-            await employeeService.updateCustomer(id, { fullName, phone, email, userType });
+            await employeeService.updateCustomer(id, { fullName, phone, email, userType }, locationId);
 
             return res.json({ success: true });
         } catch (error: any) {
             logger.error({ err: error }, 'Error in updateCustomer');
-            return res.status(500).json({ success: false, error: error.message || 'Internal server error' });
+            const status = error.message.includes('Invalid user type') ? 400 : 500;
+            return res.status(status).json({ success: false, error: error.message || 'Internal server error' });
         }
     }
 }

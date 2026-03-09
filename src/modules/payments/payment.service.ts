@@ -4,6 +4,7 @@ import { CreatePaymentForBookingBody, UpdatePaymentIntentRequest } from './payme
 import { promotionService } from '../promotions/promotion.service';
 import { MembershipService } from '../memberships/membership.service';
 import { logger } from '../../shared/utils/logger';
+import { fetchPricingContext, splitRules, findRuleForSlot, localSlotInfo } from '../../shared/utils/pricing.utils';
 
 export class PaymentService {
   async createPaymentIntent(
@@ -339,45 +340,18 @@ export class PaymentService {
 
     const timezone = location.timezone || 'America/New_York';
 
-    const { data: rules, error: rulesError } = await supabase
-      .from('pricing_rules')
-      .select('name, hourly_rate, start_time, end_time, days_of_week')
-      .eq('location_id', locationId);
+    const ctx = await fetchPricingContext(locationId, userId);
+    const { userTypeRules, defaultRules } = splitRules(ctx.allRules, ctx.userType, ctx.defaultSlug, false);
 
-    if (rulesError) throw rulesError;
-    if (!rules || rules.length === 0) {
-      throw new Error('No pricing rules found for this location');
-    }
-    
     let total = 0;
-    const breakdown = [];
+    const breakdown: { rateName: string; start: string; rate: number; end: string }[] = [];
     let cursorTime = new Date(startDate);
-    
-    let currentSegment: { rateName: string; start: string; rate: number; } | null = null;
+    let currentSegment: { rateName: string; start: string; rate: number } | null = null;
 
     while (cursorTime < endDate) {
-      // Convert UTC time to local time for pricing rule determination
-      const localHour = parseInt(cursorTime.toLocaleString('en-US', { 
-        hour: '2-digit', 
-        hour12: false, 
-        timeZone: timezone 
-      }));
-      
-      // Determine which rate applies based on LOCAL time
-      let rule;
-      if (localHour >= 9 || localHour < 2) {
-        // Standard Rate: 9am-2am (local time)
-        rule = rules.find(r => r.name === "Standard Rate");
-      } else {
-        // Off-Peak Rate: 2am-9am (local time)
-        rule = rules.find(r => r.name === "Off-Peak Rate");
-      }
-
-      if (!rule) {
-        throw new Error(`No pricing rule found for ${cursorTime.toISOString()} (local hour: ${localHour})`);
-      }
-
-      const priceForSlot = (rule.hourly_rate * 100) / 4; // price in cents for 15 mins
+      const { localHour, dow } = localSlotInfo(cursorTime, timezone);
+      const rule = findRuleForSlot(userTypeRules, defaultRules, localHour, dow);
+      const priceForSlot = (rule.hourly_rate * 100) / 4;
 
       if (!currentSegment || currentSegment.rateName !== rule.name) {
         if (currentSegment) {
@@ -394,7 +368,7 @@ export class PaymentService {
           rate: 0,
         };
       }
-      
+
       currentSegment.rate += priceForSlot;
       total += priceForSlot;
 

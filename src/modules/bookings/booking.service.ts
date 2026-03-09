@@ -10,6 +10,7 @@ import { CapacityHoldService } from './capacity-hold.service';
 import { MembershipService } from '../memberships/membership.service';
 import { createUnlockToken } from '../../shared/utils/token.utils';
 import { logger } from '../../shared/utils/logger';
+import { fetchPricingContext, splitRules, calculateSlotTotal } from '../../shared/utils/pricing.utils';
 
 export class BookingService {
   private capacityHoldService = new CapacityHoldService();
@@ -1191,60 +1192,18 @@ export class BookingService {
       maxExtensionMinutes = Math.floor(gapMinutes) - bufferMinutes;
     }
 
-    // 4. Get extension pricing rules (fall back to regular rules if none exist)
-    const { data: allRules, error: rulesError } = await supabase
-      .from('pricing_rules')
-      .select('name, hourly_rate, start_time, end_time, days_of_week, is_extension_rate')
-      .eq('location_id', booking.location_id)
-      .eq('is_active', true);
+    // 4. Fetch pricing context and calculate extension prices
+    const ctx = await fetchPricingContext(booking.location_id, booking.user_id);
+    const { userTypeRules, defaultRules } = splitRules(ctx.allRules, ctx.userType, ctx.defaultSlug, true);
 
-    if (rulesError) {
-      throw new Error('Failed to fetch pricing rules');
-    }
-
-    const extensionRules = allRules?.filter(r => r.is_extension_rate) || [];
-    const regularRules = allRules?.filter(r => !r.is_extension_rate) || [];
-    const rulesToUse = extensionRules.length > 0 ? extensionRules : regularRules;
-
-    if (rulesToUse.length === 0) {
-      throw new Error('No pricing rules found');
-    }
-
-    // 5. Calculate price for each valid option
     const options: { minutes: number; priceCents: number; priceFormatted: string }[] = [];
 
     for (const optionMinutes of requestedOptions) {
       if (optionMinutes > maxExtensionMinutes) continue;
 
-      // Calculate price using 15-min slot logic (same as payment.service.ts calculatePrice)
-      let totalCents = 0;
       const extensionStart = new Date(endTime);
       const extensionEnd = new Date(endTime.getTime() + optionMinutes * 60 * 1000);
-      let cursor = new Date(extensionStart);
-
-      while (cursor < extensionEnd) {
-        const localHour = parseInt(cursor.toLocaleString('en-US', {
-          hour: '2-digit',
-          hour12: false,
-          timeZone: timezone
-        }));
-
-        let rule;
-        if (localHour >= 9 || localHour < 2) {
-          rule = rulesToUse.find(r => r.name.includes('Standard'));
-        } else {
-          rule = rulesToUse.find(r => r.name.includes('Off-Peak') || r.name.includes('Off Peak'));
-        }
-
-        // Fall back to first available rule
-        if (!rule) rule = rulesToUse[0];
-
-        const priceForSlot = (rule.hourly_rate * 100) / 4; // cents per 15 min
-        totalCents += priceForSlot;
-        cursor.setUTCMinutes(cursor.getUTCMinutes() + 15);
-      }
-
-      totalCents = Math.round(totalCents);
+      const totalCents = calculateSlotTotal(extensionStart, extensionEnd, timezone, userTypeRules, defaultRules);
 
       options.push({
         minutes: optionMinutes,
@@ -1253,7 +1212,7 @@ export class BookingService {
       });
     }
 
-    // 6. Get card on file info from the user's most recent successful payment
+    // 7. Get card on file info from the user's most recent successful payment
     let card: { last4: string; brand: string } | null = null;
 
     const { data: recentPayment } = await supabase
@@ -1363,43 +1322,9 @@ export class BookingService {
 
     const timezone = location?.timezone || 'America/New_York';
 
-    const { data: allRules } = await supabase
-      .from('pricing_rules')
-      .select('name, hourly_rate, is_extension_rate')
-      .eq('location_id', locationId)
-      .eq('is_active', true);
-
-    const extensionRules = allRules?.filter(r => r.is_extension_rate) || [];
-    const regularRules = allRules?.filter(r => !r.is_extension_rate) || [];
-    const rulesToUse = extensionRules.length > 0 ? extensionRules : regularRules;
-
-    if (rulesToUse.length === 0) {
-      throw new Error('No pricing rules found');
-    }
-
-    let totalCents = 0;
-    let cursor = new Date(currentEndTime);
-
-    while (cursor < newEndTime) {
-      const localHour = parseInt(cursor.toLocaleString('en-US', {
-        hour: '2-digit',
-        hour12: false,
-        timeZone: timezone
-      }));
-
-      let rule;
-      if (localHour >= 9 || localHour < 2) {
-        rule = rulesToUse.find(r => r.name.includes('Standard'));
-      } else {
-        rule = rulesToUse.find(r => r.name.includes('Off-Peak') || r.name.includes('Off Peak'));
-      }
-      if (!rule) rule = rulesToUse[0];
-
-      totalCents += (rule.hourly_rate * 100) / 4;
-      cursor.setUTCMinutes(cursor.getUTCMinutes() + 15);
-    }
-
-    totalCents = Math.round(totalCents);
+    const ctx = await fetchPricingContext(locationId, booking.user_id);
+    const { userTypeRules, defaultRules } = splitRules(ctx.allRules, ctx.userType, ctx.defaultSlug, true);
+    const totalCents = calculateSlotTotal(currentEndTime, newEndTime, timezone, userTypeRules, defaultRules);
 
     // 4. Get the user's Stripe Customer and saved payment method
     const { data: userProfile, error: userError } = await supabase
@@ -1611,43 +1536,9 @@ export class BookingService {
 
     const timezone = location?.timezone || 'America/New_York';
 
-    const { data: allRules } = await supabase
-      .from('pricing_rules')
-      .select('name, hourly_rate, is_extension_rate')
-      .eq('location_id', locationId)
-      .eq('is_active', true);
-
-    const extensionRules = allRules?.filter(r => r.is_extension_rate) || [];
-    const regularRules = allRules?.filter(r => !r.is_extension_rate) || [];
-    const rulesToUse = extensionRules.length > 0 ? extensionRules : regularRules;
-
-    if (rulesToUse.length === 0) {
-      throw new Error('No pricing rules found');
-    }
-
-    let totalCents = 0;
-    let cursor = new Date(currentEndTime);
-
-    while (cursor < newEndTime) {
-      const localHour = parseInt(cursor.toLocaleString('en-US', {
-        hour: '2-digit',
-        hour12: false,
-        timeZone: timezone
-      }));
-
-      let rule;
-      if (localHour >= 9 || localHour < 2) {
-        rule = rulesToUse.find(r => r.name.includes('Standard'));
-      } else {
-        rule = rulesToUse.find(r => r.name.includes('Off-Peak') || r.name.includes('Off Peak'));
-      }
-      if (!rule) rule = rulesToUse[0];
-
-      totalCents += (rule.hourly_rate * 100) / 4;
-      cursor.setUTCMinutes(cursor.getUTCMinutes() + 15);
-    }
-
-    totalCents = Math.round(totalCents);
+    const ctx = await fetchPricingContext(locationId, booking.user_id);
+    const { userTypeRules, defaultRules } = splitRules(ctx.allRules, ctx.userType, ctx.defaultSlug, true);
+    const totalCents = calculateSlotTotal(currentEndTime, newEndTime, timezone, userTypeRules, defaultRules);
 
     // 4. Charge the saved card unless skipPayment is true
     if (!skipPayment) {

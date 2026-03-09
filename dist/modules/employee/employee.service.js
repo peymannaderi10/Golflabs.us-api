@@ -516,14 +516,25 @@ class EmployeeService {
             };
         });
     }
-    updateCustomer(id, updates) {
+    updateCustomer(id, updates, locationId) {
         return __awaiter(this, void 0, void 0, function* () {
             const updateData = {
                 full_name: updates.fullName,
                 phone: updates.phone,
                 email: updates.email,
             };
-            if (updates.userType && ['regular', 'student', 'instructor'].includes(updates.userType)) {
+            if (updates.userType) {
+                if (locationId) {
+                    const { data: validType } = yield database_1.supabase
+                        .from('user_types')
+                        .select('slug')
+                        .eq('location_id', locationId)
+                        .eq('slug', updates.userType)
+                        .single();
+                    if (!validType) {
+                        throw new Error(`Invalid user type: "${updates.userType}"`);
+                    }
+                }
                 updateData.user_type = updates.userType;
             }
             const { error } = yield database_1.supabase
