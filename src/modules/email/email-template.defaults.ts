@@ -172,26 +172,26 @@ export const DEFAULT_TEMPLATES: Record<EmailTemplateType, DefaultTemplate> = {
         </p>
       </div>
 
-      <div class="bg-card" style="border-radius: 12px; padding: 30px; margin: 30px 0;">
-        <h3 class="text-primary" style="margin: 0 0 20px 0; font-size: 20px; font-weight: 600; text-align: center;">
+      <div style="border-radius: 12px; padding: 30px; margin: 30px 0; background-color: #1c1c1c; border: 2px solid #4a7c59;">
+        <h3 style="margin: 0 0 20px 0; font-size: 20px; font-weight: 600; text-align: center; color: #6bb96e;">
           📋 Your Booking Details
         </h3>
         <div style="display: grid; gap: 15px;">
-          <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid;" class="border-light">
-            <span style="color: #4a7c59; font-weight: 600; width: 120px; display: inline-block;">📍 Location:</span>
-            <span class="text-tertiary" style="color: #333333; font-weight: 500;">{{locationName}}</span>
+          <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid #4a4a4a;">
+            <span style="color: #6bb96e; font-weight: 600; width: 120px; display: inline-block;">📍 Location:</span>
+            <span style="color: #e0e0e0; font-weight: 500;">{{locationName}}</span>
           </div>
-          <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid;" class="border-light">
-            <span style="color: #4a7c59; font-weight: 600; width: 120px; display: inline-block;">🏌️ Bay:</span>
-            <span class="text-tertiary" style="color: #333333; font-weight: 500;">{{bayName}}</span>
+          <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid #4a4a4a;">
+            <span style="color: #6bb96e; font-weight: 600; width: 120px; display: inline-block;">🏌️ Bay:</span>
+            <span style="color: #e0e0e0; font-weight: 500;">{{bayName}}</span>
           </div>
-          <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid;" class="border-light">
-            <span style="color: #4a7c59; font-weight: 600; width: 120px; display: inline-block;">📅 Date:</span>
-            <span class="text-tertiary" style="color: #333333; font-weight: 500;">{{startDate}}</span>
+          <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid #4a4a4a;">
+            <span style="color: #6bb96e; font-weight: 600; width: 120px; display: inline-block;">📅 Date:</span>
+            <span style="color: #e0e0e0; font-weight: 500;">{{startDate}}</span>
           </div>
           <div style="display: flex; align-items: center; padding: 10px 0;">
-            <span style="color: #4a7c59; font-weight: 600; width: 120px; display: inline-block;">⏰ Time:</span>
-            <span class="text-tertiary" style="color: #333333; font-weight: 500;">{{startTime}} - {{endTime}}</span>
+            <span style="color: #6bb96e; font-weight: 600; width: 120px; display: inline-block;">⏰ Time:</span>
+            <span style="color: #e0e0e0; font-weight: 500;">{{startTime}} - {{endTime}}</span>
           </div>
         </div>
       </div>
@@ -247,26 +247,26 @@ Just show up and we'll take care of the rest!
         </p>
       </div>
 
-      <div class="bg-card" style="border-radius: 12px; padding: 30px; margin: 30px 0;">
-        <h3 class="text-primary" style="margin: 0 0 20px 0; font-size: 20px; font-weight: 600; text-align: center;">
+      <div style="border-radius: 12px; padding: 30px; margin: 30px 0; background-color: #1c1c1c; border: 2px solid #4a7c59;">
+        <h3 style="margin: 0 0 20px 0; font-size: 20px; font-weight: 600; text-align: center; color: #6bb96e;">
           🏌️ Your Session Details
         </h3>
         <div style="display: grid; gap: 15px;">
-          <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid;" class="border-light">
-            <span style="color: #4a7c59; font-weight: 600; width: 120px; display: inline-block;">📍 Location:</span>
-            <span class="text-tertiary" style="color: #333333; font-weight: 500;">{{locationName}}</span>
+          <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid #4a4a4a;">
+            <span style="color: #6bb96e; font-weight: 600; width: 120px; display: inline-block;">📍 Location:</span>
+            <span style="color: #e0e0e0; font-weight: 500;">{{locationName}}</span>
           </div>
-          <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid;" class="border-light">
-            <span style="color: #4a7c59; font-weight: 600; width: 120px; display: inline-block;">🏌️ Bay:</span>
-            <span class="text-tertiary" style="color: #333333; font-weight: 500;">{{bayName}}</span>
+          <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid #4a4a4a;">
+            <span style="color: #6bb96e; font-weight: 600; width: 120px; display: inline-block;">🏌️ Bay:</span>
+            <span style="color: #e0e0e0; font-weight: 500;">{{bayName}}</span>
           </div>
-          <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid;" class="border-light">
-            <span style="color: #4a7c59; font-weight: 600; width: 120px; display: inline-block;">📅 Date:</span>
-            <span class="text-tertiary" style="color: #333333; font-weight: 500;">{{startDate}}</span>
+          <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid #4a4a4a;">
+            <span style="color: #6bb96e; font-weight: 600; width: 120px; display: inline-block;">📅 Date:</span>
+            <span style="color: #e0e0e0; font-weight: 500;">{{startDate}}</span>
           </div>
           <div style="display: flex; align-items: center; padding: 10px 0;">
-            <span style="color: #4a7c59; font-weight: 600; width: 120px; display: inline-block;">⏰ Time:</span>
-            <span class="text-tertiary" style="color: #333333; font-weight: 500;">{{startTime}} - {{endTime}}</span>
+            <span style="color: #6bb96e; font-weight: 600; width: 120px; display: inline-block;">⏰ Time:</span>
+            <span style="color: #e0e0e0; font-weight: 500;">{{startTime}} - {{endTime}}</span>
           </div>
         </div>
       </div>
@@ -361,30 +361,30 @@ Time to perfect your swing! 🎯
         </p>
       </div>
 
-      <div class="bg-card" style="border-radius: 12px; padding: 30px; margin: 30px 0;">
-        <h3 class="text-danger" style="margin: 0 0 20px 0; font-size: 20px; font-weight: 600; text-align: center;">
+      <div style="border-radius: 12px; padding: 30px; margin: 30px 0; background-color: #1c1c1c; border: 2px solid #dc3545;">
+        <h3 style="margin: 0 0 20px 0; font-size: 20px; font-weight: 600; text-align: center; color: #f56565;">
           📋 Cancelled Booking Details
         </h3>
         <div style="display: grid; gap: 15px;">
-          <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid;" class="border-light">
-            <span style="color: #dc3545; font-weight: 600; width: 120px; display: inline-block;">📍 Location:</span>
-            <span class="text-tertiary" style="color: #333333; font-weight: 500;">{{locationName}}</span>
+          <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid #4a4a4a;">
+            <span style="color: #f56565; font-weight: 600; width: 120px; display: inline-block;">📍 Location:</span>
+            <span style="color: #e0e0e0; font-weight: 500;">{{locationName}}</span>
           </div>
-          <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid;" class="border-light">
-            <span style="color: #dc3545; font-weight: 600; width: 120px; display: inline-block;">🏌️ Bay:</span>
-            <span class="text-tertiary" style="color: #333333; font-weight: 500;">{{bayName}}</span>
+          <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid #4a4a4a;">
+            <span style="color: #f56565; font-weight: 600; width: 120px; display: inline-block;">🏌️ Bay:</span>
+            <span style="color: #e0e0e0; font-weight: 500;">{{bayName}}</span>
           </div>
-          <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid;" class="border-light">
-            <span style="color: #dc3545; font-weight: 600; width: 120px; display: inline-block;">📅 Date:</span>
-            <span class="text-tertiary" style="color: #333333; font-weight: 500;">{{startDate}}</span>
+          <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid #4a4a4a;">
+            <span style="color: #f56565; font-weight: 600; width: 120px; display: inline-block;">📅 Date:</span>
+            <span style="color: #e0e0e0; font-weight: 500;">{{startDate}}</span>
           </div>
-          <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid;" class="border-light">
-            <span style="color: #dc3545; font-weight: 600; width: 120px; display: inline-block;">⏰ Time:</span>
-            <span class="text-tertiary" style="color: #333333; font-weight: 500;">{{startTime}} - {{endTime}}</span>
+          <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid #4a4a4a;">
+            <span style="color: #f56565; font-weight: 600; width: 120px; display: inline-block;">⏰ Time:</span>
+            <span style="color: #e0e0e0; font-weight: 500;">{{startTime}} - {{endTime}}</span>
           </div>
           <div style="display: flex; align-items: center; padding: 10px 0;">
-            <span style="color: #dc3545; font-weight: 600; width: 120px; display: inline-block;">💰 Amount:</span>
-            <span class="text-tertiary" style="color: #333333; font-weight: 500;">\${{formattedAmount}}</span>
+            <span style="color: #f56565; font-weight: 600; width: 120px; display: inline-block;">💰 Amount:</span>
+            <span style="color: #e0e0e0; font-weight: 500;">\${{formattedAmount}}</span>
           </div>
         </div>
       </div>
@@ -819,27 +819,27 @@ View your leagues: {{dashboardUrl}}`,
         </p>
       </div>
 
-      <div class="bg-card" style="border-radius: 12px; padding: 30px; margin: 30px 0;">
-        <h3 class="text-primary" style="margin: 0 0 20px 0; font-size: 20px; font-weight: 600; text-align: center;">
+      <div style="border-radius: 12px; padding: 30px; margin: 30px 0; background-color: #1c1c1c; border: 2px solid #4a7c59;">
+        <h3 style="margin: 0 0 20px 0; font-size: 20px; font-weight: 600; text-align: center; color: #6bb96e;">
           Membership Details
         </h3>
         <div style="display: grid; gap: 12px;">
-          <div style="padding: 8px 0; border-bottom: 1px solid;" class="border-light">
-            <span style="color: #4a7c59; font-weight: 600; width: 120px; display: inline-block;">Plan:</span>
-            <span class="text-tertiary" style="color: #333333; font-weight: 500;">{{planName}}</span>
+          <div style="padding: 8px 0; border-bottom: 1px solid #4a4a4a;">
+            <span style="color: #6bb96e; font-weight: 600; width: 120px; display: inline-block;">Plan:</span>
+            <span style="color: #e0e0e0; font-weight: 500;">{{planName}}</span>
           </div>
-          <div style="padding: 8px 0; border-bottom: 1px solid;" class="border-light">
-            <span style="color: #4a7c59; font-weight: 600; width: 120px; display: inline-block;">Location:</span>
-            <span class="text-tertiary" style="color: #333333; font-weight: 500;">{{locationName}}</span>
+          <div style="padding: 8px 0; border-bottom: 1px solid #4a4a4a;">
+            <span style="color: #6bb96e; font-weight: 600; width: 120px; display: inline-block;">Location:</span>
+            <span style="color: #e0e0e0; font-weight: 500;">{{locationName}}</span>
           </div>
-          <div style="padding: 8px 0; border-bottom: 1px solid;" class="border-light">
-            <span style="color: #4a7c59; font-weight: 600; width: 120px; display: inline-block;">Billing:</span>
-            <span class="text-tertiary" style="color: #333333; font-weight: 500;">\${{formattedPrice}}/{{billingLabel}}</span>
+          <div style="padding: 8px 0; border-bottom: 1px solid #4a4a4a;">
+            <span style="color: #6bb96e; font-weight: 600; width: 120px; display: inline-block;">Billing:</span>
+            <span style="color: #e0e0e0; font-weight: 500;">\${{formattedPrice}}/{{billingLabel}}</span>
           </div>
           {{#if renewalDate}}
           <div style="padding: 8px 0;">
-            <span style="color: #4a7c59; font-weight: 600; width: 120px; display: inline-block;">Next Renewal:</span>
-            <span class="text-tertiary" style="color: #333333; font-weight: 500;">{{renewalDate}}</span>
+            <span style="color: #6bb96e; font-weight: 600; width: 120px; display: inline-block;">Next Renewal:</span>
+            <span style="color: #e0e0e0; font-weight: 500;">{{renewalDate}}</span>
           </div>
           {{/if}}
         </div>
@@ -908,22 +908,22 @@ Ready to book your first session? Head to your dashboard!
         </p>
       </div>
 
-      <div class="bg-card" style="border-radius: 12px; padding: 30px; margin: 30px 0;">
-        <h3 class="text-danger" style="margin: 0 0 20px 0; font-size: 20px; font-weight: 600; text-align: center;">
+      <div style="border-radius: 12px; padding: 30px; margin: 30px 0; background-color: #1c1c1c; border: 2px solid #dc3545;">
+        <h3 style="margin: 0 0 20px 0; font-size: 20px; font-weight: 600; text-align: center; color: #f56565;">
           Cancellation Details
         </h3>
         <div style="display: grid; gap: 12px;">
-          <div style="padding: 8px 0; border-bottom: 1px solid;" class="border-light">
-            <span style="color: #dc3545; font-weight: 600; width: 120px; display: inline-block;">Plan:</span>
-            <span class="text-tertiary" style="color: #333333; font-weight: 500;">{{planName}}</span>
+          <div style="padding: 8px 0; border-bottom: 1px solid #4a4a4a;">
+            <span style="color: #f56565; font-weight: 600; width: 120px; display: inline-block;">Plan:</span>
+            <span style="color: #e0e0e0; font-weight: 500;">{{planName}}</span>
           </div>
-          <div style="padding: 8px 0; border-bottom: 1px solid;" class="border-light">
-            <span style="color: #dc3545; font-weight: 600; width: 120px; display: inline-block;">Location:</span>
-            <span class="text-tertiary" style="color: #333333; font-weight: 500;">{{locationName}}</span>
+          <div style="padding: 8px 0; border-bottom: 1px solid #4a4a4a;">
+            <span style="color: #f56565; font-weight: 600; width: 120px; display: inline-block;">Location:</span>
+            <span style="color: #e0e0e0; font-weight: 500;">{{locationName}}</span>
           </div>
           <div style="padding: 8px 0;">
-            <span style="color: #dc3545; font-weight: 600; width: 120px; display: inline-block;">Type:</span>
-            <span class="text-tertiary" style="color: #333333; font-weight: 500;">
+            <span style="color: #f56565; font-weight: 600; width: 120px; display: inline-block;">Type:</span>
+            <span style="color: #e0e0e0; font-weight: 500;">
               {{#if isImmediate}}Immediate cancellation{{else}}Cancel at end of period{{/if}}
             </span>
           </div>
