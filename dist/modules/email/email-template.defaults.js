@@ -163,19 +163,19 @@ exports.DEFAULT_TEMPLATES = {
         <div style="display: grid; gap: 15px;">
           <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid;" class="border-light">
             <span style="color: #4a7c59; font-weight: 600; width: 120px; display: inline-block;">📍 Location:</span>
-            <span class="text-tertiary" style="font-weight: 500;">{{locationName}}</span>
+            <span class="text-tertiary" style="color: #333333; font-weight: 500;">{{locationName}}</span>
           </div>
           <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid;" class="border-light">
             <span style="color: #4a7c59; font-weight: 600; width: 120px; display: inline-block;">🏌️ Bay:</span>
-            <span class="text-tertiary" style="font-weight: 500;">{{bayName}}</span>
+            <span class="text-tertiary" style="color: #333333; font-weight: 500;">{{bayName}}</span>
           </div>
           <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid;" class="border-light">
             <span style="color: #4a7c59; font-weight: 600; width: 120px; display: inline-block;">📅 Date:</span>
-            <span class="text-tertiary" style="font-weight: 500;">{{startDate}}</span>
+            <span class="text-tertiary" style="color: #333333; font-weight: 500;">{{startDate}}</span>
           </div>
           <div style="display: flex; align-items: center; padding: 10px 0;">
             <span style="color: #4a7c59; font-weight: 600; width: 120px; display: inline-block;">⏰ Time:</span>
-            <span class="text-tertiary" style="font-weight: 500;">{{startTime}} - {{endTime}}</span>
+            <span class="text-tertiary" style="color: #333333; font-weight: 500;">{{startTime}} - {{endTime}}</span>
           </div>
         </div>
       </div>
@@ -237,19 +237,19 @@ Just show up and we'll take care of the rest!
         <div style="display: grid; gap: 15px;">
           <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid;" class="border-light">
             <span style="color: #4a7c59; font-weight: 600; width: 120px; display: inline-block;">📍 Location:</span>
-            <span class="text-tertiary" style="font-weight: 500;">{{locationName}}</span>
+            <span class="text-tertiary" style="color: #333333; font-weight: 500;">{{locationName}}</span>
           </div>
           <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid;" class="border-light">
             <span style="color: #4a7c59; font-weight: 600; width: 120px; display: inline-block;">🏌️ Bay:</span>
-            <span class="text-tertiary" style="font-weight: 500;">{{bayName}}</span>
+            <span class="text-tertiary" style="color: #333333; font-weight: 500;">{{bayName}}</span>
           </div>
           <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid;" class="border-light">
             <span style="color: #4a7c59; font-weight: 600; width: 120px; display: inline-block;">📅 Date:</span>
-            <span class="text-tertiary" style="font-weight: 500;">{{startDate}}</span>
+            <span class="text-tertiary" style="color: #333333; font-weight: 500;">{{startDate}}</span>
           </div>
           <div style="display: flex; align-items: center; padding: 10px 0;">
             <span style="color: #4a7c59; font-weight: 600; width: 120px; display: inline-block;">⏰ Time:</span>
-            <span class="text-tertiary" style="font-weight: 500;">{{startTime}} - {{endTime}}</span>
+            <span class="text-tertiary" style="color: #333333; font-weight: 500;">{{startTime}} - {{endTime}}</span>
           </div>
         </div>
       </div>
@@ -350,23 +350,23 @@ Time to perfect your swing! 🎯
         <div style="display: grid; gap: 15px;">
           <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid;" class="border-light">
             <span style="color: #dc3545; font-weight: 600; width: 120px; display: inline-block;">📍 Location:</span>
-            <span class="text-tertiary" style="font-weight: 500;">{{locationName}}</span>
+            <span class="text-tertiary" style="color: #333333; font-weight: 500;">{{locationName}}</span>
           </div>
           <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid;" class="border-light">
             <span style="color: #dc3545; font-weight: 600; width: 120px; display: inline-block;">🏌️ Bay:</span>
-            <span class="text-tertiary" style="font-weight: 500;">{{bayName}}</span>
+            <span class="text-tertiary" style="color: #333333; font-weight: 500;">{{bayName}}</span>
           </div>
           <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid;" class="border-light">
             <span style="color: #dc3545; font-weight: 600; width: 120px; display: inline-block;">📅 Date:</span>
-            <span class="text-tertiary" style="font-weight: 500;">{{startDate}}</span>
+            <span class="text-tertiary" style="color: #333333; font-weight: 500;">{{startDate}}</span>
           </div>
           <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid;" class="border-light">
             <span style="color: #dc3545; font-weight: 600; width: 120px; display: inline-block;">⏰ Time:</span>
-            <span class="text-tertiary" style="font-weight: 500;">{{startTime}} - {{endTime}}</span>
+            <span class="text-tertiary" style="color: #333333; font-weight: 500;">{{startTime}} - {{endTime}}</span>
           </div>
           <div style="display: flex; align-items: center; padding: 10px 0;">
             <span style="color: #dc3545; font-weight: 600; width: 120px; display: inline-block;">💰 Amount:</span>
-            <span class="text-tertiary" style="font-weight: 500;">\${{formattedAmount}}</span>
+            <span class="text-tertiary" style="color: #333333; font-weight: 500;">\${{formattedAmount}}</span>
           </div>
         </div>
       </div>
@@ -803,20 +803,20 @@ View your leagues: {{dashboardUrl}}`,
         <div style="display: grid; gap: 12px;">
           <div style="padding: 8px 0; border-bottom: 1px solid;" class="border-light">
             <span style="color: #4a7c59; font-weight: 600; width: 120px; display: inline-block;">Plan:</span>
-            <span class="text-tertiary" style="font-weight: 500;">{{planName}}</span>
+            <span class="text-tertiary" style="color: #333333; font-weight: 500;">{{planName}}</span>
           </div>
           <div style="padding: 8px 0; border-bottom: 1px solid;" class="border-light">
             <span style="color: #4a7c59; font-weight: 600; width: 120px; display: inline-block;">Location:</span>
-            <span class="text-tertiary" style="font-weight: 500;">{{locationName}}</span>
+            <span class="text-tertiary" style="color: #333333; font-weight: 500;">{{locationName}}</span>
           </div>
           <div style="padding: 8px 0; border-bottom: 1px solid;" class="border-light">
             <span style="color: #4a7c59; font-weight: 600; width: 120px; display: inline-block;">Billing:</span>
-            <span class="text-tertiary" style="font-weight: 500;">\${{formattedPrice}}/{{billingLabel}}</span>
+            <span class="text-tertiary" style="color: #333333; font-weight: 500;">\${{formattedPrice}}/{{billingLabel}}</span>
           </div>
           {{#if renewalDate}}
           <div style="padding: 8px 0;">
             <span style="color: #4a7c59; font-weight: 600; width: 120px; display: inline-block;">Next Renewal:</span>
-            <span class="text-tertiary" style="font-weight: 500;">{{renewalDate}}</span>
+            <span class="text-tertiary" style="color: #333333; font-weight: 500;">{{renewalDate}}</span>
           </div>
           {{/if}}
         </div>
@@ -829,7 +829,7 @@ View your leagues: {{dashboardUrl}}`,
           {{#each benefits}}
           <li style="padding: 6px 0; display: flex; align-items: center;">
             <span style="color: #4a7c59; margin-right: 8px; font-size: 16px;">&#10003;</span>
-            <span class="text-tertiary">{{label}}</span>
+            <span class="text-tertiary" style="color: #333333;">{{label}}</span>
           </li>
           {{/each}}
         </ul>
@@ -891,15 +891,15 @@ Ready to book your first session? Head to your dashboard!
         <div style="display: grid; gap: 12px;">
           <div style="padding: 8px 0; border-bottom: 1px solid;" class="border-light">
             <span style="color: #dc3545; font-weight: 600; width: 120px; display: inline-block;">Plan:</span>
-            <span class="text-tertiary" style="font-weight: 500;">{{planName}}</span>
+            <span class="text-tertiary" style="color: #333333; font-weight: 500;">{{planName}}</span>
           </div>
           <div style="padding: 8px 0; border-bottom: 1px solid;" class="border-light">
             <span style="color: #dc3545; font-weight: 600; width: 120px; display: inline-block;">Location:</span>
-            <span class="text-tertiary" style="font-weight: 500;">{{locationName}}</span>
+            <span class="text-tertiary" style="color: #333333; font-weight: 500;">{{locationName}}</span>
           </div>
           <div style="padding: 8px 0;">
             <span style="color: #dc3545; font-weight: 600; width: 120px; display: inline-block;">Type:</span>
-            <span class="text-tertiary" style="font-weight: 500;">
+            <span class="text-tertiary" style="color: #333333; font-weight: 500;">
               {{#if isImmediate}}Immediate cancellation{{else}}Cancel at end of period{{/if}}
             </span>
           </div>
