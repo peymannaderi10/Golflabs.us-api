@@ -12,6 +12,7 @@ export class BayService {
       .select('id')
       .eq('location_id', locationId)
       .eq('bay_number', bayNumber)
+      .is('deleted_at', null)
       .single();
 
     if (existing) {
@@ -44,17 +45,25 @@ export class BayService {
       throw new Error('Bay ID is required');
     }
 
-    const { error } = await supabase
+    // Soft delete: set deleted_at timestamp
+    const { data, error } = await supabase
       .from('bays')
-      .delete()
-      .eq('id', bayId);
+      .update({ deleted_at: new Date().toISOString() })
+      .eq('id', bayId)
+      .is('deleted_at', null)
+      .select('id, location_id')
+      .single();
 
     if (error) {
       logger.error({ err: error }, 'Error deleting bay');
       throw new Error('Failed to delete bay');
     }
 
-    return { success: true };
+    if (!data) {
+      throw new Error(`Bay with ID ${bayId} not found or already deleted`);
+    }
+
+    return { success: true, locationId: data.location_id };
   }
 
   async getBaysByLocationId(locationId: string) {
@@ -65,7 +74,8 @@ export class BayService {
     const { data, error } = await supabase
       .from('bays')
       .select('id, status, location_id, bay_number, name, last_seen, kiosk_ip, league_mode_active, league_mode_league_id')
-      .eq('location_id', locationId);
+      .eq('location_id', locationId)
+      .is('deleted_at', null);
 
     if (error) {
       logger.error({ err: error }, 'Error fetching bays');

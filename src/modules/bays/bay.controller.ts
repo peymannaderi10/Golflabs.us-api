@@ -45,17 +45,16 @@ export class BayController {
   deleteBay = async (req: Request, res: Response) => {
     try {
       const { bayId } = req.params;
-      const { locationId } = req.body;
 
       if (!bayId) {
         return res.status(400).json({ message: 'bayId is required' });
       }
 
-      await this.bayService.deleteBay(bayId);
+      const result = await this.bayService.deleteBay(bayId);
 
       // Broadcast to dashboards
-      if (this.socketService && locationId) {
-        this.socketService.broadcastBayDeleted(locationId, bayId);
+      if (this.socketService && result.locationId) {
+        this.socketService.broadcastBayDeleted(result.locationId, bayId);
       }
 
       res.status(200).json({ success: true });
