@@ -13,7 +13,7 @@ import { locationRoutes } from './modules/locations/location.routes';
 import { createBayRoutes } from './modules/bays/bay.routes';
 import { logRoutes } from './modules/logs/log.routes';
 import { unlockRoutes } from './modules/unlock/unlock.routes';
-import { userRoutes } from './modules/user/user.routes';
+import { createUserRoutes } from './modules/user/user.routes';
 import promotionRoutes from './modules/promotions/promotion.routes';
 import { employeeRoutes } from './modules/employee';
 import { createLeagueRoutes, createTeamInviteRoutes, createAttendanceRoutes } from './modules/leagues/league.routes';
@@ -226,7 +226,7 @@ app.use('/locations', locationRoutes);
 app.use('/bays', createBayRoutes(socketService));
 app.use('/logs', logRoutes);
 app.use('/', unlockRoutes(socketService)); // Unlock routes at root level
-app.use('/', userRoutes); // User routes at root level
+app.use('/', createUserRoutes(socketService)); // User routes at root level
 app.use('/promotions', promotionRoutes); // Promotions routes
 app.use('/employee', employeeRoutes); // Employee routes (reports, etc.)
 app.use('/leagues', createLeagueRoutes(socketService)); // League ecosystem routes

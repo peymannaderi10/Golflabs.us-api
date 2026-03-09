@@ -1,9 +1,10 @@
 import { supabase } from '../../config/database';
 import { stripe } from '../../config/stripe';
 import { logger } from '../../shared/utils/logger';
+import { SocketService } from '../sockets/socket.service';
 
 export class UserService {
-  async deleteAccount(userId: string): Promise<{ success: boolean; message: string }> {
+  async deleteAccount(userId: string, socketService?: SocketService): Promise<{ success: boolean; message: string }> {
     if (!userId) {
       throw new Error('User ID is required');
     }
@@ -19,7 +20,34 @@ export class UserService {
         throw new Error('User not found');
       }
 
-      // 1. Mark the account as deleted and free the email for re-registration
+      // 1. Cancel all active/future bookings so unlock links stop working
+      //    and the kiosk gets notified
+      const { data: activeBookings } = await supabase
+        .from('bookings')
+        .select('id, location_id, bay_id, status')
+        .eq('user_id', userId)
+        .in('status', ['confirmed', 'reserved']);
+
+      if (activeBookings && activeBookings.length > 0) {
+        const bookingIds = activeBookings.map(b => b.id);
+
+        await supabase
+          .from('bookings')
+          .update({ status: 'cancelled' })
+          .in('id', bookingIds);
+
+        logger.info({ userId, cancelledCount: bookingIds.length }, 'Cancelled active bookings for deleted account');
+
+        if (socketService) {
+          for (const booking of activeBookings) {
+            if (booking.location_id && booking.bay_id) {
+              socketService.triggerBookingUpdate(booking.location_id, booking.bay_id, booking.id);
+            }
+          }
+        }
+      }
+
+      // 2. Mark the account as deleted and free the email for re-registration
       const { error: profileUpdateError } = await supabase
         .from('user_profiles')
         .update({
@@ -33,7 +61,7 @@ export class UserService {
         throw new Error('Failed to delete account');
       }
 
-      // 2. Ban the auth user and reassign its email so the original
+      // 3. Ban the auth user and reassign its email so the original
       //    email is freed up for re-registration.
       //    We can't delete auth.users because user_profiles FK cascades to it,
       //    and user_profiles is referenced by bookings/payments/etc.

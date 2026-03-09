@@ -13,7 +13,7 @@ exports.UserService = void 0;
 const database_1 = require("../../config/database");
 const logger_1 = require("../../shared/utils/logger");
 class UserService {
-    deleteAccount(userId) {
+    deleteAccount(userId, socketService) {
         return __awaiter(this, void 0, void 0, function* () {
             if (!userId) {
                 throw new Error('User ID is required');
@@ -27,7 +27,29 @@ class UserService {
                 if (checkError || !existingUser) {
                     throw new Error('User not found');
                 }
-                // 1. Mark the account as deleted and free the email for re-registration
+                // 1. Cancel all active/future bookings so unlock links stop working
+                //    and the kiosk gets notified
+                const { data: activeBookings } = yield database_1.supabase
+                    .from('bookings')
+                    .select('id, location_id, bay_id, status')
+                    .eq('user_id', userId)
+                    .in('status', ['confirmed', 'reserved']);
+                if (activeBookings && activeBookings.length > 0) {
+                    const bookingIds = activeBookings.map(b => b.id);
+                    yield database_1.supabase
+                        .from('bookings')
+                        .update({ status: 'cancelled' })
+                        .in('id', bookingIds);
+                    logger_1.logger.info({ userId, cancelledCount: bookingIds.length }, 'Cancelled active bookings for deleted account');
+                    if (socketService) {
+                        for (const booking of activeBookings) {
+                            if (booking.location_id && booking.bay_id) {
+                                socketService.triggerBookingUpdate(booking.location_id, booking.bay_id, booking.id);
+                            }
+                        }
+                    }
+                }
+                // 2. Mark the account as deleted and free the email for re-registration
                 const { error: profileUpdateError } = yield database_1.supabase
                     .from('user_profiles')
                     .update({
@@ -39,7 +61,7 @@ class UserService {
                     logger_1.logger.error({ err: profileUpdateError }, 'Error marking user profile as deleted');
                     throw new Error('Failed to delete account');
                 }
-                // 2. Ban the auth user and reassign its email so the original
+                // 3. Ban the auth user and reassign its email so the original
                 //    email is freed up for re-registration.
                 //    We can't delete auth.users because user_profiles FK cascades to it,
                 //    and user_profiles is referenced by bookings/payments/etc.

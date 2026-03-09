@@ -211,7 +211,7 @@ exports.app.use('/locations', location_routes_1.locationRoutes);
 exports.app.use('/bays', (0, bay_routes_1.createBayRoutes)(socketService));
 exports.app.use('/logs', log_routes_1.logRoutes);
 exports.app.use('/', (0, unlock_routes_1.unlockRoutes)(socketService)); // Unlock routes at root level
-exports.app.use('/', user_routes_1.userRoutes); // User routes at root level
+exports.app.use('/', (0, user_routes_1.createUserRoutes)(socketService)); // User routes at root level
 exports.app.use('/promotions', promotion_routes_1.default); // Promotions routes
 exports.app.use('/employee', employee_1.employeeRoutes); // Employee routes (reports, etc.)
 exports.app.use('/leagues', (0, league_routes_1.createLeagueRoutes)(socketService)); // League ecosystem routes

@@ -3,27 +3,30 @@ import { param } from 'express-validator';
 import { UserController } from './user.controller';
 import { authenticateUser } from '../auth';
 import { handleValidationErrors } from '../../shared/middleware/validation';
+import { SocketService } from '../sockets/socket.service';
 
-export const userRoutes = Router();
+export function createUserRoutes(socketService: SocketService) {
+  const router = Router();
+  const controller = new UserController(socketService);
 
-const controller = new UserController();
+  router.get('/users/:userId/profile',
+    param('userId').isUUID().withMessage('userId must be a valid UUID'),
+    handleValidationErrors,
+    authenticateUser,
+    controller.getUserProfile,
+  );
+  router.get('/users/:userId/export',
+    param('userId').isUUID().withMessage('userId must be a valid UUID'),
+    handleValidationErrors,
+    authenticateUser,
+    controller.exportUserData,
+  );
+  router.delete('/users/:userId/account',
+    param('userId').isUUID().withMessage('userId must be a valid UUID'),
+    handleValidationErrors,
+    authenticateUser,
+    controller.deleteAccount,
+  );
 
-// User management routes
-userRoutes.get('/users/:userId/profile',
-  param('userId').isUUID().withMessage('userId must be a valid UUID'),
-  handleValidationErrors,
-  authenticateUser,
-  controller.getUserProfile,
-);
-userRoutes.get('/users/:userId/export',
-  param('userId').isUUID().withMessage('userId must be a valid UUID'),
-  handleValidationErrors,
-  authenticateUser,
-  controller.exportUserData,
-);
-userRoutes.delete('/users/:userId/account',
-  param('userId').isUUID().withMessage('userId must be a valid UUID'),
-  handleValidationErrors,
-  authenticateUser,
-  controller.deleteAccount,
-);
+  return router;
+}

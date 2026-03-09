@@ -3,12 +3,15 @@ import { UserService } from './user.service';
 import { AuthenticatedRequest } from '../auth';
 import { sanitizeError } from '../../shared/utils/error.utils';
 import { logger } from '../../shared/utils/logger';
+import { SocketService } from '../sockets/socket.service';
 
 export class UserController {
   private userService: UserService;
+  private socketService: SocketService;
 
-  constructor() {
+  constructor(socketService: SocketService) {
     this.userService = new UserService();
+    this.socketService = socketService;
   }
 
   deleteAccount = async (req: AuthenticatedRequest, res: Response) => {
@@ -23,7 +26,7 @@ export class UserController {
         return res.status(403).json({ error: 'You can only delete your own account' });
       }
 
-      const result = await this.userService.deleteAccount(userId);
+      const result = await this.userService.deleteAccount(userId, this.socketService);
       res.json(result);
     } catch (error: any) {
       logger.error({ err: error }, 'Error in deleteAccount endpoint');

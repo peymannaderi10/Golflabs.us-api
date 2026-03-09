@@ -14,7 +14,7 @@ const user_service_1 = require("./user.service");
 const error_utils_1 = require("../../shared/utils/error.utils");
 const logger_1 = require("../../shared/utils/logger");
 class UserController {
-    constructor() {
+    constructor(socketService) {
         this.deleteAccount = (req, res) => __awaiter(this, void 0, void 0, function* () {
             var _a;
             try {
@@ -25,7 +25,7 @@ class UserController {
                 if (((_a = req.user) === null || _a === void 0 ? void 0 : _a.id) !== userId) {
                     return res.status(403).json({ error: 'You can only delete your own account' });
                 }
-                const result = yield this.userService.deleteAccount(userId);
+                const result = yield this.userService.deleteAccount(userId, this.socketService);
                 res.json(result);
             }
             catch (error) {
@@ -75,6 +75,7 @@ class UserController {
             }
         });
         this.userService = new user_service_1.UserService();
+        this.socketService = socketService;
     }
 }
 exports.UserController = UserController;
