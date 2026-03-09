@@ -382,9 +382,8 @@ Time to perfect your swing! 🎯
             <span style="color: #f56565; font-weight: 600; width: 120px; display: inline-block;">⏰ Time:</span>
             <span style="color: #e0e0e0; font-weight: 500;">{{startTime}} - {{endTime}}</span>
           </div>
-          <div style="display: flex; align-items: center; padding: 10px 0;">
-            <span style="color: #f56565; font-weight: 600; width: 120px; display: inline-block;">💰 Amount:</span>
-            <span style="color: #e0e0e0; font-weight: 500;">\${{formattedAmount}}</span>
+          <div style="padding: 10px 0 0; margin-top: 4px;">
+            <p style="color: #e0e0e0; font-size: 14px; margin: 0; line-height: 1.5;">The amount you paid for this booking will be refunded to your original payment method.</p>
           </div>
         </div>
       </div>
@@ -439,7 +438,8 @@ Time to perfect your swing! 🎯
 🏌️ Bay: {{bayName}}
 📅 Date: {{startDate}}
 ⏰ Time: {{startTime}} - {{endTime}}
-💰 Amount: \${{formattedAmount}}
+
+The amount you paid for this booking will be refunded to your original payment method.
 
 {{#if refundProcessed}}
 💳 REFUND INFORMATION:
