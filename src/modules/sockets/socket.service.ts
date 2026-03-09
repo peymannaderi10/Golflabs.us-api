@@ -79,6 +79,18 @@ export class SocketService {
         }
       });
 
+      // Register an employee dashboard to receive real-time updates for a location
+      socket.on('register_dashboard', (payload: { locationId: string }) => {
+        if (payload.locationId) {
+          const locationRoom = `location-${payload.locationId}`;
+          const dashboardRoom = `dashboard-${payload.locationId}`;
+          socket.join(locationRoom);
+          socket.join(dashboardRoom);
+          socket.data.isDashboard = true;
+          logger.info({ socketId: socket.id, locationId: payload.locationId, dashboardRoom }, 'Dashboard joined location rooms');
+        }
+      });
+
       socket.on('disconnect', () => {
         logger.info({ socketId: socket.id }, 'Client disconnected');
       });
@@ -322,5 +334,47 @@ export class SocketService {
     const room = `location-${locationId}`;
     this.io.to(room).emit(event, payload);
     logger.info({ event, room }, 'Broadcasted event to room');
+  }
+
+  /**
+   * Broadcasts a bay status change to all dashboards and kiosks at a location.
+   */
+  public broadcastBayUpdate(locationId: string, bay: any) {
+    const payload = {
+      type: 'bay_update',
+      locationId,
+      bay,
+      timestamp: new Date().toISOString()
+    };
+    this.broadcastToLocation(locationId, 'bay_update', payload);
+    logger.info({ locationId, bayId: bay.id, status: bay.status }, 'Broadcasted bay_update');
+  }
+
+  /**
+   * Broadcasts when a new bay is created.
+   */
+  public broadcastBayCreated(locationId: string, bay: any) {
+    const payload = {
+      type: 'bay_created',
+      locationId,
+      bay,
+      timestamp: new Date().toISOString()
+    };
+    this.broadcastToLocation(locationId, 'bay_created', payload);
+    logger.info({ locationId, bayId: bay.id }, 'Broadcasted bay_created');
+  }
+
+  /**
+   * Broadcasts when a bay is deleted.
+   */
+  public broadcastBayDeleted(locationId: string, bayId: string) {
+    const payload = {
+      type: 'bay_deleted',
+      locationId,
+      bayId,
+      timestamp: new Date().toISOString()
+    };
+    this.broadcastToLocation(locationId, 'bay_deleted', payload);
+    logger.info({ locationId, bayId }, 'Broadcasted bay_deleted');
   }
 } 

@@ -8,6 +8,8 @@ const createBayRoutes = (socketService) => {
     const bayRoutes = (0, express_1.Router)();
     const controller = new bay_controller_1.BayController(socketService);
     bayRoutes.get('/', controller.getBays);
+    bayRoutes.post('/', auth_1.authenticateEmployee, controller.createBay);
+    bayRoutes.delete('/:bayId', auth_1.authenticateEmployee, controller.deleteBay);
     bayRoutes.post('/:bayId/heartbeat', auth_1.authenticateKiosk, controller.updateHeartbeat);
     // Employee-only: update bay status
     bayRoutes.put('/:bayId/status', auth_1.authenticateEmployee, controller.updateBayStatus);

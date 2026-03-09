@@ -2,6 +2,61 @@ import { supabase } from '../../config/database';
 import { logger } from '../../shared/utils/logger';
 
 export class BayService {
+  async createBay(locationId: string, name: string, bayNumber: number, equipment?: string) {
+    if (!locationId || !name || bayNumber === undefined) {
+      throw new Error('Location ID, name, and bay number are required');
+    }
+
+    const { data: existing } = await supabase
+      .from('bays')
+      .select('id')
+      .eq('location_id', locationId)
+      .eq('bay_number', bayNumber)
+      .single();
+
+    if (existing) {
+      throw new Error(`Bay number ${bayNumber} already exists at this location`);
+    }
+
+    const { data, error } = await supabase
+      .from('bays')
+      .insert({
+        location_id: locationId,
+        name,
+        bay_number: bayNumber,
+        equipment: equipment || 'Golf Simulator',
+        status: 'available',
+        league_mode_active: false,
+      })
+      .select('id, status, location_id, bay_number, name, equipment, last_seen, kiosk_ip, league_mode_active, league_mode_league_id')
+      .single();
+
+    if (error) {
+      logger.error({ err: error }, 'Error creating bay');
+      throw new Error('Failed to create bay');
+    }
+
+    return data;
+  }
+
+  async deleteBay(bayId: string) {
+    if (!bayId) {
+      throw new Error('Bay ID is required');
+    }
+
+    const { error } = await supabase
+      .from('bays')
+      .delete()
+      .eq('id', bayId);
+
+    if (error) {
+      logger.error({ err: error }, 'Error deleting bay');
+      throw new Error('Failed to delete bay');
+    }
+
+    return { success: true };
+  }
+
   async getBaysByLocationId(locationId: string) {
     if (!locationId) {
       throw new Error('Location ID is required');
@@ -32,7 +87,7 @@ export class BayService {
         kiosk_ip: kioskIp 
       })
       .eq('id', bayId)
-      .select('id, last_seen, kiosk_ip')
+      .select('id, last_seen, kiosk_ip, location_id, bay_number, name, status')
       .single();
 
     if (error) {

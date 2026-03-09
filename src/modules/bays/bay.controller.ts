@@ -21,12 +21,60 @@ export class BayController {
     }
   };
 
+  createBay = async (req: Request, res: Response) => {
+    try {
+      const { locationId, name, bayNumber, equipment } = req.body;
+
+      if (!locationId || !name || bayNumber === undefined) {
+        return res.status(400).json({ message: 'locationId, name, and bayNumber are required' });
+      }
+
+      const bay = await this.bayService.createBay(locationId, name, bayNumber, equipment);
+
+      // Broadcast to dashboards
+      if (this.socketService) {
+        this.socketService.broadcastBayCreated(locationId, bay);
+      }
+
+      res.status(201).json(bay);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  };
+
+  deleteBay = async (req: Request, res: Response) => {
+    try {
+      const { bayId } = req.params;
+      const { locationId } = req.body;
+
+      if (!bayId) {
+        return res.status(400).json({ message: 'bayId is required' });
+      }
+
+      await this.bayService.deleteBay(bayId);
+
+      // Broadcast to dashboards
+      if (this.socketService && locationId) {
+        this.socketService.broadcastBayDeleted(locationId, bayId);
+      }
+
+      res.status(200).json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  };
+
   updateHeartbeat = async (req: Request, res: Response) => {
     try {
       const { bayId } = req.params;
       const kioskIp = req.ip;
 
       const updatedBay = await this.bayService.updateBayHeartbeat(bayId, kioskIp);
+
+      // Broadcast heartbeat to dashboards so they can update online status
+      if (this.socketService && updatedBay.location_id) {
+        this.socketService.broadcastBayUpdate(updatedBay.location_id, updatedBay);
+      }
 
       res.status(200).json(updatedBay);
     } catch (error: any) {
@@ -45,6 +93,12 @@ export class BayController {
       }
 
       const updatedBay = await this.bayService.updateBayStatus(bayId, status);
+
+      // Broadcast to dashboards
+      if (this.socketService && updatedBay.location_id) {
+        this.socketService.broadcastBayUpdate(updatedBay.location_id, updatedBay);
+      }
+
       res.status(200).json(updatedBay);
     } catch (error: any) {
       res.status(500).json({ message: error.message });

@@ -13,6 +13,55 @@ exports.BayService = void 0;
 const database_1 = require("../../config/database");
 const logger_1 = require("../../shared/utils/logger");
 class BayService {
+    createBay(locationId, name, bayNumber, equipment) {
+        return __awaiter(this, void 0, void 0, function* () {
+            if (!locationId || !name || bayNumber === undefined) {
+                throw new Error('Location ID, name, and bay number are required');
+            }
+            const { data: existing } = yield database_1.supabase
+                .from('bays')
+                .select('id')
+                .eq('location_id', locationId)
+                .eq('bay_number', bayNumber)
+                .single();
+            if (existing) {
+                throw new Error(`Bay number ${bayNumber} already exists at this location`);
+            }
+            const { data, error } = yield database_1.supabase
+                .from('bays')
+                .insert({
+                location_id: locationId,
+                name,
+                bay_number: bayNumber,
+                equipment: equipment || 'Golf Simulator',
+                status: 'available',
+                league_mode_active: false,
+            })
+                .select('id, status, location_id, bay_number, name, equipment, last_seen, kiosk_ip, league_mode_active, league_mode_league_id')
+                .single();
+            if (error) {
+                logger_1.logger.error({ err: error }, 'Error creating bay');
+                throw new Error('Failed to create bay');
+            }
+            return data;
+        });
+    }
+    deleteBay(bayId) {
+        return __awaiter(this, void 0, void 0, function* () {
+            if (!bayId) {
+                throw new Error('Bay ID is required');
+            }
+            const { error } = yield database_1.supabase
+                .from('bays')
+                .delete()
+                .eq('id', bayId);
+            if (error) {
+                logger_1.logger.error({ err: error }, 'Error deleting bay');
+                throw new Error('Failed to delete bay');
+            }
+            return { success: true };
+        });
+    }
     getBaysByLocationId(locationId) {
         return __awaiter(this, void 0, void 0, function* () {
             if (!locationId) {
@@ -41,7 +90,7 @@ class BayService {
                 kiosk_ip: kioskIp
             })
                 .eq('id', bayId)
-                .select('id, last_seen, kiosk_ip')
+                .select('id, last_seen, kiosk_ip, location_id, bay_number, name, status')
                 .single();
             if (error) {
                 logger_1.logger.error({ err: error }, 'Error updating bay heartbeat');

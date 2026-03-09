@@ -7,7 +7,9 @@ export const createBayRoutes = (socketService: SocketService): Router => {
   const bayRoutes = Router();
   const controller = new BayController(socketService);
 
-  bayRoutes.get('/', controller.getBays); 
+  bayRoutes.get('/', controller.getBays);
+  bayRoutes.post('/', authenticateEmployee, controller.createBay);
+  bayRoutes.delete('/:bayId', authenticateEmployee, controller.deleteBay);
   bayRoutes.post('/:bayId/heartbeat', authenticateKiosk, controller.updateHeartbeat);
 
   // Employee-only: update bay status

@@ -23,11 +23,50 @@ class BayController {
                 res.status(500).json({ message: error.message });
             }
         });
+        this.createBay = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            try {
+                const { locationId, name, bayNumber, equipment } = req.body;
+                if (!locationId || !name || bayNumber === undefined) {
+                    return res.status(400).json({ message: 'locationId, name, and bayNumber are required' });
+                }
+                const bay = yield this.bayService.createBay(locationId, name, bayNumber, equipment);
+                // Broadcast to dashboards
+                if (this.socketService) {
+                    this.socketService.broadcastBayCreated(locationId, bay);
+                }
+                res.status(201).json(bay);
+            }
+            catch (error) {
+                res.status(500).json({ message: error.message });
+            }
+        });
+        this.deleteBay = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            try {
+                const { bayId } = req.params;
+                const { locationId } = req.body;
+                if (!bayId) {
+                    return res.status(400).json({ message: 'bayId is required' });
+                }
+                yield this.bayService.deleteBay(bayId);
+                // Broadcast to dashboards
+                if (this.socketService && locationId) {
+                    this.socketService.broadcastBayDeleted(locationId, bayId);
+                }
+                res.status(200).json({ success: true });
+            }
+            catch (error) {
+                res.status(500).json({ message: error.message });
+            }
+        });
         this.updateHeartbeat = (req, res) => __awaiter(this, void 0, void 0, function* () {
             try {
                 const { bayId } = req.params;
                 const kioskIp = req.ip;
                 const updatedBay = yield this.bayService.updateBayHeartbeat(bayId, kioskIp);
+                // Broadcast heartbeat to dashboards so they can update online status
+                if (this.socketService && updatedBay.location_id) {
+                    this.socketService.broadcastBayUpdate(updatedBay.location_id, updatedBay);
+                }
                 res.status(200).json(updatedBay);
             }
             catch (error) {
@@ -43,6 +82,10 @@ class BayController {
                     return res.status(400).json({ message: 'Status is required' });
                 }
                 const updatedBay = yield this.bayService.updateBayStatus(bayId, status);
+                // Broadcast to dashboards
+                if (this.socketService && updatedBay.location_id) {
+                    this.socketService.broadcastBayUpdate(updatedBay.location_id, updatedBay);
+                }
                 res.status(200).json(updatedBay);
             }
             catch (error) {

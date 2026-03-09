@@ -83,6 +83,17 @@ class SocketService {
                     logger_1.logger.info({ socketId: socket.id, room }, 'Socket joined league room');
                 }
             });
+            // Register an employee dashboard to receive real-time updates for a location
+            socket.on('register_dashboard', (payload) => {
+                if (payload.locationId) {
+                    const locationRoom = `location-${payload.locationId}`;
+                    const dashboardRoom = `dashboard-${payload.locationId}`;
+                    socket.join(locationRoom);
+                    socket.join(dashboardRoom);
+                    socket.data.isDashboard = true;
+                    logger_1.logger.info({ socketId: socket.id, locationId: payload.locationId, dashboardRoom }, 'Dashboard joined location rooms');
+                }
+            });
             socket.on('disconnect', () => {
                 logger_1.logger.info({ socketId: socket.id }, 'Client disconnected');
             });
@@ -310,6 +321,45 @@ class SocketService {
         const room = `location-${locationId}`;
         this.io.to(room).emit(event, payload);
         logger_1.logger.info({ event, room }, 'Broadcasted event to room');
+    }
+    /**
+     * Broadcasts a bay status change to all dashboards and kiosks at a location.
+     */
+    broadcastBayUpdate(locationId, bay) {
+        const payload = {
+            type: 'bay_update',
+            locationId,
+            bay,
+            timestamp: new Date().toISOString()
+        };
+        this.broadcastToLocation(locationId, 'bay_update', payload);
+        logger_1.logger.info({ locationId, bayId: bay.id, status: bay.status }, 'Broadcasted bay_update');
+    }
+    /**
+     * Broadcasts when a new bay is created.
+     */
+    broadcastBayCreated(locationId, bay) {
+        const payload = {
+            type: 'bay_created',
+            locationId,
+            bay,
+            timestamp: new Date().toISOString()
+        };
+        this.broadcastToLocation(locationId, 'bay_created', payload);
+        logger_1.logger.info({ locationId, bayId: bay.id }, 'Broadcasted bay_created');
+    }
+    /**
+     * Broadcasts when a bay is deleted.
+     */
+    broadcastBayDeleted(locationId, bayId) {
+        const payload = {
+            type: 'bay_deleted',
+            locationId,
+            bayId,
+            timestamp: new Date().toISOString()
+        };
+        this.broadcastToLocation(locationId, 'bay_deleted', payload);
+        logger_1.logger.info({ locationId, bayId }, 'Broadcasted bay_deleted');
     }
 }
 exports.SocketService = SocketService;
