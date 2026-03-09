@@ -19,10 +19,13 @@ export class UserService {
         throw new Error('User not found');
       }
 
-      // 1. Mark the account as deleted
+      // 1. Mark the account as deleted and free the email for re-registration
       const { error: profileUpdateError } = await supabase
         .from('user_profiles')
-        .update({ deleted_at: new Date().toISOString() })
+        .update({
+          deleted_at: new Date().toISOString(),
+          email: `deleted-${userId}@deleted.local`,
+        })
         .eq('id', userId);
 
       if (profileUpdateError) {
