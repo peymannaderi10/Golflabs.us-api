@@ -605,20 +605,18 @@ export class BookingService {
     return filteredData;
   }
 
-  async searchCustomersByEmail(email: string, locationId: string) {
+  async searchCustomersByEmail(email: string) {
     if (!email || email.length < 3) {
       throw new Error('Email search requires at least 3 characters');
     }
 
     const { data, error } = await supabase
       .from('user_profiles')
-      .select(`
-        id, email, full_name, phone,
-        bookings!inner(id, location_id, start_time, end_time, status, total_amount)
-      `)
+      .select('id, email, full_name, phone')
       .ilike('email', `%${email}%`)
-      .eq('bookings.location_id', locationId)
-      .order('email');
+      .is('deleted_at', null)
+      .order('email')
+      .limit(20);
 
     if (error) {
       logger.error({ err: error }, 'Error searching customers');

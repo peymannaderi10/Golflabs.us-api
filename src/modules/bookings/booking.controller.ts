@@ -152,13 +152,13 @@ export class BookingController {
 
   searchCustomers = async (req: Request, res: Response) => {
     try {
-      const { email, locationId } = req.query;
+      const { email } = req.query;
 
-      if (!email || !locationId) {
-        return res.status(400).json({ error: 'email and locationId are required' });
+      if (!email) {
+        return res.status(400).json({ error: 'email is required' });
       }
 
-      const customers = await this.bookingService.searchCustomersByEmail(email as string, locationId as string);
+      const customers = await this.bookingService.searchCustomersByEmail(email as string);
       res.json(customers);
     } catch (error: any) {
       logger.error({ err: error }, 'Error in customer search endpoint');

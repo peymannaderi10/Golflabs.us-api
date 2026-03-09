@@ -134,11 +134,11 @@ class BookingController {
         });
         this.searchCustomers = (req, res) => __awaiter(this, void 0, void 0, function* () {
             try {
-                const { email, locationId } = req.query;
-                if (!email || !locationId) {
-                    return res.status(400).json({ error: 'email and locationId are required' });
+                const { email } = req.query;
+                if (!email) {
+                    return res.status(400).json({ error: 'email is required' });
                 }
-                const customers = yield this.bookingService.searchCustomersByEmail(email, locationId);
+                const customers = yield this.bookingService.searchCustomersByEmail(email);
                 res.json(customers);
             }
             catch (error) {

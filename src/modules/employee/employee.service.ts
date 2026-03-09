@@ -437,7 +437,9 @@ export class EmployeeService {
     async getCustomers(locationId: string, params: CustomerSearchParams): Promise<{ customers: Customer[]; total: number }> {
         const { page = 1, pageSize = 10, search, sortBy = 'createdAt', sortOrder = 'desc' } = params;
 
-        let query = supabase.from('user_profiles').select('*', { count: 'exact' });
+        let query = supabase.from('user_profiles').select('*', { count: 'exact' })
+            .eq('location_id', locationId)
+            .is('deleted_at', null);
 
         if (search) {
             query = query.or(`email.ilike.%${search}%,full_name.ilike.%${search}%`);

@@ -395,7 +395,9 @@ class EmployeeService {
     getCustomers(locationId, params) {
         return __awaiter(this, void 0, void 0, function* () {
             const { page = 1, pageSize = 10, search, sortBy = 'createdAt', sortOrder = 'desc' } = params;
-            let query = database_1.supabase.from('user_profiles').select('*', { count: 'exact' });
+            let query = database_1.supabase.from('user_profiles').select('*', { count: 'exact' })
+                .eq('location_id', locationId)
+                .is('deleted_at', null);
             if (search) {
                 query = query.or(`email.ilike.%${search}%,full_name.ilike.%${search}%`);
             }
