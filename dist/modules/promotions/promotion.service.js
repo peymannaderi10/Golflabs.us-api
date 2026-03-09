@@ -13,6 +13,7 @@ exports.promotionService = exports.PromotionService = void 0;
 const database_1 = require("../../config/database");
 const date_utils_1 = require("../../shared/utils/date.utils");
 const logger_1 = require("../../shared/utils/logger");
+const pricing_utils_1 = require("../../shared/utils/pricing.utils");
 class PromotionService {
     /**
      * Get all available promotions for a user (unredeemed)
@@ -245,58 +246,32 @@ class PromotionService {
                     const bookingMinutes = Math.round((new Date(endTimeISO).getTime() - new Date(startTimeISO).getTime()) / 60000);
                     return this.calculateDiscountSimple(userId, bookingMinutes, originalAmount);
                 }
-                // Get pricing rules for this location
-                const { data: rules, error: rulesError } = yield database_1.supabase
-                    .from('pricing_rules')
-                    .select('name, hourly_rate, start_time, end_time, days_of_week')
-                    .eq('location_id', locationId)
-                    .eq('is_active', true);
-                if (rulesError || !rules || rules.length === 0) {
-                    logger_1.logger.error({ err: rulesError }, 'Error fetching pricing rules for discount calculation');
+                // Use shared pricing context for user-type-aware discount calculation
+                let ctx;
+                try {
+                    ctx = yield (0, pricing_utils_1.fetchPricingContext)(locationId, userId);
+                }
+                catch (err) {
+                    logger_1.logger.error({ err }, 'Error fetching pricing context for discount calculation');
                     return this.fallbackDiscountCalculation(promotion, date, startTime, endTime, originalAmount);
                 }
-                // Calculate the value of the first N free minutes using actual pricing
+                const { userTypeRules, defaultRules } = (0, pricing_utils_1.splitRules)(ctx.allRules, ctx.userType, ctx.defaultSlug, false);
                 const startDate = new Date(startTimeISO);
                 const endDate = new Date(endTimeISO);
                 const bookingMinutes = Math.round((endDate.getTime() - startDate.getTime()) / 60000);
-                // Determine how many minutes are free (capped at promotion limit and booking duration)
                 const freeMinutes = Math.min(promotion.discount_value, promotion.max_free_minutes || promotion.discount_value, bookingMinutes);
-                // Calculate the dollar value of the first freeMinutes of the booking
                 let discountAmount = 0;
                 let minutesCounted = 0;
                 let cursorTime = new Date(startDate);
                 const freeEndTime = new Date(startDate.getTime() + freeMinutes * 60000);
                 while (cursorTime < freeEndTime && minutesCounted < freeMinutes) {
-                    // Convert UTC time to local time for pricing rule determination
-                    const localHour = parseInt(cursorTime.toLocaleString('en-US', {
-                        hour: '2-digit',
-                        hour12: false,
-                        timeZone: timezone
-                    }));
-                    // Determine which rate applies based on LOCAL time
-                    let rule;
-                    if (localHour >= 9 || localHour < 2) {
-                        // Standard Rate: 9am-2am (local time)
-                        rule = rules.find(r => r.name === "Standard Rate");
-                    }
-                    else {
-                        // Off-Peak Rate: 2am-9am (local time)
-                        rule = rules.find(r => r.name === "Off-Peak Rate");
-                    }
-                    if (!rule) {
-                        // Fallback to first available rule
-                        rule = rules[0];
-                    }
-                    // Price for this 15-minute slot (in dollars)
+                    const { localHour, dow } = (0, pricing_utils_1.localSlotInfo)(cursorTime, timezone);
+                    const rule = (0, pricing_utils_1.findRuleForSlot)(userTypeRules, defaultRules, localHour, dow);
                     const priceForSlot = rule.hourly_rate / 4;
                     discountAmount += priceForSlot;
                     minutesCounted += 15;
-                    // Move to next 15-minute slot
                     cursorTime = new Date(cursorTime.getTime() + 15 * 60000);
                 }
-                // Adjust discount if we counted more than free minutes (due to 15-min increments)
-                // e.g., if freeMinutes is 30 and we counted 30 minutes exactly, no adjustment needed
-                // But if freeMinutes is 20 and we counted 30 minutes, we need to prorate
                 if (minutesCounted > freeMinutes) {
                     const ratio = freeMinutes / minutesCounted;
                     discountAmount = discountAmount * ratio;
@@ -454,42 +429,27 @@ class PromotionService {
                         originalAmount: originalAmount
                     };
                 }
-                // For free_minutes promotions, calculate using pricing rules
-                const { data: rules, error: rulesError } = yield database_1.supabase
-                    .from('pricing_rules')
-                    .select('name, hourly_rate, start_time, end_time, days_of_week')
-                    .eq('location_id', locationId)
-                    .eq('is_active', true);
-                if (rulesError || !rules || rules.length === 0) {
-                    logger_1.logger.error({ err: rulesError }, 'Error fetching pricing rules for promo code calculation');
+                // For free_minutes promotions, calculate using pricing rules (default type for promo codes)
+                let ctx;
+                try {
+                    ctx = yield (0, pricing_utils_1.fetchPricingContext)(locationId);
+                }
+                catch (err) {
+                    logger_1.logger.error({ err }, 'Error fetching pricing context for promo code calculation');
                     return this.fallbackDiscountCalculation(promotion, date, startTime, endTime, originalAmount);
                 }
+                const { userTypeRules: promoUserRules, defaultRules: promoDefaultRules } = (0, pricing_utils_1.splitRules)(ctx.allRules, ctx.userType, ctx.defaultSlug, false);
                 const startDate = new Date(startTimeISO);
                 const endDate = new Date(endTimeISO);
                 const bookingMinutes = Math.round((endDate.getTime() - startDate.getTime()) / 60000);
-                // Determine how many minutes are free
                 const freeMinutes = Math.min(promotion.discount_value, promotion.max_free_minutes || promotion.discount_value, bookingMinutes);
-                // Calculate dollar value of free minutes using actual pricing
                 let discountAmount = 0;
                 let minutesCounted = 0;
                 let cursorTime = new Date(startDate);
                 const freeEndTime = new Date(startDate.getTime() + freeMinutes * 60000);
                 while (cursorTime < freeEndTime && minutesCounted < freeMinutes) {
-                    const localHour = parseInt(cursorTime.toLocaleString('en-US', {
-                        hour: '2-digit',
-                        hour12: false,
-                        timeZone: timezone
-                    }));
-                    let rule;
-                    if (localHour >= 9 || localHour < 2) {
-                        rule = rules.find(r => r.name === "Standard Rate");
-                    }
-                    else {
-                        rule = rules.find(r => r.name === "Off-Peak Rate");
-                    }
-                    if (!rule) {
-                        rule = rules[0];
-                    }
+                    const { localHour, dow } = (0, pricing_utils_1.localSlotInfo)(cursorTime, timezone);
+                    const rule = (0, pricing_utils_1.findRuleForSlot)(promoUserRules, promoDefaultRules, localHour, dow);
                     const priceForSlot = rule.hourly_rate / 4;
                     discountAmount += priceForSlot;
                     minutesCounted += 15;

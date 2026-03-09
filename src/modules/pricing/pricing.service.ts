@@ -130,10 +130,22 @@ export class PricingService {
       throw new Error('Location ID is required');
     }
 
+    // Look up the default user type slug for this location
+    const { data: defaultType } = await supabase
+      .from('user_types')
+      .select('slug')
+      .eq('location_id', locationId)
+      .eq('is_default', true)
+      .single();
+    const defaultSlug = defaultType?.slug || 'regular';
+
     const { data, error } = await supabase
       .from('pricing_rules')
-      .select('name, hourly_rate, start_time, end_time, days_of_week')
-      .eq('location_id', locationId);
+      .select('name, hourly_rate, start_time, end_time, days_of_week, user_type, is_extension_rate')
+      .eq('location_id', locationId)
+      .eq('is_active', true)
+      .eq('is_extension_rate', false)
+      .eq('user_type', defaultSlug);
 
     if (error) {
       logger.error({ err: error }, 'Error fetching pricing rules');
