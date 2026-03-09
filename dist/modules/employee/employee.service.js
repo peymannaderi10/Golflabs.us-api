@@ -435,6 +435,7 @@ class EmployeeService {
                     email: profile.email,
                     fullName: profile.full_name,
                     phone: profile.phone,
+                    userType: profile.user_type || 'regular',
                     createdAt: profile.created_at,
                     totalBookings,
                     totalSpend,
@@ -500,6 +501,7 @@ class EmployeeService {
                 email: profile.email,
                 fullName: profile.full_name,
                 phone: profile.phone,
+                userType: profile.user_type || 'regular',
                 createdAt: profile.created_at,
                 totalBookings,
                 totalSpend,
@@ -516,13 +518,17 @@ class EmployeeService {
     }
     updateCustomer(id, updates) {
         return __awaiter(this, void 0, void 0, function* () {
-            const { error } = yield database_1.supabase
-                .from('user_profiles')
-                .update({
+            const updateData = {
                 full_name: updates.fullName,
                 phone: updates.phone,
-                email: updates.email
-            })
+                email: updates.email,
+            };
+            if (updates.userType && ['regular', 'student', 'instructor'].includes(updates.userType)) {
+                updateData.user_type = updates.userType;
+            }
+            const { error } = yield database_1.supabase
+                .from('user_profiles')
+                .update(updateData)
                 .eq('id', id);
             if (error)
                 throw error;

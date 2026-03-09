@@ -125,11 +125,14 @@ export interface ReportResponse<T> {
 
 // Customer Management Types
 
+export type UserType = 'regular' | 'student' | 'instructor';
+
 export interface Customer {
     id: string;
     email: string;
     fullName: string;
     phone?: string;
+    userType: UserType;
     createdAt: string;
     totalBookings: number;
     totalSpend: number;

@@ -241,8 +241,8 @@ class EmployeeController {
         return __awaiter(this, void 0, void 0, function* () {
             try {
                 const { id } = req.params;
-                const { fullName, phone, email } = req.body;
-                yield employee_service_1.employeeService.updateCustomer(id, { fullName, phone, email });
+                const { fullName, phone, email, userType } = req.body;
+                yield employee_service_1.employeeService.updateCustomer(id, { fullName, phone, email, userType });
                 return res.json({ success: true });
             }
             catch (error) {

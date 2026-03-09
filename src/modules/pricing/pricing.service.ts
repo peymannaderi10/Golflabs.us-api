@@ -13,6 +13,7 @@ export interface PricingRuleFull {
   validFrom?: string;
   validTo?: string;
   isActive: boolean;
+  userType: 'regular' | 'student' | 'instructor';
   createdAt: string;
   updatedAt: string;
 }
@@ -72,6 +73,7 @@ export class PricingService {
       validFrom: rule.valid_from,
       validTo: rule.valid_to,
       isActive: rule.is_active ?? true,
+      userType: rule.user_type || 'regular',
       createdAt: rule.created_at,
       updatedAt: rule.updated_at
     }));
@@ -94,6 +96,9 @@ export class PricingService {
     if (rule.daysOfWeek && rule.daysOfWeek.length > 0) insertData.days_of_week = rule.daysOfWeek;
     if (rule.validFrom) insertData.valid_from = rule.validFrom;
     if (rule.validTo) insertData.valid_to = rule.validTo;
+    if (rule.userType && ['regular', 'student', 'instructor'].includes(rule.userType)) {
+      insertData.user_type = rule.userType;
+    }
 
     const { data, error } = await supabase
       .from('pricing_rules')
@@ -117,6 +122,7 @@ export class PricingService {
       validFrom: data.valid_from,
       validTo: data.valid_to,
       isActive: data.is_active ?? true,
+      userType: data.user_type || 'regular',
       createdAt: data.created_at,
       updatedAt: data.updated_at
     };
@@ -139,6 +145,9 @@ export class PricingService {
     if (updates.validFrom !== undefined) updateData.valid_from = updates.validFrom;
     if (updates.validTo !== undefined) updateData.valid_to = updates.validTo;
     if (updates.isActive !== undefined) updateData.is_active = updates.isActive;
+    if (updates.userType !== undefined && ['regular', 'student', 'instructor'].includes(updates.userType)) {
+      updateData.user_type = updates.userType;
+    }
 
     const { data, error } = await supabase
       .from('pricing_rules')
@@ -163,6 +172,7 @@ export class PricingService {
       validFrom: data.valid_from,
       validTo: data.valid_to,
       isActive: data.is_active ?? true,
+      userType: data.user_type || 'regular',
       createdAt: data.created_at,
       updatedAt: data.updated_at
     };

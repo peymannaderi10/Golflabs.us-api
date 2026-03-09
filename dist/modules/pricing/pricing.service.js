@@ -64,6 +64,7 @@ class PricingService {
                     validFrom: rule.valid_from,
                     validTo: rule.valid_to,
                     isActive: (_a = rule.is_active) !== null && _a !== void 0 ? _a : true,
+                    userType: rule.user_type || 'regular',
                     createdAt: rule.created_at,
                     updatedAt: rule.updated_at
                 });
@@ -92,6 +93,9 @@ class PricingService {
                 insertData.valid_from = rule.validFrom;
             if (rule.validTo)
                 insertData.valid_to = rule.validTo;
+            if (rule.userType && ['regular', 'student', 'instructor'].includes(rule.userType)) {
+                insertData.user_type = rule.userType;
+            }
             const { data, error } = yield database_1.supabase
                 .from('pricing_rules')
                 .insert(insertData)
@@ -112,6 +116,7 @@ class PricingService {
                 validFrom: data.valid_from,
                 validTo: data.valid_to,
                 isActive: (_b = data.is_active) !== null && _b !== void 0 ? _b : true,
+                userType: data.user_type || 'regular',
                 createdAt: data.created_at,
                 updatedAt: data.updated_at
             };
@@ -142,6 +147,9 @@ class PricingService {
                 updateData.valid_to = updates.validTo;
             if (updates.isActive !== undefined)
                 updateData.is_active = updates.isActive;
+            if (updates.userType !== undefined && ['regular', 'student', 'instructor'].includes(updates.userType)) {
+                updateData.user_type = updates.userType;
+            }
             const { data, error } = yield database_1.supabase
                 .from('pricing_rules')
                 .update(updateData)
@@ -163,6 +171,7 @@ class PricingService {
                 validFrom: data.valid_from,
                 validTo: data.valid_to,
                 isActive: (_a = data.is_active) !== null && _a !== void 0 ? _a : true,
+                userType: data.user_type || 'regular',
                 createdAt: data.created_at,
                 updatedAt: data.updated_at
             };

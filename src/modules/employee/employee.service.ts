@@ -486,6 +486,7 @@ export class EmployeeService {
                 email: profile.email,
                 fullName: profile.full_name,
                 phone: profile.phone,
+                userType: profile.user_type || 'regular',
                 createdAt: profile.created_at,
                 totalBookings,
                 totalSpend,
@@ -555,6 +556,7 @@ export class EmployeeService {
             email: profile.email,
             fullName: profile.full_name,
             phone: profile.phone,
+            userType: profile.user_type || 'regular',
             createdAt: profile.created_at,
             totalBookings,
             totalSpend,
@@ -568,14 +570,20 @@ export class EmployeeService {
             }
         };
     }
-    async updateCustomer(id: string, updates: { fullName?: string; phone?: string; email?: string }): Promise<void> {
+    async updateCustomer(id: string, updates: { fullName?: string; phone?: string; email?: string; userType?: string }): Promise<void> {
+        const updateData: Record<string, any> = {
+            full_name: updates.fullName,
+            phone: updates.phone,
+            email: updates.email,
+        };
+
+        if (updates.userType && ['regular', 'student', 'instructor'].includes(updates.userType)) {
+            updateData.user_type = updates.userType;
+        }
+
         const { error } = await supabase
             .from('user_profiles')
-            .update({
-                full_name: updates.fullName,
-                phone: updates.phone,
-                email: updates.email
-            })
+            .update(updateData)
             .eq('id', id);
 
         if (error) throw error;

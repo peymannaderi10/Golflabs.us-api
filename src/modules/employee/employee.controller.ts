@@ -240,9 +240,9 @@ export class EmployeeController {
     async updateCustomer(req: Request, res: Response) {
         try {
             const { id } = req.params;
-            const { fullName, phone, email } = req.body;
+            const { fullName, phone, email, userType } = req.body;
 
-            await employeeService.updateCustomer(id, { fullName, phone, email });
+            await employeeService.updateCustomer(id, { fullName, phone, email, userType });
 
             return res.json({ success: true });
         } catch (error: any) {

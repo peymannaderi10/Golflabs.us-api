@@ -30,11 +30,13 @@ export class UserService {
         throw new Error('Failed to delete account');
       }
 
-      // 2. Ban the auth user so they can't sign in
+      // 2. Ban the auth user and reassign its email so the original
+      //    email is freed up for re-registration.
       //    We can't delete auth.users because user_profiles FK cascades to it,
       //    and user_profiles is referenced by bookings/payments/etc.
       const { error: banError } = await supabase.auth.admin.updateUserById(userId, {
-        ban_duration: '876000h', // ~100 years
+        ban_duration: '876000h',
+        email: `deleted-${userId}@deleted.local`,
       });
 
       if (banError) {
