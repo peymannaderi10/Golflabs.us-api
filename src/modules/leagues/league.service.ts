@@ -209,6 +209,7 @@ export class LeagueService {
       .from('leagues')
       .select('*')
       .eq('location_id', locationId)
+      .is('deleted_at', null)
       .neq('status', 'cancelled')
       .order('created_at', { ascending: false });
 
@@ -224,6 +225,7 @@ export class LeagueService {
       .from('leagues')
       .select('*')
       .eq('id', leagueId)
+      .is('deleted_at', null)
       .single();
 
     if (error || !data) {
@@ -231,6 +233,24 @@ export class LeagueService {
     }
 
     return data;
+  }
+
+  async deleteLeague(leagueId: string): Promise<{ success: true }> {
+    const { data, error } = await supabase
+      .from('leagues')
+      .update({ deleted_at: new Date().toISOString() })
+      .eq('id', leagueId)
+      .is('deleted_at', null)
+      .select('id')
+      .single();
+
+    if (error) {
+      throw new Error(`Failed to delete league: ${error.message}`);
+    }
+    if (!data) {
+      throw new Error('League not found or already deleted');
+    }
+    return { success: true };
   }
 
   async updateLeague(leagueId: string, data: UpdateLeagueRequest): Promise<League> {

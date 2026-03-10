@@ -68,6 +68,17 @@ export class LeagueController {
     }
   };
 
+  deleteLeague = async (req: Request, res: Response) => {
+    try {
+      const result = await this.leagueService.deleteLeague(req.params.leagueId);
+      res.status(200).json(result);
+    } catch (error: any) {
+      logger.error({ err: error }, 'Error deleting league');
+      const isNotFound = error.message?.includes('not found') || error.message?.includes('already deleted');
+      res.status(isNotFound ? 404 : 400).json({ error: error.message });
+    }
+  };
+
   activateLeague = async (req: Request, res: Response) => {
     try {
       const league = await this.leagueService.activateLeague(req.params.leagueId);

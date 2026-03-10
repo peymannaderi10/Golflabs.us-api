@@ -26,6 +26,10 @@ const createLeagueRoutes = (socketService) => {
         (0, express_validator_1.param)('leagueId').isUUID().withMessage('leagueId must be a valid UUID'),
         validation_1.handleValidationErrors,
     ], controller.updateLeague);
+    router.delete('/:leagueId', auth_1.authenticateEmployee, [
+        (0, express_validator_1.param)('leagueId').isUUID().withMessage('leagueId must be a valid UUID'),
+        validation_1.handleValidationErrors,
+    ], controller.deleteLeague);
     router.post('/:leagueId/activate', auth_1.authenticateEmployee, [
         (0, express_validator_1.param)('leagueId').isUUID().withMessage('leagueId must be a valid UUID'),
         validation_1.handleValidationErrors,

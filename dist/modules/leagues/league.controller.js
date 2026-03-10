@@ -64,6 +64,18 @@ class LeagueController {
                 res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
+        this.deleteLeague = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            var _a, _b;
+            try {
+                const result = yield this.leagueService.deleteLeague(req.params.leagueId);
+                res.status(200).json(result);
+            }
+            catch (error) {
+                logger_1.logger.error({ err: error }, 'Error deleting league');
+                const isNotFound = ((_a = error.message) === null || _a === void 0 ? void 0 : _a.includes('not found')) || ((_b = error.message) === null || _b === void 0 ? void 0 : _b.includes('already deleted'));
+                res.status(isNotFound ? 404 : 400).json({ error: error.message });
+            }
+        });
         this.activateLeague = (req, res) => __awaiter(this, void 0, void 0, function* () {
             try {
                 const league = yield this.leagueService.activateLeague(req.params.leagueId);

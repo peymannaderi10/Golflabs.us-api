@@ -146,6 +146,7 @@ class LeagueService {
                 .from('leagues')
                 .select('*')
                 .eq('location_id', locationId)
+                .is('deleted_at', null)
                 .neq('status', 'cancelled')
                 .order('created_at', { ascending: false });
             if (error) {
@@ -160,11 +161,30 @@ class LeagueService {
                 .from('leagues')
                 .select('*')
                 .eq('id', leagueId)
+                .is('deleted_at', null)
                 .single();
             if (error || !data) {
                 throw new Error(`League not found: ${error === null || error === void 0 ? void 0 : error.message}`);
             }
             return data;
+        });
+    }
+    deleteLeague(leagueId) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const { data, error } = yield database_1.supabase
+                .from('leagues')
+                .update({ deleted_at: new Date().toISOString() })
+                .eq('id', leagueId)
+                .is('deleted_at', null)
+                .select('id')
+                .single();
+            if (error) {
+                throw new Error(`Failed to delete league: ${error.message}`);
+            }
+            if (!data) {
+                throw new Error('League not found or already deleted');
+            }
+            return { success: true };
         });
     }
     updateLeague(leagueId, data) {

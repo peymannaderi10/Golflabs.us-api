@@ -41,6 +41,7 @@ export interface League {
   status: 'draft' | 'registration' | 'active' | 'completed' | 'cancelled';
   created_at: string;
   updated_at: string;
+  deleted_at: string | null;
 }
 
 export interface PointsConfig {
