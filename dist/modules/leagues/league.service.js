@@ -171,19 +171,7 @@ class LeagueService {
     }
     deleteLeague(leagueId) {
         return __awaiter(this, void 0, void 0, function* () {
-            const { data, error } = yield database_1.supabase
-                .from('leagues')
-                .update({ deleted_at: new Date().toISOString() })
-                .eq('id', leagueId)
-                .is('deleted_at', null)
-                .select('id')
-                .single();
-            if (error) {
-                throw new Error(`Failed to delete league: ${error.message}`);
-            }
-            if (!data) {
-                throw new Error('League not found or already deleted');
-            }
+            yield this.cancelLeague(leagueId);
             return { success: true };
         });
     }
@@ -273,12 +261,17 @@ class LeagueService {
         return __awaiter(this, void 0, void 0, function* () {
             const { data: league, error } = yield database_1.supabase
                 .from('leagues')
-                .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+                .update({
+                status: 'cancelled',
+                deleted_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+            })
                 .eq('id', leagueId)
+                .is('deleted_at', null)
                 .select()
                 .single();
             if (error || !league) {
-                throw new Error(`Failed to cancel league: ${error === null || error === void 0 ? void 0 : error.message}`);
+                throw new Error(`League not found or already deleted: ${error === null || error === void 0 ? void 0 : error.message}`);
             }
             // Release all capacity holds
             try {

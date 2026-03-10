@@ -236,20 +236,7 @@ export class LeagueService {
   }
 
   async deleteLeague(leagueId: string): Promise<{ success: true }> {
-    const { data, error } = await supabase
-      .from('leagues')
-      .update({ deleted_at: new Date().toISOString() })
-      .eq('id', leagueId)
-      .is('deleted_at', null)
-      .select('id')
-      .single();
-
-    if (error) {
-      throw new Error(`Failed to delete league: ${error.message}`);
-    }
-    if (!data) {
-      throw new Error('League not found or already deleted');
-    }
+    await this.cancelLeague(leagueId);
     return { success: true };
   }
 
@@ -314,13 +301,18 @@ export class LeagueService {
   async cancelLeague(leagueId: string): Promise<League> {
     const { data: league, error } = await supabase
       .from('leagues')
-      .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+      .update({
+        status: 'cancelled',
+        deleted_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
       .eq('id', leagueId)
+      .is('deleted_at', null)
       .select()
       .single();
 
     if (error || !league) {
-      throw new Error(`Failed to cancel league: ${error?.message}`);
+      throw new Error(`League not found or already deleted: ${error?.message}`);
     }
 
     // Release all capacity holds
