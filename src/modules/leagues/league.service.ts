@@ -1651,7 +1651,7 @@ export class LeagueService {
 
     for (const enrollment of enrollments) {
       const league = enrollment.leagues;
-      if (!league) continue;
+      if (!league || league.deleted_at) continue; // Skip deleted/cancelled leagues
 
       // Get standing for this player in this league
       const { data: standing } = await supabase
