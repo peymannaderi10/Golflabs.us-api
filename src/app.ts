@@ -36,7 +36,10 @@ const ALLOWED_ORIGINS = [
   process.env.FRONTEND_URL?.replace(/\/$/, ''),
   'https://www.golflabs.us',
   'https://golflabs.us',
-  ...(process.env.NODE_ENV !== 'production' ? ['http://localhost:5173', 'http://localhost:3000', 'http://localhost:8080'] : []),
+  'https://app.golflabs.us',
+  'https://www.app.golflabs.us',
+  'https://golflabs-landing.vercel.app',
+  ...(process.env.NODE_ENV !== 'production' ? ['http://localhost:5173', 'http://localhost:3000', 'http://localhost:8080', 'http://localhost:3001'] : []),
 ].filter(Boolean) as string[];
 
 const io = new Server(httpServer, {
