@@ -25,11 +25,11 @@ export class BayService {
         location_id: locationId,
         name,
         bay_number: bayNumber,
-        equipment: equipment || 'Golf Simulator',
+        equipment_type: equipment || 'Golf Simulator',
         status: 'available',
         league_mode_active: false,
       })
-      .select('id, status, location_id, bay_number, name, equipment, last_seen, kiosk_ip, league_mode_active, league_mode_league_id')
+      .select('id, status, location_id, bay_number, name, equipment_type, last_seen, kiosk_ip, league_mode_active, league_mode_league_id')
       .single();
 
     if (error) {
