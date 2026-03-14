@@ -49,7 +49,10 @@ const ALLOWED_ORIGINS = [
     (_a = process.env.FRONTEND_URL) === null || _a === void 0 ? void 0 : _a.replace(/\/$/, ''),
     'https://www.golflabs.us',
     'https://golflabs.us',
-    ...(process.env.NODE_ENV !== 'production' ? ['http://localhost:5173', 'http://localhost:3000', 'http://localhost:8080'] : []),
+    'https://app.golflabs.us',
+    'https://www.app.golflabs.us',
+    'https://golflabs-landing.vercel.app',
+    ...(process.env.NODE_ENV !== 'production' ? ['http://localhost:5173', 'http://localhost:3000', 'http://localhost:8080', 'http://localhost:3001'] : []),
 ].filter(Boolean);
 const io = new socket_io_1.Server(exports.httpServer, {
     cors: {
