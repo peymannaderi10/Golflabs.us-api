@@ -135,7 +135,7 @@ function handleStripeWebhook(req, res, socketService) {
                                             const hour = parseInt(h, 10);
                                             const ampm = hour >= 12 ? 'PM' : 'AM';
                                             const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
-                                            const frontendUrl = process.env.FRONTEND_URL || 'https://golflabs.us';
+                                            const frontendUrl = process.env.FRONTEND_URL || 'https://app.golflabs.us';
                                             email_service_1.EmailService.sendLeagueEnrollmentEmail(league.location_id, {
                                                 playerName: player.display_name,
                                                 playerEmail: userProfile.email,
@@ -317,7 +317,7 @@ function handleStripeWebhook(req, res, socketService) {
                                     logger_1.logger.info({ bookingId, minutesUntilStart: minutesUntilStart.toFixed(1) }, 'Booking starts soon, sending immediate reminder');
                                     // Generate unlock token and link (same as reminder job)
                                     const unlockToken = (0, token_utils_1.createUnlockToken)(bookingId, bookingDetails.start_time, bookingDetails.end_time);
-                                    const unlockLink = `${process.env.FRONTEND_URL || 'https://golflabs.us'}/unlock?token=${unlockToken}`;
+                                    const unlockLink = `${process.env.FRONTEND_URL || 'https://app.golflabs.us'}/unlock?token=${unlockToken}`;
                                     // Update booking with unlock token
                                     yield database_1.supabase
                                         .from('bookings')
@@ -499,7 +499,7 @@ function handleStripeWebhook(req, res, socketService) {
                             if (minutesUntilStart <= 15) {
                                 logger_1.logger.info({ bookingId: setupBookingId, minutesUntilStart: minutesUntilStart.toFixed(1) }, 'Free booking starts soon, sending immediate reminder');
                                 const unlockToken = (0, token_utils_1.createUnlockToken)(setupBookingId, setupBookingDetails.start_time, setupBookingDetails.end_time);
-                                const unlockLink = `${process.env.FRONTEND_URL || 'https://golflabs.us'}/unlock?token=${unlockToken}`;
+                                const unlockLink = `${process.env.FRONTEND_URL || 'https://app.golflabs.us'}/unlock?token=${unlockToken}`;
                                 yield database_1.supabase
                                     .from('bookings')
                                     .update({

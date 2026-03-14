@@ -12,5 +12,5 @@ export const resend = new Resend(process.env.RESEND_API_KEY);
 export const resendConfig = {
   webhookSecret: process.env.RESEND_WEBHOOK_SECRET,
   fromEmail: process.env.RESEND_FROM_EMAIL || 'Golf Labs US <hello@golflabs.us>',
-  frontendUrl: process.env.FRONTEND_URL || 'https://golflabs.us'
+  frontendUrl: process.env.FRONTEND_URL || 'https://app.golflabs.us'
 }; 

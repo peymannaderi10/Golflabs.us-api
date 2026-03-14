@@ -2493,7 +2493,7 @@ export class LeagueService {
       invited.push(invite);
 
       // Send invite email (fire-and-forget)
-      const frontendUrl = process.env.FRONTEND_URL || 'https://golflabs.us';
+      const frontendUrl = process.env.FRONTEND_URL || 'https://app.golflabs.us';
       const captainProfile = await supabase
         .from('user_profiles')
         .select('full_name')

@@ -144,7 +144,7 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
                     const ampm = hour >= 12 ? 'PM' : 'AM';
                     const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
 
-                    const frontendUrl = process.env.FRONTEND_URL || 'https://golflabs.us';
+                    const frontendUrl = process.env.FRONTEND_URL || 'https://app.golflabs.us';
 
                     EmailService.sendLeagueEnrollmentEmail(league.location_id, {
                       playerName: player.display_name,
@@ -339,7 +339,7 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
                 
                 // Generate unlock token and link (same as reminder job)
                 const unlockToken = createUnlockToken(bookingId, bookingDetails.start_time, bookingDetails.end_time);
-                const unlockLink = `${process.env.FRONTEND_URL || 'https://golflabs.us'}/unlock?token=${unlockToken}`;
+                const unlockLink = `${process.env.FRONTEND_URL || 'https://app.golflabs.us'}/unlock?token=${unlockToken}`;
 
                 // Update booking with unlock token
                 await supabase
@@ -538,7 +538,7 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
               logger.info({ bookingId: setupBookingId, minutesUntilStart: minutesUntilStart.toFixed(1) }, 'Free booking starts soon, sending immediate reminder');
 
               const unlockToken = createUnlockToken(setupBookingId, setupBookingDetails.start_time, setupBookingDetails.end_time);
-              const unlockLink = `${process.env.FRONTEND_URL || 'https://golflabs.us'}/unlock?token=${unlockToken}`;
+              const unlockLink = `${process.env.FRONTEND_URL || 'https://app.golflabs.us'}/unlock?token=${unlockToken}`;
 
               await supabase
                 .from('bookings')
