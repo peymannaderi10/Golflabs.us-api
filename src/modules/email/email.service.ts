@@ -92,6 +92,45 @@ export class EmailService {
   }
 
   /**
+   * Send a post-booking review request email
+   */
+  static async sendPostBookingReviewEmail(bookingId: string, googleReviewUrl: string): Promise<void> {
+    try {
+      const exists = await NotificationService.notificationExists(bookingId, 'post_booking_review');
+      if (exists) {
+        logger.info({ bookingId }, 'Post-booking review email already exists');
+        return;
+      }
+
+      const bookingData = await NotificationService.getBookingEmailData(bookingId);
+      if (!bookingData) {
+        logger.error({ bookingId }, 'Could not get booking data for post-booking review');
+        return;
+      }
+
+      const rendered = await EmailTemplateService.renderPostBookingReview(
+        bookingData.locationId,
+        bookingData,
+        googleReviewUrl
+      );
+
+      const notificationId = await NotificationService.createNotification({
+        locationId: bookingData.locationId,
+        userId: bookingData.userId,
+        bookingId: bookingId,
+        type: 'post_booking_review',
+        recipient: bookingData.userEmail,
+        subject: rendered.subject,
+        content: rendered.html,
+      });
+
+      logger.info({ notificationId, bookingId }, 'Created post-booking review notification');
+    } catch (error) {
+      logger.error({ err: error, bookingId }, 'Error creating post-booking review notification');
+    }
+  }
+
+  /**
    * Send a cancellation email
    */
   static async sendCancellationEmail(

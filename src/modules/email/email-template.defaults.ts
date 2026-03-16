@@ -978,6 +978,45 @@ You can re-subscribe anytime from the memberships page.
     variables: ['userFullName', 'planName', 'locationName', 'isImmediate', 'formattedRefundAmount', 'accessUntil', 'hasRefund', 'brandName', 'brandColor', 'brandTagline'],
   },
 
+  // =========================================================================
+  // 10. POST-BOOKING REVIEW REQUEST
+  // =========================================================================
+  post_booking_review: {
+    name: 'Post-Booking Review Request',
+    subject: 'How was your session at {{locationName}}?',
+    html: wrapInLayout('Review Your Session', `
+      <div style="text-align: center; margin-bottom: 30px;">
+        <h2 class="text-primary" style="margin: 0 0 10px 0; font-size: 26px; font-weight: 600;">Thanks for visiting!</h2>
+        <p class="text-secondary" style="margin: 0; font-size: 18px; font-weight: 500;">Hi {{userFullName}}, we hope you enjoyed your session!</p>
+      </div>
+
+      <div style="text-align: center; margin: 40px 0;">
+        <a href="{{googleReviewUrl}}" style="padding: 18px 40px; text-decoration: none; border-radius: 50px; font-weight: 600; font-size: 16px; display: inline-block; letter-spacing: 0.5px; background: linear-gradient(135deg, #FBBC04 0%, #E8A800 100%); color: #000000; box-shadow: 0 4px 15px rgba(251, 188, 4, 0.3);">LEAVE A GOOGLE REVIEW</a>
+      </div>
+
+      <div style="text-align: center; margin: 30px 0;">
+        <p class="text-secondary" style="margin: 0; font-size: 16px; line-height: 1.6;">Leave us a review and get <strong>50% off</strong> your next booking with promo code <strong style="color: #FBBC04; font-size: 18px; letter-spacing: 1px;">FEEDBACK</strong> at checkout.</p>
+      </div>
+
+      <div style="text-align: center; margin-top: 40px;">
+        <h3 class="text-primary" style="margin-bottom: 15px; font-size: 18px;">See you on the green!</h3>
+        <p class="text-secondary" style="margin: 0; line-height: 1.6;">We can't wait to see you back at {{brandName}}.</p>
+      </div>
+    `),
+    text: `{{brandName}} - Thanks for visiting!
+
+Hi {{userFullName}}, we hope you enjoyed your session!
+
+LEAVE A GOOGLE REVIEW: {{googleReviewUrl}}
+
+Leave us a review and get 50% off your next booking with promo code FEEDBACK at checkout.
+
+See you on the green!
+
+{{brandName}} - Where Technology Meets Golf`,
+    variables: ['userFullName', 'locationName', 'googleReviewUrl', 'brandName', 'brandColor', 'brandTagline'],
+  },
+
   marketing_campaign: {
     name: 'Marketing Campaign (Default)',
     subject: '{{subject}}',

@@ -84,6 +84,39 @@ class EmailService {
         });
     }
     /**
+     * Send a post-booking review request email
+     */
+    static sendPostBookingReviewEmail(bookingId, googleReviewUrl) {
+        return __awaiter(this, void 0, void 0, function* () {
+            try {
+                const exists = yield notification_service_1.NotificationService.notificationExists(bookingId, 'post_booking_review');
+                if (exists) {
+                    logger_1.logger.info({ bookingId }, 'Post-booking review email already exists');
+                    return;
+                }
+                const bookingData = yield notification_service_1.NotificationService.getBookingEmailData(bookingId);
+                if (!bookingData) {
+                    logger_1.logger.error({ bookingId }, 'Could not get booking data for post-booking review');
+                    return;
+                }
+                const rendered = yield email_template_service_1.EmailTemplateService.renderPostBookingReview(bookingData.locationId, bookingData, googleReviewUrl);
+                const notificationId = yield notification_service_1.NotificationService.createNotification({
+                    locationId: bookingData.locationId,
+                    userId: bookingData.userId,
+                    bookingId: bookingId,
+                    type: 'post_booking_review',
+                    recipient: bookingData.userEmail,
+                    subject: rendered.subject,
+                    content: rendered.html,
+                });
+                logger_1.logger.info({ notificationId, bookingId }, 'Created post-booking review notification');
+            }
+            catch (error) {
+                logger_1.logger.error({ err: error, bookingId }, 'Error creating post-booking review notification');
+            }
+        });
+    }
+    /**
      * Send a cancellation email
      */
     static sendCancellationEmail(bookingId_1, cancellationReason_1) {

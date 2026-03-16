@@ -8,6 +8,7 @@ import { sendAttendanceReminders } from './attendance-reminder.job';
 import { processAttendanceCutoffs } from './attendance-cutoff.job';
 import { processScheduledCampaigns } from './marketing-scheduler.job';
 import { enforceDataRetention } from './data-retention.job';
+import { enqueuePostBookingReviews } from './post-booking-review.job';
 import { logger } from '../shared/utils/logger';
 
 const intervals: NodeJS.Timeout[] = [];
@@ -26,6 +27,7 @@ export function startScheduler() {
     setInterval(processAttendanceCutoffs, 5 * 60 * 1000),
     setInterval(processScheduledCampaigns, 60 * 1000),
     setInterval(enforceDataRetention, 24 * 60 * 60 * 1000),
+    setInterval(enqueuePostBookingReviews, 5 * 60 * 1000),
   );
 
   logger.info('Background job scheduler started');

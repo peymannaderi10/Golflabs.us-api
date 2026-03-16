@@ -12,11 +12,12 @@ const attendance_reminder_job_1 = require("./attendance-reminder.job");
 const attendance_cutoff_job_1 = require("./attendance-cutoff.job");
 const marketing_scheduler_job_1 = require("./marketing-scheduler.job");
 const data_retention_job_1 = require("./data-retention.job");
+const post_booking_review_job_1 = require("./post-booking-review.job");
 const logger_1 = require("../shared/utils/logger");
 const intervals = [];
 function startScheduler() {
     (0, reminder_job_1.enqueueReminders)();
-    intervals.push(setInterval(expired_reservations_job_1.handleExpiredReservations, 2 * 60 * 1000), setInterval(notifications_job_1.dispatchNotifications, 60 * 1000), setInterval(reminder_job_1.enqueueReminders, 60 * 1000), setInterval(handicap_job_1.recalculateAllHandicaps, 24 * 60 * 60 * 1000), setInterval(league_deadline_job_1.processTeamDeadlines, 5 * 60 * 1000), setInterval(league_mode_deactivate_job_1.autoDeactivateLeagueMode, 5 * 60 * 1000), setInterval(attendance_reminder_job_1.sendAttendanceReminders, 5 * 60 * 1000), setInterval(attendance_cutoff_job_1.processAttendanceCutoffs, 5 * 60 * 1000), setInterval(marketing_scheduler_job_1.processScheduledCampaigns, 60 * 1000), setInterval(data_retention_job_1.enforceDataRetention, 24 * 60 * 60 * 1000));
+    intervals.push(setInterval(expired_reservations_job_1.handleExpiredReservations, 2 * 60 * 1000), setInterval(notifications_job_1.dispatchNotifications, 60 * 1000), setInterval(reminder_job_1.enqueueReminders, 60 * 1000), setInterval(handicap_job_1.recalculateAllHandicaps, 24 * 60 * 60 * 1000), setInterval(league_deadline_job_1.processTeamDeadlines, 5 * 60 * 1000), setInterval(league_mode_deactivate_job_1.autoDeactivateLeagueMode, 5 * 60 * 1000), setInterval(attendance_reminder_job_1.sendAttendanceReminders, 5 * 60 * 1000), setInterval(attendance_cutoff_job_1.processAttendanceCutoffs, 5 * 60 * 1000), setInterval(marketing_scheduler_job_1.processScheduledCampaigns, 60 * 1000), setInterval(data_retention_job_1.enforceDataRetention, 24 * 60 * 60 * 1000), setInterval(post_booking_review_job_1.enqueuePostBookingReviews, 5 * 60 * 1000));
     logger_1.logger.info('Background job scheduler started');
 }
 function stopScheduler() {

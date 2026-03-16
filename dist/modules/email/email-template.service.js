@@ -111,6 +111,13 @@ class EmailTemplateService {
             return this.render(tpl.subject, tpl.html, tpl.text, vars);
         });
     }
+    static renderPostBookingReview(locationId, data, googleReviewUrl) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const tpl = yield this.getTemplate(locationId, 'post_booking_review');
+            const vars = Object.assign(Object.assign({}, this.prepareBookingVars(data)), { googleReviewUrl });
+            return this.render(tpl.subject, tpl.html, tpl.text, vars);
+        });
+    }
     static renderBookingCancellation(locationId, data) {
         return __awaiter(this, void 0, void 0, function* () {
             const tpl = yield this.getTemplate(locationId, 'booking_cancellation');

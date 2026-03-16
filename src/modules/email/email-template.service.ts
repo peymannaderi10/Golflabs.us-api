@@ -132,6 +132,16 @@ export class EmailTemplateService {
     return this.render(tpl.subject, tpl.html, tpl.text, vars);
   }
 
+  static async renderPostBookingReview(
+    locationId: string,
+    data: BookingEmailData,
+    googleReviewUrl: string
+  ): Promise<RenderedEmail> {
+    const tpl = await this.getTemplate(locationId, 'post_booking_review');
+    const vars = { ...this.prepareBookingVars(data), googleReviewUrl };
+    return this.render(tpl.subject, tpl.html, tpl.text, vars);
+  }
+
   static async renderBookingCancellation(
     locationId: string,
     data: BookingEmailData
