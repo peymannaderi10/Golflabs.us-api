@@ -61,7 +61,20 @@ export class UserService {
         throw new Error('Failed to delete account');
       }
 
-      // 3. Ban the auth user and reassign its email so the original
+      // 3. Unlink any OAuth identities (e.g. Google) so the provider account
+      //    is freed up for re-registration with a new account.
+      //    Uses a SECURITY DEFINER RPC function since PostgREST can't access
+      //    the auth schema and the GoTrue admin endpoint isn't available.
+      const { error: unlinkError } = await supabase.rpc('delete_oauth_identities', {
+        target_user_id: userId,
+      });
+      if (unlinkError) {
+        logger.warn({ err: unlinkError }, 'Failed to unlink OAuth identities');
+      } else {
+        logger.info({ userId }, 'Unlinked OAuth identities');
+      }
+
+      // 4. Ban the auth user and reassign its email so the original
       //    email is freed up for re-registration.
       //    We can't delete auth.users because user_profiles FK cascades to it,
       //    and user_profiles is referenced by bookings/payments/etc.
