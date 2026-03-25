@@ -455,7 +455,9 @@ class BookingService {
             if (cancellationError) {
                 logger_1.logger.error({ err: cancellationError, bookingId }, 'Error creating cancellation record for booking');
             }
-            // 9. Send cancellation email notification
+            // 9. Delete any pending reminder notification so it doesn't fire after cancellation
+            yield notification_service_1.NotificationService.deleteNotificationsByBookingAndType(bookingId, 'reminder');
+            // 10. Send cancellation email notification
             try {
                 yield email_service_1.EmailService.sendCancellationEmail(bookingId, 'Customer requested cancellation', 'customer', payment ? payment.amount : undefined, !!refundId);
             }
@@ -605,7 +607,9 @@ class BookingService {
                 .select('location_id, bay_id')
                 .eq('id', bookingId)
                 .single();
-            // 6. Send cancellation email notification
+            // 6. Delete any pending reminder notification so it doesn't fire after cancellation
+            yield notification_service_1.NotificationService.deleteNotificationsByBookingAndType(bookingId, 'reminder');
+            // 7. Send cancellation email notification
             try {
                 yield email_service_1.EmailService.sendCancellationEmail(bookingId, reason || 'Cancelled by staff', 'employee', payment ? payment.amount : undefined, !!refundId);
             }

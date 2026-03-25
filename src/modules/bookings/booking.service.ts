@@ -523,7 +523,10 @@ export class BookingService {
       logger.error({ err: cancellationError, bookingId }, 'Error creating cancellation record for booking');
     }
 
-    // 9. Send cancellation email notification
+    // 9. Delete any pending reminder notification so it doesn't fire after cancellation
+    await NotificationService.deleteNotificationsByBookingAndType(bookingId, 'reminder');
+
+    // 10. Send cancellation email notification
     try {
       await EmailService.sendCancellationEmail(
         bookingId,
@@ -697,7 +700,10 @@ export class BookingService {
       .eq('id', bookingId)
       .single();
 
-    // 6. Send cancellation email notification
+    // 6. Delete any pending reminder notification so it doesn't fire after cancellation
+    await NotificationService.deleteNotificationsByBookingAndType(bookingId, 'reminder');
+
+    // 7. Send cancellation email notification
     try {
       await EmailService.sendCancellationEmail(
         bookingId,
