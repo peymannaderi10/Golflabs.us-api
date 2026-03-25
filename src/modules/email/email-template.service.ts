@@ -151,6 +151,15 @@ export class EmailTemplateService {
     return this.render(tpl.subject, tpl.html, tpl.text, vars);
   }
 
+  static async renderBookingTimeChanged(
+    locationId: string,
+    data: BookingEmailData
+  ): Promise<RenderedEmail> {
+    const tpl = await this.getTemplate(locationId, 'booking_time_changed');
+    const vars = this.prepareBookingVars(data);
+    return this.render(tpl.subject, tpl.html, tpl.text, vars);
+  }
+
   static async renderTeamInvite(
     locationId: string,
     data: TeamInviteEmailData

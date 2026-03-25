@@ -4,6 +4,7 @@ import Stripe from 'stripe';
 import { parseTimeString, createISOTimestamp } from '../../shared/utils/date.utils';
 import { BookingDetails } from './booking.types';
 import { EmailService } from '../email/email.service';
+import { NotificationService } from '../email/notification.service';
 import { promotionService } from '../promotions/promotion.service';
 import { resendConfig } from '../../config/resend';
 import { CapacityHoldService } from './capacity-hold.service';
@@ -1670,4 +1671,135 @@ export class BookingService {
       paymentSkipped: skipPayment
     };
   }
-} 
+
+  async employeeRescheduleBooking(
+    bookingId: string,
+    newStartTime: string,
+    newEndTime: string,
+    locationId: string,
+    bayId: string,
+    employeeId: string
+  ) {
+    if (!bookingId || !newStartTime || !newEndTime || !locationId || !bayId) {
+      throw new Error('bookingId, newStartTime, newEndTime, locationId, and bayId are required');
+    }
+
+    const newStart = new Date(newStartTime);
+    const newEnd = new Date(newEndTime);
+
+    if (isNaN(newStart.getTime()) || isNaN(newEnd.getTime())) {
+      throw new Error('Invalid start or end time');
+    }
+
+    if (newEnd <= newStart) {
+      throw new Error('End time must be after start time');
+    }
+
+    // 1. Fetch and validate the booking
+    const { data: booking, error: bookingError } = await supabase
+      .from('bookings')
+      .select('id, location_id, bay_id, user_id, start_time, end_time, status, total_amount')
+      .eq('id', bookingId)
+      .single();
+
+    if (bookingError || !booking) {
+      throw new Error('Booking not found');
+    }
+
+    if (booking.status !== 'confirmed') {
+      throw new Error('Booking is not confirmed');
+    }
+
+    if (booking.location_id !== locationId) {
+      throw new Error('Booking does not match the specified location');
+    }
+
+    // 2. Check for conflicts on the target bay (buffer-aware), excluding this booking
+    const { data: bufferRow } = await supabase
+      .from('location_settings')
+      .select('booking_buffer_minutes')
+      .eq('location_id', locationId)
+      .single();
+    const bufferMins = bufferRow?.booking_buffer_minutes ?? 0;
+
+    const newStartWithBuffer = new Date(newStart.getTime() - bufferMins * 60_000);
+    const newEndWithBuffer = new Date(newEnd.getTime() + bufferMins * 60_000);
+
+    const { data: conflicts, error: conflictError } = await supabase
+      .from('bookings')
+      .select('id')
+      .eq('bay_id', bayId)
+      .neq('id', bookingId)
+      .not('status', 'in', '("cancelled","expired","abandoned")')
+      .lt('start_time', newEndWithBuffer.toISOString())
+      .gt('end_time', newStartWithBuffer.toISOString());
+
+    if (conflictError) {
+      throw new Error('Failed to check availability');
+    }
+
+    if (conflicts && conflicts.length > 0) {
+      throw new Error('New time conflicts with another booking');
+    }
+
+    // 3. Update the booking times and clear the old unlock token
+    const originalStartTime = booking.start_time;
+    const originalEndTime = booking.end_time;
+
+    const { error: updateError } = await supabase
+      .from('bookings')
+      .update({
+        start_time: newStart.toISOString(),
+        end_time: newEnd.toISOString(),
+        bay_id: bayId,
+        unlock_token: null,
+        unlock_token_expires_at: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', bookingId);
+
+    if (updateError) {
+      logger.error({ err: updateError, bookingId }, 'Error rescheduling booking');
+      throw new Error('Failed to reschedule booking');
+    }
+
+    // 4. Delete old reminder notification so the job re-queues at the new time
+    await NotificationService.deleteNotificationsByBookingAndType(bookingId, 'reminder');
+
+    // 5. Send booking time changed email
+    await EmailService.sendBookingTimeChangedEmail(bookingId);
+
+    // 6. Log the reschedule
+    await supabase.from('access_logs').insert({
+      location_id: locationId,
+      bay_id: bayId,
+      booking_id: bookingId,
+      user_id: booking.user_id,
+      action: 'booking_rescheduled',
+      success: true,
+      user_agent: 'Employee Dashboard',
+      metadata: {
+        original_start_time: originalStartTime,
+        original_end_time: originalEndTime,
+        new_start_time: newStart.toISOString(),
+        new_end_time: newEnd.toISOString(),
+        employee_id: employeeId
+      }
+    });
+
+    logger.info({
+      employeeId, bookingId,
+      originalStart: originalStartTime, originalEnd: originalEndTime,
+      newStart: newStart.toISOString(), newEnd: newEnd.toISOString()
+    }, 'Employee rescheduled booking');
+
+    return {
+      success: true,
+      bookingId,
+      locationId,
+      bayId,
+      newStartTime: newStart.toISOString(),
+      newEndTime: newEnd.toISOString(),
+    };
+  }
+}

@@ -117,6 +117,34 @@ class EmailService {
         });
     }
     /**
+     * Send a booking time changed email
+     */
+    static sendBookingTimeChangedEmail(bookingId) {
+        return __awaiter(this, void 0, void 0, function* () {
+            try {
+                const bookingData = yield notification_service_1.NotificationService.getBookingEmailData(bookingId);
+                if (!bookingData) {
+                    logger_1.logger.error({ bookingId }, 'Could not get booking data for time changed email');
+                    return;
+                }
+                const rendered = yield email_template_service_1.EmailTemplateService.renderBookingTimeChanged(bookingData.locationId, bookingData);
+                const notificationId = yield notification_service_1.NotificationService.createNotification({
+                    locationId: bookingData.locationId,
+                    userId: bookingData.userId,
+                    bookingId: bookingId,
+                    type: 'booking_time_changed',
+                    recipient: bookingData.userEmail,
+                    subject: rendered.subject,
+                    content: rendered.html
+                });
+                logger_1.logger.info({ notificationId, bookingId }, 'Created booking time changed notification');
+            }
+            catch (error) {
+                logger_1.logger.error({ err: error, bookingId }, 'Error sending booking time changed email');
+            }
+        });
+    }
+    /**
      * Send a cancellation email
      */
     static sendCancellationEmail(bookingId_1, cancellationReason_1) {

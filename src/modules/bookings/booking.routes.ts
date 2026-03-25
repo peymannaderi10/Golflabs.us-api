@@ -57,6 +57,15 @@ export const createBookingRoutes = (socketService: SocketService): Router => {
     handleValidationErrors,
     controller.employeeCancelBooking
   );
+  bookingRoutes.post('/employee/:bookingId/reschedule', authenticateEmployee,
+    validateUUID('bookingId', 'param'),
+    body('startTime').notEmpty().withMessage('startTime is required'),
+    body('endTime').notEmpty().withMessage('endTime is required'),
+    body('locationId').notEmpty().withMessage('locationId is required'),
+    body('bayId').notEmpty().withMessage('bayId is required'),
+    handleValidationErrors,
+    controller.employeeRescheduleBooking
+  );
 
   return bookingRoutes;
 };

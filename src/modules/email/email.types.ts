@@ -28,7 +28,7 @@ export interface NotificationRecord {
   location_id: string;
   user_id: string;
   booking_id: string;
-  type: 'thank_you' | 'reminder' | 'cancellation' | 'confirmation' | 'post_booking_review';
+  type: 'thank_you' | 'reminder' | 'cancellation' | 'confirmation' | 'post_booking_review' | 'booking_time_changed';
   channel: 'email' | 'sms';
   recipient: string;
   subject: string;
@@ -165,7 +165,8 @@ export type EmailTemplateType =
   | 'membership_welcome'
   | 'membership_canceled'
   | 'marketing_campaign'
-  | 'post_booking_review';
+  | 'post_booking_review'
+  | 'booking_time_changed';
 
 export interface EmailTemplateRecord {
   id: string;

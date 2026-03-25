@@ -142,6 +142,21 @@ export class NotificationService {
   }
 
   /**
+   * Delete notifications by booking ID and type (e.g., clear old reminder when booking time changes)
+   */
+  static async deleteNotificationsByBookingAndType(bookingId: string, type: string): Promise<void> {
+    const { error } = await supabase
+      .from('notifications')
+      .delete()
+      .eq('booking_id', bookingId)
+      .eq('type', type);
+
+    if (error) {
+      logger.error({ err: error, bookingId, type }, 'Error deleting notifications');
+    }
+  }
+
+  /**
    * Get booking data for email templates
    */
   static async getBookingEmailData(bookingId: string): Promise<{

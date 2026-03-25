@@ -259,6 +259,34 @@ class BookingController {
                 res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
+        this.employeeRescheduleBooking = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            try {
+                const { bookingId } = req.params;
+                const { startTime, endTime, locationId, bayId } = req.body;
+                const employeeProfile = req.employeeProfile;
+                if (!employeeProfile) {
+                    return res.status(403).json({ error: 'Employee authentication required' });
+                }
+                if (!startTime || !endTime || !locationId || !bayId) {
+                    return res.status(400).json({ error: 'startTime, endTime, locationId, and bayId are required' });
+                }
+                const result = yield this.bookingService.employeeRescheduleBooking(bookingId, startTime, endTime, locationId, bayId, employeeProfile.id);
+                res.json(result);
+                if (result.locationId && result.bayId) {
+                    this.socketService.triggerBookingUpdate(result.locationId, result.bayId, bookingId);
+                }
+            }
+            catch (error) {
+                logger_1.logger.error({ err: error, bookingId: req.params.bookingId }, 'Error in employee reschedule booking');
+                if (error.message === 'Booking not found') {
+                    return res.status(404).json({ error: error.message });
+                }
+                if (error.message.includes('conflict') || error.message.includes('not confirmed')) {
+                    return res.status(409).json({ error: error.message });
+                }
+                res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
+            }
+        });
         // Employee create booking - bypasses Stripe payment
         this.employeeCreateBooking = (req, res) => __awaiter(this, void 0, void 0, function* () {
             try {

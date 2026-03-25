@@ -131,6 +131,38 @@ export class EmailService {
   }
 
   /**
+   * Send a booking time changed email
+   */
+  static async sendBookingTimeChangedEmail(bookingId: string): Promise<void> {
+    try {
+      const bookingData = await NotificationService.getBookingEmailData(bookingId);
+      if (!bookingData) {
+        logger.error({ bookingId }, 'Could not get booking data for time changed email');
+        return;
+      }
+
+      const rendered = await EmailTemplateService.renderBookingTimeChanged(
+        bookingData.locationId,
+        bookingData
+      );
+
+      const notificationId = await NotificationService.createNotification({
+        locationId: bookingData.locationId,
+        userId: bookingData.userId,
+        bookingId: bookingId,
+        type: 'booking_time_changed',
+        recipient: bookingData.userEmail,
+        subject: rendered.subject,
+        content: rendered.html
+      });
+
+      logger.info({ notificationId, bookingId }, 'Created booking time changed notification');
+    } catch (error) {
+      logger.error({ err: error, bookingId }, 'Error sending booking time changed email');
+    }
+  }
+
+  /**
    * Send a cancellation email
    */
   static async sendCancellationEmail(

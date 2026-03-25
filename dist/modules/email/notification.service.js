@@ -143,6 +143,21 @@ class NotificationService {
         });
     }
     /**
+     * Delete notifications by booking ID and type (e.g., clear old reminder when booking time changes)
+     */
+    static deleteNotificationsByBookingAndType(bookingId, type) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const { error } = yield database_1.supabase
+                .from('notifications')
+                .delete()
+                .eq('booking_id', bookingId)
+                .eq('type', type);
+            if (error) {
+                logger_1.logger.error({ err: error, bookingId, type }, 'Error deleting notifications');
+            }
+        });
+    }
+    /**
      * Get booking data for email templates
      */
     static getBookingEmailData(bookingId) {

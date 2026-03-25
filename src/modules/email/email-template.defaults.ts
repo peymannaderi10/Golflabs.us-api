@@ -1079,4 +1079,70 @@ See you on the green!
 To unsubscribe: {{unsubscribeLink}}`,
     variables: ['subject', 'body', 'textBody', 'locationName', 'unsubscribeLink'],
   },
+
+  // =========================================================================
+  // 12. BOOKING TIME CHANGED
+  // =========================================================================
+  booking_time_changed: {
+    name: 'Booking Time Changed',
+    subject: '🕐 Your {{locationName}} booking has been rescheduled',
+    html: wrapInLayout('Booking Rescheduled', `
+      <div style="text-align: center; margin-bottom: 30px;">
+        <h2 class="text-primary" style="margin: 0 0 10px 0; font-size: 24px; font-weight: 600;">
+          🕐 Booking Rescheduled
+        </h2>
+        <p class="text-secondary" style="margin: 0; font-size: 16px;">
+          Hi {{userFullName}}, your booking time has been updated.
+        </p>
+      </div>
+
+      <div style="border-radius: 12px; padding: 30px; margin: 30px 0; background-color: #1c1c1c; border: 2px solid #4a7c59;">
+        <h3 style="margin: 0 0 20px 0; font-size: 20px; font-weight: 600; text-align: center; color: #6bb96e;">
+          📋 Updated Booking Details
+        </h3>
+        <div style="display: grid; gap: 15px;">
+          <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid #4a4a4a;">
+            <span style="color: #6bb96e; font-weight: 600; width: 120px; display: inline-block;">📍 Location:</span>
+            <span style="color: #e0e0e0; font-weight: 500;">{{locationName}}</span>
+          </div>
+          <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid #4a4a4a;">
+            <span style="color: #6bb96e; font-weight: 600; width: 120px; display: inline-block;">🏌️ Bay:</span>
+            <span style="color: #e0e0e0; font-weight: 500;">{{bayName}}</span>
+          </div>
+          <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid #4a4a4a;">
+            <span style="color: #6bb96e; font-weight: 600; width: 120px; display: inline-block;">📅 Date:</span>
+            <span style="color: #e0e0e0; font-weight: 500;">{{startDate}}</span>
+          </div>
+          <div style="display: flex; align-items: center; padding: 10px 0;">
+            <span style="color: #6bb96e; font-weight: 600; width: 120px; display: inline-block;">⏰ Time:</span>
+            <span style="color: #e0e0e0; font-weight: 500;">{{startTime}} - {{endTime}}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-notice" style="border: 1px solid; border-radius: 8px; padding: 20px; margin: 30px 0; text-align: center;">
+        <h4 class="text-notice" style="margin: 0 0 10px 0; font-size: 16px;">
+          📱 New Reminder Coming
+        </h4>
+        <p class="text-notice" style="margin: 0; font-size: 14px; line-height: 1.5;">
+          You'll receive a new reminder email 15 minutes before your updated session time with your bay unlock link.
+        </p>
+      </div>
+    `, confirmationExtraStyles),
+    text: `🕐 {{brandName}} - Booking Rescheduled
+
+Hi {{userFullName}}, your booking time has been updated.
+
+📋 UPDATED BOOKING DETAILS:
+📍 Location: {{locationName}}
+🏌️ Bay: {{bayName}}
+📅 Date: {{startDate}}
+⏰ Time: {{startTime}} - {{endTime}}
+
+📱 NEW REMINDER:
+You'll receive a new reminder email 15 minutes before your updated session time with your bay unlock link.
+
+{{brandName}} - Where Technology Meets Golf`,
+    variables: ['userFullName', 'locationName', 'bayName', 'startDate', 'startTime', 'endTime', 'brandName', 'brandColor', 'brandTagline'],
+  },
 };

@@ -125,6 +125,13 @@ class EmailTemplateService {
             return this.render(tpl.subject, tpl.html, tpl.text, vars);
         });
     }
+    static renderBookingTimeChanged(locationId, data) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const tpl = yield this.getTemplate(locationId, 'booking_time_changed');
+            const vars = this.prepareBookingVars(data);
+            return this.render(tpl.subject, tpl.html, tpl.text, vars);
+        });
+    }
     static renderTeamInvite(locationId, data) {
         return __awaiter(this, void 0, void 0, function* () {
             const tpl = yield this.getTemplate(locationId, 'team_invite');
