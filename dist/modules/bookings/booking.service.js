@@ -1496,66 +1496,79 @@ class BookingService {
                 const diffCents = Math.round(Math.abs(diffDollars) * 100);
                 const diffWithTaxCents = Math.round(diffCents * (1 + taxRate));
                 if (diffDollars > 0.01) {
-                    // New time is more expensive — charge the difference
+                    // New time is more expensive — try to charge the difference
                     priceAdjustment = { type: 'charge', amountCents: diffCents, amountWithTaxCents: diffWithTaxCents };
+                    // Check if customer has a card on file
                     const { data: userProfile } = yield database_1.supabase
                         .from('user_profiles')
                         .select('stripe_customer_id')
                         .eq('id', booking.user_id)
                         .single();
-                    if (!(userProfile === null || userProfile === void 0 ? void 0 : userProfile.stripe_customer_id)) {
-                        throw new Error('No payment method on file for this customer');
+                    let hasCard = false;
+                    let customerId = null;
+                    let paymentMethodId = null;
+                    let cardDetails = null;
+                    if (userProfile === null || userProfile === void 0 ? void 0 : userProfile.stripe_customer_id) {
+                        customerId = userProfile.stripe_customer_id;
+                        const paymentMethods = yield stripe_1.stripe.paymentMethods.list({
+                            customer: customerId,
+                            type: 'card',
+                            limit: 1
+                        });
+                        if (paymentMethods.data && paymentMethods.data.length > 0) {
+                            hasCard = true;
+                            paymentMethodId = paymentMethods.data[0].id;
+                            cardDetails = paymentMethods.data[0].card;
+                        }
                     }
-                    const paymentMethods = yield stripe_1.stripe.paymentMethods.list({
-                        customer: userProfile.stripe_customer_id,
-                        type: 'card',
-                        limit: 1
-                    });
-                    if (!paymentMethods.data || paymentMethods.data.length === 0) {
-                        throw new Error('No saved card found for this customer');
-                    }
-                    const paymentMethodId = paymentMethods.data[0].id;
-                    let paymentIntent;
-                    try {
-                        paymentIntent = yield stripe_1.stripe.paymentIntents.create({
-                            amount: diffWithTaxCents,
+                    if (hasCard && customerId && paymentMethodId) {
+                        // Charge the saved card
+                        let paymentIntent;
+                        try {
+                            paymentIntent = yield stripe_1.stripe.paymentIntents.create({
+                                amount: diffWithTaxCents,
+                                currency: 'usd',
+                                customer: customerId,
+                                payment_method: paymentMethodId,
+                                off_session: true,
+                                confirm: true,
+                                metadata: {
+                                    booking_id: bookingId,
+                                    user_id: booking.user_id,
+                                    bay_id: bayId,
+                                    location_id: locationId,
+                                    reschedule: 'true',
+                                    price_adjustment: 'charge',
+                                    pretax_amount_cents: diffCents.toString(),
+                                    tax_rate: taxRate.toString(),
+                                    initiated_by: 'employee',
+                                    employee_id: employeeId
+                                }
+                            });
+                        }
+                        catch (stripeError) {
+                            logger_1.logger.error({ err: stripeError, bookingId }, 'Reschedule price adjustment charge failed');
+                            throw new Error('Payment failed: ' + stripeError.message);
+                        }
+                        yield database_1.supabase.from('payments').insert({
+                            booking_id: bookingId,
+                            amount: diffWithTaxCents / 100,
+                            status: 'succeeded',
+                            stripe_payment_intent_id: paymentIntent.id,
                             currency: 'usd',
-                            customer: userProfile.stripe_customer_id,
-                            payment_method: paymentMethodId,
-                            off_session: true,
-                            confirm: true,
-                            metadata: {
-                                booking_id: bookingId,
-                                user_id: booking.user_id,
-                                bay_id: bayId,
-                                location_id: locationId,
-                                reschedule: 'true',
-                                price_adjustment: 'charge',
-                                pretax_amount_cents: diffCents.toString(),
-                                tax_rate: taxRate.toString(),
-                                initiated_by: 'employee',
-                                employee_id: employeeId
-                            }
+                            user_id: booking.user_id,
+                            location_id: locationId,
+                            payment_method: 'card',
+                            card_last_four: (cardDetails === null || cardDetails === void 0 ? void 0 : cardDetails.last4) || null,
+                            card_brand: (cardDetails === null || cardDetails === void 0 ? void 0 : cardDetails.brand) || null,
+                            processed_at: new Date().toISOString()
                         });
                     }
-                    catch (stripeError) {
-                        logger_1.logger.error({ err: stripeError, bookingId }, 'Reschedule price adjustment charge failed');
-                        throw new Error('Payment failed: ' + stripeError.message);
+                    else {
+                        // Manual booking — no card on file, flag as collect manually
+                        priceAdjustment = Object.assign(Object.assign({}, priceAdjustment), { type: 'collect_manually' });
+                        logger_1.logger.info({ bookingId, diffWithTaxCents }, 'No card on file, price difference must be collected manually');
                     }
-                    const cardDetails = paymentMethods.data[0].card;
-                    yield database_1.supabase.from('payments').insert({
-                        booking_id: bookingId,
-                        amount: diffWithTaxCents / 100,
-                        status: 'succeeded',
-                        stripe_payment_intent_id: paymentIntent.id,
-                        currency: 'usd',
-                        user_id: booking.user_id,
-                        location_id: locationId,
-                        payment_method: 'card',
-                        card_last_four: (cardDetails === null || cardDetails === void 0 ? void 0 : cardDetails.last4) || null,
-                        card_brand: (cardDetails === null || cardDetails === void 0 ? void 0 : cardDetails.brand) || null,
-                        processed_at: new Date().toISOString()
-                    });
                     newTotalDollars = newPriceDollars;
                 }
                 else if (diffDollars < -0.01) {

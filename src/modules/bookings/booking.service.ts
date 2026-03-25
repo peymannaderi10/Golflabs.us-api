@@ -1754,7 +1754,7 @@ export class BookingService {
     const originalEndTime = booking.end_time;
     const currentTotalDollars = booking.total_amount || 0;
     let newTotalDollars = currentTotalDollars;
-    let priceAdjustment: { type: 'charge' | 'refund' | 'none'; amountCents: number; amountWithTaxCents: number } = { type: 'none', amountCents: 0, amountWithTaxCents: 0 };
+    let priceAdjustment: { type: 'charge' | 'refund' | 'collect_manually' | 'none'; amountCents: number; amountWithTaxCents: number } = { type: 'none', amountCents: 0, amountWithTaxCents: 0 };
 
     if (adjustPrice) {
       // Get location timezone and tax rate
@@ -1778,72 +1778,82 @@ export class BookingService {
       const diffWithTaxCents = Math.round(diffCents * (1 + taxRate));
 
       if (diffDollars > 0.01) {
-        // New time is more expensive — charge the difference
+        // New time is more expensive — try to charge the difference
         priceAdjustment = { type: 'charge', amountCents: diffCents, amountWithTaxCents: diffWithTaxCents };
 
+        // Check if customer has a card on file
         const { data: userProfile } = await supabase
           .from('user_profiles')
           .select('stripe_customer_id')
           .eq('id', booking.user_id)
           .single();
 
-        if (!userProfile?.stripe_customer_id) {
-          throw new Error('No payment method on file for this customer');
-        }
+        let hasCard = false;
+        let customerId: string | null = null;
+        let paymentMethodId: string | null = null;
+        let cardDetails: any = null;
 
-        const paymentMethods = await stripe.paymentMethods.list({
-          customer: userProfile.stripe_customer_id,
-          type: 'card',
-          limit: 1
-        });
-
-        if (!paymentMethods.data || paymentMethods.data.length === 0) {
-          throw new Error('No saved card found for this customer');
-        }
-
-        const paymentMethodId = paymentMethods.data[0].id;
-
-        let paymentIntent: Stripe.PaymentIntent;
-        try {
-          paymentIntent = await stripe.paymentIntents.create({
-            amount: diffWithTaxCents,
-            currency: 'usd',
-            customer: userProfile.stripe_customer_id,
-            payment_method: paymentMethodId,
-            off_session: true,
-            confirm: true,
-            metadata: {
-              booking_id: bookingId,
-              user_id: booking.user_id,
-              bay_id: bayId,
-              location_id: locationId,
-              reschedule: 'true',
-              price_adjustment: 'charge',
-              pretax_amount_cents: diffCents.toString(),
-              tax_rate: taxRate.toString(),
-              initiated_by: 'employee',
-              employee_id: employeeId
-            }
+        if (userProfile?.stripe_customer_id) {
+          customerId = userProfile.stripe_customer_id;
+          const paymentMethods = await stripe.paymentMethods.list({
+            customer: customerId!,
+            type: 'card',
+            limit: 1
           });
-        } catch (stripeError: any) {
-          logger.error({ err: stripeError, bookingId }, 'Reschedule price adjustment charge failed');
-          throw new Error('Payment failed: ' + stripeError.message);
+          if (paymentMethods.data && paymentMethods.data.length > 0) {
+            hasCard = true;
+            paymentMethodId = paymentMethods.data[0].id;
+            cardDetails = paymentMethods.data[0].card;
+          }
         }
 
-        const cardDetails = paymentMethods.data[0].card;
-        await supabase.from('payments').insert({
-          booking_id: bookingId,
-          amount: diffWithTaxCents / 100,
-          status: 'succeeded',
-          stripe_payment_intent_id: paymentIntent.id,
-          currency: 'usd',
-          user_id: booking.user_id,
-          location_id: locationId,
-          payment_method: 'card',
-          card_last_four: cardDetails?.last4 || null,
-          card_brand: cardDetails?.brand || null,
-          processed_at: new Date().toISOString()
-        });
+        if (hasCard && customerId && paymentMethodId) {
+          // Charge the saved card
+          let paymentIntent: Stripe.PaymentIntent;
+          try {
+            paymentIntent = await stripe.paymentIntents.create({
+              amount: diffWithTaxCents,
+              currency: 'usd',
+              customer: customerId,
+              payment_method: paymentMethodId,
+              off_session: true,
+              confirm: true,
+              metadata: {
+                booking_id: bookingId,
+                user_id: booking.user_id,
+                bay_id: bayId,
+                location_id: locationId,
+                reschedule: 'true',
+                price_adjustment: 'charge',
+                pretax_amount_cents: diffCents.toString(),
+                tax_rate: taxRate.toString(),
+                initiated_by: 'employee',
+                employee_id: employeeId
+              }
+            });
+          } catch (stripeError: any) {
+            logger.error({ err: stripeError, bookingId }, 'Reschedule price adjustment charge failed');
+            throw new Error('Payment failed: ' + stripeError.message);
+          }
+
+          await supabase.from('payments').insert({
+            booking_id: bookingId,
+            amount: diffWithTaxCents / 100,
+            status: 'succeeded',
+            stripe_payment_intent_id: paymentIntent.id,
+            currency: 'usd',
+            user_id: booking.user_id,
+            location_id: locationId,
+            payment_method: 'card',
+            card_last_four: cardDetails?.last4 || null,
+            card_brand: cardDetails?.brand || null,
+            processed_at: new Date().toISOString()
+          });
+        } else {
+          // Manual booking — no card on file, flag as collect manually
+          priceAdjustment = { ...priceAdjustment, type: 'collect_manually' };
+          logger.info({ bookingId, diffWithTaxCents }, 'No card on file, price difference must be collected manually');
+        }
 
         newTotalDollars = newPriceDollars;
 
