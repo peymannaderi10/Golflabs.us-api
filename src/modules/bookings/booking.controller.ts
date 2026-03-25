@@ -300,7 +300,7 @@ export class BookingController {
   employeeRescheduleBooking = async (req: Request, res: Response) => {
     try {
       const { bookingId } = req.params;
-      const { startTime, endTime, locationId, bayId } = req.body;
+      const { startTime, endTime, locationId, bayId, adjustPrice } = req.body;
       const employeeProfile = (req as any).employeeProfile;
 
       if (!employeeProfile) {
@@ -317,7 +317,8 @@ export class BookingController {
         endTime,
         locationId,
         bayId,
-        employeeProfile.id
+        employeeProfile.id,
+        adjustPrice === true
       );
       res.json(result);
 
@@ -331,6 +332,9 @@ export class BookingController {
       }
       if (error.message.includes('conflict') || error.message.includes('not confirmed')) {
         return res.status(409).json({ error: error.message });
+      }
+      if (error.message.includes('Payment failed') || error.message.includes('No payment method') || error.message.includes('No saved card')) {
+        return res.status(402).json({ error: error.message });
       }
       res.status(500).json({ error: sanitizeError(error) });
     }

@@ -1684,7 +1684,8 @@ export class BookingService {
     newEndTime: string,
     locationId: string,
     bayId: string,
-    employeeId: string
+    employeeId: string,
+    adjustPrice: boolean = false
   ) {
     if (!bookingId || !newStartTime || !newEndTime || !locationId || !bayId) {
       throw new Error('bookingId, newStartTime, newEndTime, locationId, and bayId are required');
@@ -1748,16 +1749,159 @@ export class BookingService {
       throw new Error('New time conflicts with another booking');
     }
 
-    // 3. Update the booking times and clear the old unlock token
+    // 3. Handle price adjustment if requested
     const originalStartTime = booking.start_time;
     const originalEndTime = booking.end_time;
+    const currentTotalDollars = booking.total_amount || 0;
+    let newTotalDollars = currentTotalDollars;
+    let priceAdjustment: { type: 'charge' | 'refund' | 'none'; amountCents: number; amountWithTaxCents: number } = { type: 'none', amountCents: 0, amountWithTaxCents: 0 };
 
+    if (adjustPrice) {
+      // Get location timezone and tax rate
+      const { data: locationData } = await supabase
+        .from('locations')
+        .select('timezone, sales_tax_rate')
+        .eq('id', locationId)
+        .single();
+
+      const timezone = locationData?.timezone || 'America/New_York';
+      const taxRate = parseFloat(locationData?.sales_tax_rate) || 0;
+
+      // Calculate new price using pricing rules
+      const ctx = await fetchPricingContext(locationId, booking.user_id);
+      const { userTypeRules, defaultRules } = splitRules(ctx.allRules, ctx.userType, ctx.defaultSlug, false);
+      const newPriceCents = calculateSlotTotal(newStart, newEnd, timezone, userTypeRules, defaultRules);
+      const newPriceDollars = newPriceCents / 100;
+
+      const diffDollars = newPriceDollars - currentTotalDollars;
+      const diffCents = Math.round(Math.abs(diffDollars) * 100);
+      const diffWithTaxCents = Math.round(diffCents * (1 + taxRate));
+
+      if (diffDollars > 0.01) {
+        // New time is more expensive — charge the difference
+        priceAdjustment = { type: 'charge', amountCents: diffCents, amountWithTaxCents: diffWithTaxCents };
+
+        const { data: userProfile } = await supabase
+          .from('user_profiles')
+          .select('stripe_customer_id')
+          .eq('id', booking.user_id)
+          .single();
+
+        if (!userProfile?.stripe_customer_id) {
+          throw new Error('No payment method on file for this customer');
+        }
+
+        const paymentMethods = await stripe.paymentMethods.list({
+          customer: userProfile.stripe_customer_id,
+          type: 'card',
+          limit: 1
+        });
+
+        if (!paymentMethods.data || paymentMethods.data.length === 0) {
+          throw new Error('No saved card found for this customer');
+        }
+
+        const paymentMethodId = paymentMethods.data[0].id;
+
+        let paymentIntent: Stripe.PaymentIntent;
+        try {
+          paymentIntent = await stripe.paymentIntents.create({
+            amount: diffWithTaxCents,
+            currency: 'usd',
+            customer: userProfile.stripe_customer_id,
+            payment_method: paymentMethodId,
+            off_session: true,
+            confirm: true,
+            metadata: {
+              booking_id: bookingId,
+              user_id: booking.user_id,
+              bay_id: bayId,
+              location_id: locationId,
+              reschedule: 'true',
+              price_adjustment: 'charge',
+              pretax_amount_cents: diffCents.toString(),
+              tax_rate: taxRate.toString(),
+              initiated_by: 'employee',
+              employee_id: employeeId
+            }
+          });
+        } catch (stripeError: any) {
+          logger.error({ err: stripeError, bookingId }, 'Reschedule price adjustment charge failed');
+          throw new Error('Payment failed: ' + stripeError.message);
+        }
+
+        const cardDetails = paymentMethods.data[0].card;
+        await supabase.from('payments').insert({
+          booking_id: bookingId,
+          amount: diffWithTaxCents / 100,
+          status: 'succeeded',
+          stripe_payment_intent_id: paymentIntent.id,
+          currency: 'usd',
+          user_id: booking.user_id,
+          location_id: locationId,
+          payment_method: 'card',
+          card_last_four: cardDetails?.last4 || null,
+          card_brand: cardDetails?.brand || null,
+          processed_at: new Date().toISOString()
+        });
+
+        newTotalDollars = newPriceDollars;
+
+      } else if (diffDollars < -0.01) {
+        // New time is cheaper — refund the difference
+        priceAdjustment = { type: 'refund', amountCents: diffCents, amountWithTaxCents: diffWithTaxCents };
+
+        const { data: payment } = await supabase
+          .from('payments')
+          .select('stripe_payment_intent_id, amount')
+          .eq('booking_id', bookingId)
+          .eq('status', 'succeeded')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (payment && payment.stripe_payment_intent_id && !payment.stripe_payment_intent_id.startsWith('temp_')) {
+          try {
+            await stripe.refunds.create({
+              payment_intent: payment.stripe_payment_intent_id,
+              amount: diffWithTaxCents,
+              metadata: {
+                booking_id: bookingId,
+                reschedule: 'true',
+                price_adjustment: 'refund',
+                pretax_amount_cents: diffCents.toString(),
+                tax_rate: taxRate.toString(),
+                employee_id: employeeId
+              }
+            });
+
+            await supabase
+              .from('payments')
+              .update({
+                refund_amount: diffWithTaxCents / 100,
+                refunded_at: new Date().toISOString()
+              })
+              .eq('stripe_payment_intent_id', payment.stripe_payment_intent_id);
+
+            logger.info({ bookingId, refundAmountCents: diffWithTaxCents }, 'Reschedule partial refund processed');
+          } catch (stripeError: any) {
+            logger.error({ err: stripeError, bookingId }, 'Reschedule refund failed');
+            // Don't fail the reschedule — just log it
+          }
+        }
+
+        newTotalDollars = newPriceDollars;
+      }
+    }
+
+    // 4. Update the booking times, price, and clear the old unlock token
     const { error: updateError } = await supabase
       .from('bookings')
       .update({
         start_time: newStart.toISOString(),
         end_time: newEnd.toISOString(),
         bay_id: bayId,
+        total_amount: newTotalDollars,
         unlock_token: null,
         unlock_token_expires_at: null,
         updated_at: new Date().toISOString(),
@@ -1769,13 +1913,13 @@ export class BookingService {
       throw new Error('Failed to reschedule booking');
     }
 
-    // 4. Delete old reminder notification so the job re-queues at the new time
+    // 5. Delete old reminder notification so the job re-queues at the new time
     await NotificationService.deleteNotificationsByBookingAndType(bookingId, 'reminder');
 
-    // 5. Send booking time changed email
+    // 6. Send booking time changed email
     await EmailService.sendBookingTimeChangedEmail(bookingId);
 
-    // 6. Log the reschedule
+    // 7. Log the reschedule
     await supabase.from('access_logs').insert({
       location_id: locationId,
       bay_id: bayId,
@@ -1789,14 +1933,22 @@ export class BookingService {
         original_end_time: originalEndTime,
         new_start_time: newStart.toISOString(),
         new_end_time: newEnd.toISOString(),
-        employee_id: employeeId
+        employee_id: employeeId,
+        adjust_price: adjustPrice,
+        price_adjustment: priceAdjustment.type,
+        adjustment_amount_cents: priceAdjustment.amountWithTaxCents,
+        old_total: currentTotalDollars,
+        new_total: newTotalDollars
       }
     });
 
     logger.info({
       employeeId, bookingId,
       originalStart: originalStartTime, originalEnd: originalEndTime,
-      newStart: newStart.toISOString(), newEnd: newEnd.toISOString()
+      newStart: newStart.toISOString(), newEnd: newEnd.toISOString(),
+      adjustPrice, priceAdjustment: priceAdjustment.type,
+      adjustmentCents: priceAdjustment.amountWithTaxCents,
+      oldTotal: currentTotalDollars, newTotal: newTotalDollars
     }, 'Employee rescheduled booking');
 
     return {
@@ -1806,6 +1958,10 @@ export class BookingService {
       bayId,
       newStartTime: newStart.toISOString(),
       newEndTime: newEnd.toISOString(),
+      priceAdjusted: adjustPrice && priceAdjustment.type !== 'none',
+      adjustmentType: priceAdjustment.type,
+      adjustmentAmount: priceAdjustment.amountWithTaxCents / 100,
+      newTotal: newTotalDollars,
     };
   }
 }
