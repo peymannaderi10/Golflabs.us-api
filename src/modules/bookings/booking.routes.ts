@@ -31,6 +31,7 @@ export const createBookingRoutes = (socketService: SocketService): Router => {
   bookingRoutes.post('/:bookingId/extend', authenticateKioskOrEmployee,
     validateUUID('bookingId', 'param'),
     body('extensionMinutes').isInt({ min: 15 }).withMessage('extensionMinutes must be an integer >= 15'),
+    body('useFreeMinutes').optional().isBoolean().withMessage('useFreeMinutes must be a boolean'),
     handleValidationErrors,
     controller.extendBooking
   );

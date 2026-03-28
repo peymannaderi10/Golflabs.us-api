@@ -88,8 +88,11 @@ export class MembershipService {
     if (data.sortOrder !== undefined) updates.sort_order = data.sortOrder;
     if (data.isActive !== undefined) updates.is_active = data.isActive;
 
-    // Price changes: create new Stripe Prices on the same Product
-    if (data.monthlyPrice !== undefined || data.annualPrice !== undefined) {
+    // Fetch current plan once for price changes and Stripe product updates
+    const needsStripe = data.monthlyPrice !== undefined || data.annualPrice !== undefined
+      || data.name !== undefined || data.description !== undefined;
+
+    if (needsStripe) {
       const { data: existing, error: fetchErr } = await supabase
         .from('membership_plans')
         .select('stripe_product_id, monthly_price, annual_price')
@@ -100,9 +103,12 @@ export class MembershipService {
         throw new Error('Plan not found');
       }
 
+      const stripeProductId = existing.stripe_product_id;
+
+      // Price changes: create new Stripe Prices on the same Product
       if (data.monthlyPrice !== undefined && data.monthlyPrice !== existing.monthly_price) {
         const newPrice = await stripe.prices.create({
-          product: existing.stripe_product_id,
+          product: stripeProductId,
           unit_amount: Math.round(data.monthlyPrice * 100),
           currency: 'usd',
           recurring: { interval: 'month' },
@@ -117,7 +123,7 @@ export class MembershipService {
           updates.stripe_annual_price_id = null;
         } else {
           const newPrice = await stripe.prices.create({
-            product: existing.stripe_product_id,
+            product: stripeProductId,
             unit_amount: Math.round(data.annualPrice * 100),
             currency: 'usd',
             recurring: { interval: 'year' },
@@ -126,21 +132,13 @@ export class MembershipService {
           updates.stripe_annual_price_id = newPrice.id;
         }
       }
-    }
 
-    // Also update the Stripe Product name/description if changed
-    if (data.name !== undefined || data.description !== undefined) {
-      const { data: plan } = await supabase
-        .from('membership_plans')
-        .select('stripe_product_id')
-        .eq('id', planId)
-        .single();
-
-      if (plan?.stripe_product_id) {
+      // Update the Stripe Product name/description if changed
+      if (data.name !== undefined || data.description !== undefined) {
         const productUpdate: Record<string, any> = {};
         if (data.name !== undefined) productUpdate.name = data.name;
         if (data.description !== undefined) productUpdate.description = data.description || '';
-        await stripe.products.update(plan.stripe_product_id, productUpdate);
+        await stripe.products.update(stripeProductId, productUpdate);
       }
     }
 
@@ -197,10 +195,40 @@ export class MembershipService {
   }
 
   // =====================================================
+  // BILLING PORTAL (Customer)
+  // =====================================================
+
+  async createBillingPortalSession(userId: string, locationId: string, returnUrl: string): Promise<{ url: string }> {
+    // Validate returnUrl against allowed frontend origin to prevent open redirect
+    const allowedOrigin = process.env.FRONTEND_URL || 'http://localhost:8080';
+    if (!returnUrl.startsWith(allowedOrigin)) {
+      throw new Error('Invalid returnUrl');
+    }
+
+    // Get Stripe customer ID from user profile (1:1 mapping: user = Stripe customer)
+    const { data: profile, error } = await supabase
+      .from('user_profiles')
+      .select('stripe_customer_id')
+      .eq('id', userId)
+      .single();
+
+    if (error || !profile?.stripe_customer_id) {
+      throw new Error('No Stripe customer found for this account');
+    }
+
+    const session = await stripe.billingPortal.sessions.create({
+      customer: profile.stripe_customer_id,
+      return_url: returnUrl,
+    });
+
+    return { url: session.url };
+  }
+
+  // =====================================================
   // SUBSCRIPTIONS (Customer)
   // =====================================================
 
-  async subscribe(userId: string, planId: string, billingInterval: 'monthly' | 'annual'): Promise<{ clientSecret: string | null; membershipId: string; subscriptionId: string }> {
+  async subscribe(userId: string, planId: string, billingInterval: 'monthly' | 'annual'): Promise<{ url: string | null }> {
     if (!userId || !planId) throw new Error('userId and planId are required');
 
     // 1. Get the plan
@@ -240,24 +268,26 @@ export class MembershipService {
       throw new Error('You already have an active membership at this location');
     }
 
-    // Clean up any orphaned incomplete memberships (e.g. user started checkout but never paid)
-    const { data: incompleteRows } = await supabase
+    // Clean up any orphaned incomplete or cancelled memberships so re-subscribe works
+    const { data: staleRows } = await supabase
       .from('memberships')
-      .select('id, stripe_subscription_id')
+      .select('id, stripe_subscription_id, status')
       .eq('user_id', userId)
       .eq('location_id', plan.location_id)
-      .eq('status', 'incomplete');
+      .in('status', ['incomplete', 'canceled', 'incomplete_expired']);
 
-    if (incompleteRows && incompleteRows.length > 0) {
-      for (const row of incompleteRows) {
-        try {
-          await stripe.subscriptions.cancel(row.stripe_subscription_id);
-        } catch (cancelErr: any) {
-          logger.warn({ stripeSubscriptionId: row.stripe_subscription_id, err: cancelErr }, 'Failed to cancel orphaned Stripe subscription');
+    if (staleRows && staleRows.length > 0) {
+      for (const row of staleRows) {
+        if (row.status === 'incomplete') {
+          try {
+            await stripe.subscriptions.cancel(row.stripe_subscription_id);
+          } catch (cancelErr: any) {
+            logger.warn({ stripeSubscriptionId: row.stripe_subscription_id, err: cancelErr }, 'Failed to cancel orphaned Stripe subscription');
+          }
         }
         await supabase.from('memberships').delete().eq('id', row.id);
       }
-      logger.info({ count: incompleteRows.length, userId }, 'Cleaned up incomplete memberships');
+      logger.info({ count: staleRows.length, userId }, 'Cleaned up stale memberships before re-subscribe');
     }
 
     // 3. Ensure Stripe Customer
@@ -299,58 +329,36 @@ export class MembershipService {
         .eq('id', userId);
     }
 
-    // 4. Create Stripe Subscription with payment_behavior: 'default_incomplete'
-    // so the frontend can collect payment via Elements
-    const subscription = await stripe.subscriptions.create({
+    // 4. Create Stripe Checkout Session for subscription
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:8080';
+    const checkoutSession = await stripe.checkout.sessions.create({
       customer: stripeCustomerId,
-      items: [{ price: priceId }],
-      payment_behavior: 'default_incomplete',
-      payment_settings: {
-        save_default_payment_method: 'on_subscription',
+      mode: 'subscription',
+      line_items: [{ price: priceId, quantity: 1 }],
+      success_url: `${frontendUrl}/dashboard?membership=success`,
+      cancel_url: `${frontendUrl}/memberships`,
+      subscription_data: {
+        metadata: {
+          user_id: userId,
+          plan_id: planId,
+          location_id: plan.location_id,
+          billing_interval: billingInterval,
+        },
       },
-      expand: ['latest_invoice.payment_intent'],
       metadata: {
         user_id: userId,
         plan_id: planId,
         location_id: plan.location_id,
+        billing_interval: billingInterval,
       },
     });
 
-    // 5. Insert membership row (status will be updated by webhook when payment succeeds)
-    const { data: membership, error: membershipErr } = await supabase
-      .from('memberships')
-      .insert({
-        user_id: userId,
-        plan_id: planId,
-        location_id: plan.location_id,
-        stripe_subscription_id: subscription.id,
-        status: 'incomplete',
-        billing_interval: billingInterval,
-        current_period_start: subscription.current_period_start ? new Date(subscription.current_period_start * 1000).toISOString() : null,
-        current_period_end: subscription.current_period_end ? new Date(subscription.current_period_end * 1000).toISOString() : null,
-      })
-      .select('id')
-      .single();
-
-    if (membershipErr) {
-      logger.error({ err: membershipErr }, 'Error creating membership record');
-      await stripe.subscriptions.cancel(subscription.id);
-      throw new Error('Failed to create membership');
-    }
-
-    // Extract client secret from the latest invoice's payment intent
-    const invoice = subscription.latest_invoice as any;
-    const paymentIntent = invoice?.payment_intent as any;
-    const clientSecret = paymentIntent?.client_secret || null;
-
     return {
-      clientSecret,
-      membershipId: membership.id,
-      subscriptionId: subscription.id,
+      url: checkoutSession.url,
     };
   }
 
-  async cancelMembership(membershipId: string, userId: string, immediate = false): Promise<{ refundAmount?: number }> {
+  async cancelMembership(membershipId: string, userId: string, immediate = false, employeeOverride = false): Promise<{ refundAmount?: number }> {
     const { data: membership, error: fetchErr } = await supabase
       .from('memberships')
       .select('id, stripe_subscription_id, user_id, status, plan_id, location_id, billing_interval, current_period_end')
@@ -358,7 +366,7 @@ export class MembershipService {
       .single();
 
     if (fetchErr || !membership) throw new Error('Membership not found');
-    if (membership.user_id !== userId) throw new Error('Access denied');
+    if (!employeeOverride && membership.user_id !== userId) throw new Error('Access denied');
 
     if (!['active', 'trialing', 'past_due'].includes(membership.status)) {
       throw new Error('This membership cannot be canceled (current status: ' + membership.status + ')');
@@ -434,7 +442,7 @@ export class MembershipService {
     return {};
   }
 
-  async changePlan(membershipId: string, userId: string, newPlanId: string): Promise<void> {
+  async changePlan(membershipId: string, userId: string, newPlanId: string, employeeOverride = false): Promise<void> {
     const { data: membership, error: fetchErr } = await supabase
       .from('memberships')
       .select('id, stripe_subscription_id, user_id, location_id, billing_interval, status')
@@ -442,7 +450,7 @@ export class MembershipService {
       .single();
 
     if (fetchErr || !membership) throw new Error('Membership not found');
-    if (membership.user_id !== userId) throw new Error('Access denied');
+    if (!employeeOverride && membership.user_id !== userId) throw new Error('Access denied');
 
     if (!['active', 'trialing'].includes(membership.status)) {
       throw new Error('Plan can only be changed on an active membership (current status: ' + membership.status + ')');
@@ -552,6 +560,13 @@ export class MembershipService {
     // Auto-sync from Stripe if local status is stale (e.g. webhook failed)
     if (data.status === 'incomplete' && data.stripe_subscription_id) {
       try {
+        const sub = await stripe.subscriptions.retrieve(data.stripe_subscription_id);
+        // If Stripe says it's dead, delete the stale row and return null
+        if (['canceled', 'incomplete_expired'].includes(sub.status)) {
+          await supabase.from('memberships').delete().eq('id', data.id);
+          logger.info({ membershipId: data.id }, 'Cleaned up stale incomplete membership');
+          return null;
+        }
         const synced = await this.syncFromStripe(data.id, data.stripe_subscription_id);
         if (synced) {
           const { membership_plans, ...membership } = synced;
@@ -559,6 +574,11 @@ export class MembershipService {
         }
       } catch (syncErr) {
         logger.error({ err: syncErr }, 'Auto-sync from Stripe failed');
+        // If Stripe sub doesn't exist anymore, clean up
+        if ((syncErr as any)?.code === 'resource_missing') {
+          await supabase.from('memberships').delete().eq('id', data.id);
+          return null;
+        }
       }
     }
 
@@ -712,6 +732,35 @@ export class MembershipService {
     if (error) {
       logger.error({ err: error }, 'Error updating location settings');
       throw new Error('Failed to update settings');
+    }
+
+    // When memberships are disabled, cancel all active subscriptions at period end
+    if (updates.membershipsEnabled === false) {
+      const { data: activeMembers } = await supabase
+        .from('memberships')
+        .select('id, stripe_subscription_id')
+        .eq('location_id', locationId)
+        .in('status', ['active', 'trialing'])
+        .is('canceled_at', null);
+
+      if (activeMembers && activeMembers.length > 0) {
+        let canceledCount = 0;
+        for (const member of activeMembers) {
+          try {
+            await stripe.subscriptions.update(member.stripe_subscription_id, {
+              cancel_at_period_end: true,
+            });
+            await supabase
+              .from('memberships')
+              .update({ canceled_at: new Date().toISOString() })
+              .eq('id', member.id);
+            canceledCount++;
+          } catch (err) {
+            logger.error({ err, membershipId: member.id }, 'Failed to cancel subscription at period end');
+          }
+        }
+        logger.info({ locationId, canceledCount, total: activeMembers.length }, 'Memberships disabled — subscriptions set to cancel at period end');
+      }
     }
   }
 }

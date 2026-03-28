@@ -435,7 +435,18 @@ export class EmployeeService {
      * Get customers list with pagination and search
      */
     async getCustomers(locationId: string, params: CustomerSearchParams): Promise<{ customers: Customer[]; total: number }> {
-        const { page = 1, pageSize = 10, search, sortBy = 'createdAt', sortOrder = 'desc' } = params;
+        const { page = 1, pageSize = 10, search, sortBy = 'createdAt', sortOrder = 'desc', membershipFilter = 'all', userType, minBookings, minSpend } = params;
+
+        // If filtering by membership, get member user IDs first
+        let memberUserIds: string[] | null = null;
+        if (membershipFilter === 'members' || membershipFilter === 'non-members') {
+            const { data: memberRows } = await supabase
+                .from('memberships')
+                .select('user_id')
+                .eq('location_id', locationId)
+                .in('status', ['active', 'trialing', 'past_due']);
+            memberUserIds = (memberRows || []).map(r => r.user_id);
+        }
 
         let query = supabase.from('user_profiles').select('*', { count: 'exact' })
             .eq('location_id', locationId)
@@ -443,6 +454,21 @@ export class EmployeeService {
 
         if (search) {
             query = query.or(`email.ilike.%${search}%,full_name.ilike.%${search}%`);
+        }
+
+        if (membershipFilter === 'members' && memberUserIds) {
+            if (memberUserIds.length === 0) {
+                return { customers: [], total: 0 };
+            }
+            query = query.in('id', memberUserIds);
+        } else if (membershipFilter === 'non-members' && memberUserIds) {
+            if (memberUserIds.length > 0) {
+                query = query.not('id', 'in', `(${memberUserIds.join(',')})`);
+            }
+        }
+
+        if (userType) {
+            query = query.eq('user_type', userType);
         }
 
         // Pagination
@@ -496,7 +522,14 @@ export class EmployeeService {
             };
         }));
 
-        return { customers, total: count || 0 };
+        // Post-query filters on computed fields
+        const filtered = customers.filter(c => {
+            if (minBookings && c.totalBookings < minBookings) return false;
+            if (minSpend && c.totalSpend < minSpend) return false;
+            return true;
+        });
+
+        return { customers: filtered, total: (minBookings || minSpend) ? filtered.length : (count || 0) };
     }
 
     /**
@@ -553,6 +586,21 @@ export class EmployeeService {
             amount: b.total_amount || 0,
         }));
 
+        // Fetch membership for this user at this location
+        const { data: membership } = await supabase
+            .from('memberships')
+            .select(`
+                id, status, billing_interval, current_period_end, canceled_at,
+                free_minutes_used, guest_passes_used, plan_id,
+                membership_plans (id, name, monthly_price, annual_price, benefits)
+            `)
+            .eq('user_id', customerId)
+            .eq('location_id', locationId)
+            .in('status', ['active', 'trialing', 'past_due', 'canceled'])
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
         return {
             id: profile.id,
             email: profile.email,
@@ -569,7 +617,8 @@ export class EmployeeService {
                 averageOrderValue,
                 cancellationRate,
                 memberSince: profile.created_at,
-            }
+            },
+            membership: membership || null,
         };
     }
     async updateCustomer(id: string, updates: { fullName?: string; phone?: string; email?: string; userType?: string }, locationId?: string): Promise<void> {

@@ -188,7 +188,7 @@ class EmployeeController {
     getCustomers(req, res) {
         return __awaiter(this, void 0, void 0, function* () {
             try {
-                const { locationId, page, pageSize, search, sortBy, sortOrder } = req.query;
+                const { locationId, page, pageSize, search, sortBy, sortOrder, membershipFilter, userType, minBookings, minSpend } = req.query;
                 if (!locationId) {
                     return res.status(400).json({ success: false, error: 'locationId is required' });
                 }
@@ -198,6 +198,10 @@ class EmployeeController {
                     search: search,
                     sortBy: sortBy,
                     sortOrder: sortOrder,
+                    membershipFilter: membershipFilter,
+                    userType: userType,
+                    minBookings: minBookings ? parseInt(minBookings) : undefined,
+                    minSpend: minSpend ? parseFloat(minSpend) : undefined,
                 });
                 return res.json({
                     success: true,

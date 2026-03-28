@@ -31,7 +31,7 @@ class BookingService {
             var _a, _b, _c, _d, _e, _f;
             const { locationId, userId, bayId, date, startTime, endTime, partySize, totalAmount } = bookingData;
             // Basic validation
-            if (!locationId || !userId || !bayId || !date || !startTime || !endTime || !partySize || !totalAmount) {
+            if (!locationId || !userId || !bayId || !date || !startTime || !endTime || !partySize || totalAmount == null) {
                 throw new Error('Missing required booking details');
             }
             // First, get the location's timezone
@@ -60,30 +60,31 @@ class BookingService {
             try {
                 const membershipService = new membership_service_1.MembershipService();
                 const locationSettings = yield membershipService.getLocationMembershipSettings(locationId);
-                if (locationSettings.membershipsEnabled) {
-                    const membership = yield membershipService.getActiveMembershipForUser(userId, locationId);
-                    const benefits = membership === null || membership === void 0 ? void 0 : membership.benefits;
-                    // Booking window enforcement: how far in advance can this user book?
-                    const bookingWindowDays = (_a = benefits === null || benefits === void 0 ? void 0 : benefits.bookingWindowDays) !== null && _a !== void 0 ? _a : locationSettings.defaultBookingWindowDays;
-                    const bookingStartDate = new Date(p_start_time);
-                    const maxBookableDate = new Date();
-                    maxBookableDate.setDate(maxBookableDate.getDate() + bookingWindowDays);
-                    if (bookingStartDate > maxBookableDate) {
-                        const windowLabel = membership ? `${bookingWindowDays} days (member)` : `${bookingWindowDays} days`;
-                        throw new Error(`Bookings can only be made up to ${windowLabel} in advance.`);
-                    }
-                    // Available hours enforcement: is this user allowed to book at this time?
-                    if (locationSettings.defaultBookingHours && !membership) {
-                        const { start: allowedStart, end: allowedEnd } = locationSettings.defaultBookingHours;
-                        const [allowedStartH] = allowedStart.split(':').map(Number);
-                        const [allowedEndH] = allowedEnd.split(':').map(Number);
-                        const bookingLocalHour = parseInt(bookingStartDate.toLocaleString('en-US', { hour: '2-digit', hour12: false, timeZone: timezone }));
-                        const isOutsideHours = allowedEndH > allowedStartH
-                            ? (bookingLocalHour < allowedStartH || bookingLocalHour >= allowedEndH)
-                            : (bookingLocalHour < allowedStartH && bookingLocalHour >= allowedEndH);
-                        if (isOutsideHours) {
-                            throw new Error(`Non-member bookings are only available between ${allowedStart} and ${allowedEnd}. Become a member for extended hours.`);
-                        }
+                // Only look up membership benefits if memberships are enabled at this location
+                const membership = locationSettings.membershipsEnabled
+                    ? yield membershipService.getActiveMembershipForUser(userId, locationId)
+                    : null;
+                const benefits = membership === null || membership === void 0 ? void 0 : membership.benefits;
+                // Booking window enforcement: how far in advance can this user book?
+                const bookingWindowDays = (_a = benefits === null || benefits === void 0 ? void 0 : benefits.bookingWindowDays) !== null && _a !== void 0 ? _a : locationSettings.defaultBookingWindowDays;
+                const bookingStartDate = new Date(p_start_time);
+                const maxBookableDate = new Date();
+                maxBookableDate.setDate(maxBookableDate.getDate() + bookingWindowDays);
+                if (bookingStartDate > maxBookableDate) {
+                    const windowLabel = membership ? `${bookingWindowDays} days (member)` : `${bookingWindowDays} days`;
+                    throw new Error(`Bookings can only be made up to ${windowLabel} in advance.`);
+                }
+                // Available hours enforcement: members with extended hours bypass, everyone else uses location defaults
+                if (locationSettings.defaultBookingHours && !membership) {
+                    const { start: allowedStart, end: allowedEnd } = locationSettings.defaultBookingHours;
+                    const [allowedStartH] = allowedStart.split(':').map(Number);
+                    const [allowedEndH] = allowedEnd.split(':').map(Number);
+                    const bookingLocalHour = parseInt(bookingStartDate.toLocaleString('en-US', { hour: '2-digit', hour12: false, timeZone: timezone }));
+                    const isOutsideHours = allowedEndH > allowedStartH
+                        ? (bookingLocalHour < allowedStartH || bookingLocalHour >= allowedEndH)
+                        : (bookingLocalHour < allowedStartH && bookingLocalHour >= allowedEndH);
+                    if (isOutsideHours) {
+                        throw new Error(`Bookings are only available between ${allowedStart} and ${allowedEnd}.`);
                     }
                 }
             }
@@ -355,6 +356,7 @@ class BookingService {
     }
     cancelBooking(bookingId, userId) {
         return __awaiter(this, void 0, void 0, function* () {
+            var _a, _b;
             if (!bookingId || !userId) {
                 throw new Error('Booking ID and User ID are required');
             }
@@ -385,16 +387,16 @@ class BookingService {
             // 4. Get the payment record to process refund
             const { data: payment, error: paymentError } = yield database_1.supabase
                 .from('payments')
-                .select('stripe_payment_intent_id, amount, status')
+                .select('stripe_payment_intent_id, amount, status, metadata')
                 .eq('booking_id', bookingId)
                 .eq('status', 'succeeded')
                 .single();
             if (paymentError || !payment) {
                 logger_1.logger.warn({ bookingId }, 'No successful payment found for booking, cancelling without refund');
             }
-            // 5. Process Stripe refund if payment exists
+            // 5. Process Stripe refund if payment exists (skip for SetupIntents — $0 bookings have no charge)
             let refundId = null;
-            if (payment && payment.stripe_payment_intent_id) {
+            if (payment && payment.stripe_payment_intent_id && !payment.stripe_payment_intent_id.startsWith('seti_')) {
                 try {
                     const refund = yield stripe_1.stripe.refunds.create({
                         payment_intent: payment.stripe_payment_intent_id,
@@ -455,9 +457,41 @@ class BookingService {
             if (cancellationError) {
                 logger_1.logger.error({ err: cancellationError, bookingId }, 'Error creating cancellation record for booking');
             }
-            // 9. Delete any pending reminder notification so it doesn't fire after cancellation
+            // 9. Restore membership free minutes if any were used for this booking
+            if (payment) {
+                try {
+                    let restoreMembershipId = null;
+                    let restoreFreeMinutes = 0;
+                    // Try Stripe metadata first (paid bookings)
+                    if (payment.stripe_payment_intent_id) {
+                        const stripeId = payment.stripe_payment_intent_id;
+                        const stripeObj = stripeId.startsWith('seti_')
+                            ? yield stripe_1.stripe.setupIntents.retrieve(stripeId)
+                            : yield stripe_1.stripe.paymentIntents.retrieve(stripeId);
+                        restoreMembershipId = ((_a = stripeObj.metadata) === null || _a === void 0 ? void 0 : _a.membership_id) || null;
+                        restoreFreeMinutes = parseFloat(((_b = stripeObj.metadata) === null || _b === void 0 ? void 0 : _b.member_free_minutes_applied) || '0');
+                    }
+                    // Fallback to local payment metadata ($0 extensions / free bookings)
+                    if (!restoreMembershipId && payment.metadata) {
+                        const meta = payment.metadata;
+                        restoreMembershipId = meta.membership_id || null;
+                        restoreFreeMinutes = parseFloat(meta.member_free_minutes_applied || '0');
+                    }
+                    if (restoreMembershipId && restoreFreeMinutes > 0) {
+                        yield database_1.supabase.rpc('increment_free_minutes_used', {
+                            p_membership_id: restoreMembershipId,
+                            p_delta: -restoreFreeMinutes,
+                        });
+                        logger_1.logger.info({ membershipId: restoreMembershipId, freeMinutesApplied: restoreFreeMinutes, bookingId }, 'Restored free minutes after booking cancellation');
+                    }
+                }
+                catch (memberErr) {
+                    logger_1.logger.error({ err: memberErr, bookingId }, 'Error restoring membership free minutes on cancellation');
+                }
+            }
+            // 10. Delete any pending reminder notification so it doesn't fire after cancellation
             yield notification_service_1.NotificationService.deleteNotificationsByBookingAndType(bookingId, 'reminder');
-            // 10. Send cancellation email notification
+            // 11. Send cancellation email notification
             try {
                 yield email_service_1.EmailService.sendCancellationEmail(bookingId, 'Customer requested cancellation', 'customer', payment ? payment.amount : undefined, !!refundId);
             }
@@ -1029,7 +1063,58 @@ class BookingService {
                     priceFormatted: `$${(totalCents / 100).toFixed(2)}`
                 });
             }
-            // 7. Get card on file info from the user's most recent successful payment
+            // 5. Check membership for member pricing
+            let memberInfo = null;
+            try {
+                const membershipService = new membership_service_1.MembershipService();
+                const locationSettings = yield membershipService.getLocationMembershipSettings(booking.location_id);
+                if (locationSettings.membershipsEnabled) {
+                    const membership = yield membershipService.getActiveMembershipForUser(booking.user_id, booking.location_id);
+                    if (membership) {
+                        const benefits = membership.benefits || {};
+                        const freeMinutesPerMonth = benefits.freeMinutesPerMonth || 0;
+                        const freeMinutesUsed = membership.free_minutes_used || 0;
+                        const remainingFreeMinutes = Math.max(0, freeMinutesPerMonth - freeMinutesUsed);
+                        memberInfo = {
+                            isMember: true,
+                            membershipId: membership.id,
+                            remainingFreeMinutes,
+                            discountType: benefits.discountType || null,
+                            discountValue: benefits.discountValue || 0,
+                            planName: membership.plan_name || 'Member',
+                        };
+                        // Calculate member prices for each option
+                        for (const opt of options) {
+                            const freeMinToApply = Math.min(remainingFreeMinutes, opt.minutes);
+                            const freeSlots = Math.floor(freeMinToApply / 15);
+                            const totalSlots = opt.minutes / 15;
+                            const avgSlotPrice = totalSlots > 0 ? opt.priceCents / totalSlots : 0;
+                            const freeCredit = Math.round(freeSlots * avgSlotPrice);
+                            let afterFree = Math.max(0, opt.priceCents - freeCredit);
+                            // Apply member discount on remainder
+                            let discount = 0;
+                            if (benefits.discountType && benefits.discountValue && benefits.discountValue > 0 && afterFree > 0) {
+                                const remainingMinutes = opt.minutes - (freeSlots * 15);
+                                const remainingHours = remainingMinutes / 60;
+                                if (benefits.discountType === 'fixed') {
+                                    discount = Math.min(Math.round(benefits.discountValue * 100 * remainingHours), afterFree);
+                                }
+                                else if (benefits.discountType === 'percentage') {
+                                    discount = Math.round(afterFree * (benefits.discountValue / 100));
+                                }
+                                afterFree = Math.max(0, afterFree - discount);
+                            }
+                            opt.memberPriceCents = afterFree;
+                            opt.memberPriceFormatted = `$${(afterFree / 100).toFixed(2)}`;
+                            opt.freeMinutesApplied = freeSlots * 15;
+                        }
+                    }
+                }
+            }
+            catch (memberErr) {
+                logger_1.logger.error({ err: memberErr }, 'Error checking membership for extension options');
+            }
+            // 6. Get card on file info from the user's most recent successful payment
             let card = null;
             const { data: recentPayment } = yield database_1.supabase
                 .from('payments')
@@ -1051,7 +1136,8 @@ class BookingService {
                 currentEndTime: booking.end_time,
                 maxExtensionMinutes,
                 options,
-                card
+                card,
+                memberInfo,
             };
         });
     }
@@ -1059,14 +1145,14 @@ class BookingService {
      * Extend an active booking by charging the saved card off-session.
      * Called by the kiosk when the player confirms the extension.
      */
-    extendBooking(bookingId, extensionMinutes, locationId, bayId) {
-        return __awaiter(this, void 0, void 0, function* () {
+    extendBooking(bookingId_1, extensionMinutes_1, locationId_1, bayId_1) {
+        return __awaiter(this, arguments, void 0, function* (bookingId, extensionMinutes, locationId, bayId, useFreeMinutes = false) {
             var _a;
             if (!bookingId || !extensionMinutes || !locationId || !bayId) {
                 throw new Error('bookingId, extensionMinutes, locationId, and bayId are required');
             }
-            if (![15, 30, 60].includes(extensionMinutes)) {
-                throw new Error('extensionMinutes must be 15, 30, or 60');
+            if (![15, 30, 45, 60].includes(extensionMinutes)) {
+                throw new Error('extensionMinutes must be 15, 30, 45, or 60');
             }
             // 1. Fetch and validate the booking
             const { data: booking, error: bookingError } = yield database_1.supabase
@@ -1121,92 +1207,168 @@ class BookingService {
             const ctx = yield (0, pricing_utils_1.fetchPricingContext)(locationId, booking.user_id);
             const { userTypeRules, defaultRules } = (0, pricing_utils_1.splitRules)(ctx.allRules, ctx.userType, ctx.defaultSlug, true);
             const totalCents = (0, pricing_utils_1.calculateSlotTotal)(currentEndTime, newEndTime, timezone, userTypeRules, defaultRules);
-            // 4. Get the user's Stripe Customer and saved payment method
-            const { data: userProfile, error: userError } = yield database_1.supabase
-                .from('user_profiles')
-                .select('stripe_customer_id')
-                .eq('id', booking.user_id)
-                .single();
-            if (userError || !(userProfile === null || userProfile === void 0 ? void 0 : userProfile.stripe_customer_id)) {
-                throw new Error('No payment method on file. Please visit the front desk.');
+            // 4. Apply membership benefits if requested
+            let finalCents = totalCents;
+            let freeMinutesApplied = 0;
+            let membershipId = null;
+            if (useFreeMinutes) {
+                try {
+                    const membershipService = new membership_service_1.MembershipService();
+                    const membership = yield membershipService.getActiveMembershipForUser(booking.user_id, locationId);
+                    if (membership) {
+                        membershipId = membership.id;
+                        const benefits = membership.benefits || {};
+                        const freeMinutesPerMonth = benefits.freeMinutesPerMonth || 0;
+                        const freeMinutesUsed = membership.free_minutes_used || 0;
+                        const remainingFreeMinutes = Math.max(0, freeMinutesPerMonth - freeMinutesUsed);
+                        // Apply free minutes (in 15-min slot increments)
+                        if (remainingFreeMinutes > 0) {
+                            const freeMinToApply = Math.min(remainingFreeMinutes, extensionMinutes);
+                            const freeSlots = Math.floor(freeMinToApply / 15);
+                            const totalSlots = extensionMinutes / 15;
+                            const avgSlotPrice = totalSlots > 0 ? totalCents / totalSlots : 0;
+                            const freeCredit = Math.round(freeSlots * avgSlotPrice);
+                            freeMinutesApplied = freeSlots * 15;
+                            finalCents = Math.max(0, totalCents - freeCredit);
+                        }
+                        // Apply member discount on remainder
+                        if (benefits.discountType && benefits.discountValue && benefits.discountValue > 0 && finalCents > 0) {
+                            const remainingMinutes = extensionMinutes - freeMinutesApplied;
+                            const remainingHours = remainingMinutes / 60;
+                            let discount = 0;
+                            if (benefits.discountType === 'fixed') {
+                                discount = Math.min(Math.round(benefits.discountValue * 100 * remainingHours), finalCents);
+                            }
+                            else if (benefits.discountType === 'percentage') {
+                                discount = Math.round(finalCents * (benefits.discountValue / 100));
+                            }
+                            finalCents = Math.max(0, finalCents - discount);
+                        }
+                        logger_1.logger.info({ bookingId, membershipId, freeMinutesApplied, totalCents, finalCents }, 'Applied member benefits to extension');
+                    }
+                    else {
+                        logger_1.logger.warn({ bookingId, userId: booking.user_id }, 'useFreeMinutes requested but no active membership found');
+                    }
+                }
+                catch (memberErr) {
+                    logger_1.logger.error({ err: memberErr, bookingId }, 'Error applying member benefits to extension, charging full price');
+                }
             }
-            const customerId = userProfile.stripe_customer_id;
-            // Get the customer's saved payment methods
-            const paymentMethods = yield stripe_1.stripe.paymentMethods.list({
-                customer: customerId,
-                type: 'card',
-                limit: 1
-            });
-            if (!paymentMethods.data || paymentMethods.data.length === 0) {
-                throw new Error('No saved card found. Please visit the front desk.');
-            }
-            const paymentMethodId = paymentMethods.data[0].id;
-            // 5. Charge off-session using the saved card
-            let paymentIntent;
-            try {
-                paymentIntent = yield stripe_1.stripe.paymentIntents.create({
-                    amount: totalCents,
-                    currency: 'usd',
+            // 5. Get the user's Stripe Customer and saved payment method (only needed if charging)
+            let customerId = '';
+            let paymentMethodId = '';
+            let cardDetails = null;
+            if (finalCents > 0) {
+                const { data: userProfile, error: userError } = yield database_1.supabase
+                    .from('user_profiles')
+                    .select('stripe_customer_id')
+                    .eq('id', booking.user_id)
+                    .single();
+                if (userError || !(userProfile === null || userProfile === void 0 ? void 0 : userProfile.stripe_customer_id)) {
+                    throw new Error('No payment method on file. Please visit the front desk.');
+                }
+                customerId = userProfile.stripe_customer_id;
+                const paymentMethods = yield stripe_1.stripe.paymentMethods.list({
                     customer: customerId,
-                    payment_method: paymentMethodId,
-                    off_session: true,
-                    confirm: true,
-                    metadata: {
+                    type: 'card',
+                    limit: 1
+                });
+                if (!paymentMethods.data || paymentMethods.data.length === 0) {
+                    throw new Error('No saved card found. Please visit the front desk.');
+                }
+                paymentMethodId = paymentMethods.data[0].id;
+                cardDetails = paymentMethods.data[0].card || null;
+            }
+            const paymentMetadata = {
+                booking_id: bookingId,
+                user_id: booking.user_id,
+                bay_id: bayId,
+                location_id: locationId,
+                extension: 'true',
+                extension_minutes: extensionMinutes.toString(),
+                original_end_time: currentEndTime.toISOString(),
+            };
+            if (membershipId) {
+                paymentMetadata.membership_id = membershipId;
+                paymentMetadata.member_free_minutes_applied = freeMinutesApplied.toString();
+            }
+            // 6. Charge or skip based on final amount
+            let stripePaymentIntentId = null;
+            if (finalCents > 0) {
+                try {
+                    const paymentIntent = yield stripe_1.stripe.paymentIntents.create({
+                        amount: finalCents,
+                        currency: 'usd',
+                        customer: customerId,
+                        payment_method: paymentMethodId,
+                        off_session: true,
+                        confirm: true,
+                        metadata: paymentMetadata,
+                    });
+                    stripePaymentIntentId = paymentIntent.id;
+                }
+                catch (stripeError) {
+                    logger_1.logger.error({ err: stripeError, bookingId }, 'Extension payment failed');
+                    yield database_1.supabase.from('access_logs').insert({
+                        location_id: locationId,
+                        bay_id: bayId,
                         booking_id: bookingId,
                         user_id: booking.user_id,
-                        bay_id: bayId,
-                        location_id: locationId,
-                        extension: 'true',
-                        extension_minutes: extensionMinutes.toString(),
-                        original_end_time: currentEndTime.toISOString()
-                    }
-                });
+                        action: 'extension_payment_failed',
+                        success: false,
+                        error_message: stripeError.message,
+                        user_agent: 'Kiosk',
+                        metadata: { extension_minutes: extensionMinutes, amount_cents: finalCents }
+                    });
+                    throw new Error('Payment failed. Please visit the front desk.');
+                }
             }
-            catch (stripeError) {
-                logger_1.logger.error({ err: stripeError, bookingId }, 'Extension payment failed for booking');
-                // Log the failure
-                yield database_1.supabase.from('access_logs').insert({
-                    location_id: locationId,
-                    bay_id: bayId,
-                    booking_id: bookingId,
-                    user_id: booking.user_id,
-                    action: 'extension_payment_failed',
-                    success: false,
-                    error_message: stripeError.message,
-                    user_agent: 'Kiosk',
-                    metadata: { extension_minutes: extensionMinutes, amount_cents: totalCents }
-                });
-                throw new Error('Payment failed. Please visit the front desk.');
+            else {
+                logger_1.logger.info({ bookingId, membershipId }, 'Extension fully covered by membership — no Stripe charge');
             }
-            // 6. Extend the booking end_time and update total_amount
+            // 7. Extend the booking end_time and update total_amount
             const { error: updateError } = yield database_1.supabase
                 .from('bookings')
                 .update({
                 end_time: newEndTime.toISOString(),
-                total_amount: (booking.total_amount || 0) + (totalCents / 100)
+                total_amount: (booking.total_amount || 0) + (finalCents / 100)
             })
                 .eq('id', bookingId);
             if (updateError) {
-                logger_1.logger.error({ err: updateError, bookingId }, 'Error extending booking after successful payment');
-                // Payment already succeeded - log this as critical
+                logger_1.logger.error({ err: updateError, bookingId }, 'Error extending booking after payment');
                 throw new Error('Payment succeeded but failed to extend booking. Contact staff.');
             }
-            // 7. Create a payment record for the extension
-            const cardDetails = paymentMethods.data[0].card;
+            // 8. Create a payment record
             yield database_1.supabase.from('payments').insert({
                 booking_id: bookingId,
-                amount: totalCents / 100,
+                amount: finalCents / 100,
                 status: 'succeeded',
-                stripe_payment_intent_id: paymentIntent.id,
+                stripe_payment_intent_id: stripePaymentIntentId,
                 currency: 'usd',
                 user_id: booking.user_id,
                 location_id: locationId,
-                payment_method: 'card',
-                card_last_four: (cardDetails === null || cardDetails === void 0 ? void 0 : cardDetails.last4) || null,
-                card_brand: (cardDetails === null || cardDetails === void 0 ? void 0 : cardDetails.brand) || null,
-                processed_at: new Date().toISOString()
+                payment_method: finalCents > 0 ? 'card' : 'membership',
+                card_last_four: finalCents > 0 ? ((cardDetails === null || cardDetails === void 0 ? void 0 : cardDetails.last4) || null) : null,
+                card_brand: finalCents > 0 ? ((cardDetails === null || cardDetails === void 0 ? void 0 : cardDetails.brand) || null) : null,
+                processed_at: new Date().toISOString(),
+                metadata: membershipId ? { membership_id: membershipId, member_free_minutes_applied: freeMinutesApplied } : null,
             });
-            // 8. Log the successful extension
+            // 9. Deduct free minutes from membership (atomic increment)
+            if (membershipId && freeMinutesApplied > 0) {
+                try {
+                    const membershipService = new membership_service_1.MembershipService();
+                    yield database_1.supabase.rpc('increment_free_minutes_used', {
+                        p_membership_id: membershipId,
+                        p_delta: freeMinutesApplied,
+                    });
+                    yield membershipService.logUsage(membershipId, bookingId, 'free_minutes', freeMinutesApplied);
+                    logger_1.logger.info({ membershipId, freeMinutesApplied, bookingId }, 'Deducted free minutes for extension');
+                }
+                catch (usageErr) {
+                    logger_1.logger.error({ err: usageErr, membershipId, bookingId }, 'Error deducting free minutes for extension');
+                }
+            }
+            // 10. Log the successful extension
             yield database_1.supabase.from('access_logs').insert({
                 location_id: locationId,
                 bay_id: bayId,
@@ -1217,20 +1379,24 @@ class BookingService {
                 user_agent: 'Kiosk',
                 metadata: {
                     extension_minutes: extensionMinutes,
-                    amount_cents: totalCents,
+                    amount_cents: finalCents,
+                    regular_amount_cents: totalCents,
+                    free_minutes_applied: freeMinutesApplied,
+                    membership_id: membershipId,
                     original_end_time: currentEndTime.toISOString(),
                     new_end_time: newEndTime.toISOString()
                 }
             });
-            logger_1.logger.info({ bookingId, extensionMinutes, newEndTime: newEndTime.toISOString(), amountCharged: (totalCents / 100).toFixed(2) }, 'Successfully extended booking');
+            logger_1.logger.info({ bookingId, extensionMinutes, newEndTime: newEndTime.toISOString(), amountCharged: (finalCents / 100).toFixed(2) }, 'Successfully extended booking');
             return {
                 success: true,
                 bookingId,
                 locationId,
                 bayId,
                 newEndTime: newEndTime.toISOString(),
-                amountCharged: totalCents / 100,
-                amountChargedFormatted: `$${(totalCents / 100).toFixed(2)}`
+                amountCharged: finalCents / 100,
+                amountChargedFormatted: `$${(finalCents / 100).toFixed(2)}`,
+                freeMinutesApplied,
             };
         });
     }

@@ -203,11 +203,11 @@ class BookingController {
         this.extendBooking = (req, res) => __awaiter(this, void 0, void 0, function* () {
             try {
                 const { bookingId } = req.params;
-                const { extensionMinutes, locationId, bayId } = req.body;
+                const { extensionMinutes, locationId, bayId, useFreeMinutes } = req.body;
                 if (!extensionMinutes || !locationId || !bayId) {
                     return res.status(400).json({ error: 'extensionMinutes, locationId, and bayId are required' });
                 }
-                const result = yield this.bookingService.extendBooking(bookingId, extensionMinutes, locationId, bayId);
+                const result = yield this.bookingService.extendBooking(bookingId, extensionMinutes, locationId, bayId, !!useFreeMinutes);
                 res.json(result);
                 // Trigger real-time update to the kiosk so countdown resets
                 if (result.locationId && result.bayId) {

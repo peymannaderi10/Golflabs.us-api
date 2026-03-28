@@ -59,7 +59,7 @@ export const authenticateEmployee = async (req: AuthenticatedRequest, res: Respo
 
     const { data: profile, error: profileError } = await supabase
       .from('user_profiles')
-      .select('id, email, full_name, role')
+      .select('id, email, full_name, role, location_id')
       .eq('id', user.id)
       .single();
 

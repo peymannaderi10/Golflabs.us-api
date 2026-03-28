@@ -56,7 +56,7 @@ const authenticateEmployee = (req, res, next) => __awaiter(void 0, void 0, void 
         }
         const { data: profile, error: profileError } = yield database_1.supabase
             .from('user_profiles')
-            .select('id, email, full_name, role')
+            .select('id, email, full_name, role, location_id')
             .eq('id', user.id)
             .single();
         if (profileError || !profile) {

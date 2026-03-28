@@ -143,6 +143,10 @@ export interface CustomerSearchParams {
     search?: string; // name or email
     sortBy?: 'totalSpend' | 'totalBookings' | 'lastVisit' | 'createdAt';
     sortOrder?: 'asc' | 'desc';
+    membershipFilter?: 'all' | 'members' | 'non-members';
+    userType?: string;
+    minBookings?: number;
+    minSpend?: number;
 }
 
 export interface CustomerDetails extends Customer {
@@ -159,4 +163,5 @@ export interface CustomerDetails extends Customer {
         cancellationRate: number;
         memberSince: string;
     };
+    membership?: any;
 }

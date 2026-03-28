@@ -186,7 +186,7 @@ export class EmployeeController {
      */
     async getCustomers(req: Request, res: Response) {
         try {
-            const { locationId, page, pageSize, search, sortBy, sortOrder } = req.query as any;
+            const { locationId, page, pageSize, search, sortBy, sortOrder, membershipFilter, userType, minBookings, minSpend } = req.query as any;
 
             if (!locationId) {
                 return res.status(400).json({ success: false, error: 'locationId is required' });
@@ -198,6 +198,10 @@ export class EmployeeController {
                 search: search as string,
                 sortBy: sortBy as any,
                 sortOrder: sortOrder as any,
+                membershipFilter: membershipFilter as any,
+                userType: userType as string,
+                minBookings: minBookings ? parseInt(minBookings) : undefined,
+                minSpend: minSpend ? parseFloat(minSpend) : undefined,
             });
 
             return res.json({

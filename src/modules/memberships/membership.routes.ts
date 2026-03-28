@@ -13,16 +13,17 @@ membershipRoutes.get('/plans', controller.getPlans);
 
 // Customer: own membership
 membershipRoutes.get('/my', authenticateUser, controller.getMyMembership);
+membershipRoutes.post('/billing-portal', authenticateUser, [
+  body('locationId').isUUID().withMessage('locationId must be a valid UUID'),
+  body('returnUrl').isURL({ require_tld: false }).withMessage('returnUrl must be a valid URL'),
+  handleValidationErrors,
+], controller.createBillingPortalSession);
+
 membershipRoutes.post('/subscribe', authenticateUser, [
   body('planId').isUUID().withMessage('planId must be a valid UUID'),
-  body('locationId').isUUID().withMessage('locationId must be a valid UUID'),
   body('billingInterval').isIn(['monthly', 'annual']).withMessage('billingInterval must be monthly or annual'),
   handleValidationErrors,
 ], controller.subscribe);
-membershipRoutes.post('/:membershipId/cancel', authenticateUser, [
-  param('membershipId').isUUID().withMessage('membershipId must be a valid UUID'),
-  handleValidationErrors,
-], controller.cancel);
 membershipRoutes.post('/:membershipId/change-plan', authenticateUser, [
   param('membershipId').isUUID().withMessage('membershipId must be a valid UUID'),
   body('newPlanId').isUUID().withMessage('newPlanId must be a valid UUID'),
@@ -44,6 +45,15 @@ membershipRoutes.delete('/plans/:planId', authenticateEmployee, [
   handleValidationErrors,
 ], controller.deactivatePlan);
 membershipRoutes.get('/subscribers', authenticateEmployee, controller.getSubscribers);
+membershipRoutes.post('/manage/:membershipId/cancel', authenticateEmployee, [
+  param('membershipId').isUUID().withMessage('membershipId must be a valid UUID'),
+  handleValidationErrors,
+], controller.employeeCancelMembership);
+membershipRoutes.post('/manage/:membershipId/change-plan', authenticateEmployee, [
+  param('membershipId').isUUID().withMessage('membershipId must be a valid UUID'),
+  body('newPlanId').isUUID().withMessage('newPlanId must be a valid UUID'),
+  handleValidationErrors,
+], controller.employeeChangePlan);
 
 // Employee: location membership settings
 membershipRoutes.get('/settings/:locationId', authenticateEmployee, [

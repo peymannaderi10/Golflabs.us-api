@@ -420,9 +420,14 @@ export class PaymentService {
 
             // 2. Apply discount on remaining amount
             if (benefits.discountType && benefits.discountValue && benefits.discountValue > 0 && total > 0) {
+              const remainingMinutes = totalMinutes - freeMinutesApplied;
+              const remainingHours = remainingMinutes / 60;
+
               if (benefits.discountType === 'fixed') {
-                memberDiscount = Math.min(Math.round(benefits.discountValue * 100), total);
+                // Fixed discount is $ off per hour (e.g. $10/hr off)
+                memberDiscount = Math.min(Math.round(benefits.discountValue * 100 * remainingHours), total);
               } else if (benefits.discountType === 'percentage') {
+                // Percentage discount applies to the remaining total after free minutes
                 memberDiscount = Math.round(total * (benefits.discountValue / 100));
               }
               total = Math.max(0, total - memberDiscount);

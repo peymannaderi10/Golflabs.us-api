@@ -249,7 +249,7 @@ function handleStripeWebhook(req, res, socketService) {
                                 const membershipService = new membership_service_1.MembershipService();
                                 const { data: mem } = yield database_1.supabase
                                     .from('memberships')
-                                    .select('free_minutes_used, location_id')
+                                    .select('location_id')
                                     .eq('id', membershipIdMeta)
                                     .single();
                                 if (mem) {
@@ -258,10 +258,10 @@ function handleStripeWebhook(req, res, socketService) {
                                         logger_1.logger.info({ membershipId: membershipIdMeta, locationId: mem.location_id }, 'Skipping free minutes deduction — memberships disabled at location');
                                     }
                                     else {
-                                        yield database_1.supabase
-                                            .from('memberships')
-                                            .update({ free_minutes_used: (mem.free_minutes_used || 0) + memberFreeMinutes })
-                                            .eq('id', membershipIdMeta);
+                                        yield database_1.supabase.rpc('increment_free_minutes_used', {
+                                            p_membership_id: membershipIdMeta,
+                                            p_delta: memberFreeMinutes,
+                                        });
                                         yield membershipService.logUsage(membershipIdMeta, bookingId, 'free_minutes', memberFreeMinutes);
                                         logger_1.logger.info({ memberFreeMinutes, membershipId: membershipIdMeta, bookingId }, 'Deducted free minutes from membership');
                                     }
@@ -440,7 +440,7 @@ function handleStripeWebhook(req, res, socketService) {
                             const membershipService = new membership_service_1.MembershipService();
                             const { data: mem } = yield database_1.supabase
                                 .from('memberships')
-                                .select('free_minutes_used, location_id')
+                                .select('location_id')
                                 .eq('id', setupMembershipId)
                                 .single();
                             if (mem) {
@@ -449,10 +449,10 @@ function handleStripeWebhook(req, res, socketService) {
                                     logger_1.logger.info({ membershipId: setupMembershipId, locationId: mem.location_id }, 'Skipping free minutes deduction — memberships disabled at location');
                                 }
                                 else {
-                                    yield database_1.supabase
-                                        .from('memberships')
-                                        .update({ free_minutes_used: (mem.free_minutes_used || 0) + setupMemberFreeMinutes })
-                                        .eq('id', setupMembershipId);
+                                    yield database_1.supabase.rpc('increment_free_minutes_used', {
+                                        p_membership_id: setupMembershipId,
+                                        p_delta: setupMemberFreeMinutes,
+                                    });
                                     yield membershipService.logUsage(setupMembershipId, setupBookingId, 'free_minutes', setupMemberFreeMinutes);
                                     logger_1.logger.info({ memberFreeMinutes: setupMemberFreeMinutes, membershipId: setupMembershipId, bookingId: setupBookingId }, 'Deducted free minutes from membership for free booking');
                                 }
@@ -546,10 +546,42 @@ function handleStripeWebhook(req, res, socketService) {
                 };
                 if (event.type === 'customer.subscription.created') {
                     logger_1.logger.info({ userId: subUserId, planId: subPlanId }, 'Subscription created');
-                    if (subscription.status === 'active') {
+                    // Check if membership row already exists (pre-created) or needs to be created (Checkout Session flow)
+                    const { data: existingMem } = yield database_1.supabase
+                        .from('memberships')
+                        .select('id')
+                        .eq('stripe_subscription_id', subscription.id)
+                        .maybeSingle();
+                    const periodStart = safeTimestamp(subscription.current_period_start);
+                    const periodEnd = safeTimestamp(subscription.current_period_end);
+                    const billingInterval = subMeta.billing_interval || 'monthly';
+                    if (!existingMem && subPlanId && subLocationId) {
+                        // Created via Stripe Checkout — insert the membership row
+                        const { error: insertErr } = yield database_1.supabase
+                            .from('memberships')
+                            .insert({
+                            user_id: subUserId,
+                            plan_id: subPlanId,
+                            location_id: subLocationId,
+                            stripe_subscription_id: subscription.id,
+                            status: subscription.status === 'active' ? 'active' : 'incomplete',
+                            billing_interval: billingInterval,
+                            current_period_start: periodStart,
+                            current_period_end: periodEnd,
+                        });
+                        if (insertErr) {
+                            logger_1.logger.error({ err: insertErr, subscriptionId: subscription.id }, 'Error creating membership from webhook');
+                        }
+                        else {
+                            logger_1.logger.info({ userId: subUserId, subscriptionId: subscription.id }, 'Membership created from Checkout Session webhook');
+                            if (subscription.status === 'active') {
+                                sendMembershipWelcomeEmailFromWebhook(subscription, subUserId, subPlanId, subLocationId);
+                            }
+                        }
+                    }
+                    else if (existingMem && subscription.status === 'active') {
+                        // Pre-created row exists — just update status
                         const updateFields = { status: 'active' };
-                        const periodStart = safeTimestamp(subscription.current_period_start);
-                        const periodEnd = safeTimestamp(subscription.current_period_end);
                         if (periodStart)
                             updateFields.current_period_start = periodStart;
                         if (periodEnd)
@@ -558,7 +590,6 @@ function handleStripeWebhook(req, res, socketService) {
                             .from('memberships')
                             .update(updateFields)
                             .eq('stripe_subscription_id', subscription.id);
-                        // Send welcome email
                         sendMembershipWelcomeEmailFromWebhook(subscription, subUserId, subPlanId, subLocationId);
                     }
                 }

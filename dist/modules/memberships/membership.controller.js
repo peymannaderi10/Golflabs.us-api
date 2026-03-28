@@ -47,6 +47,24 @@ class MembershipController {
                 res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
+        this.createBillingPortalSession = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            var _a;
+            try {
+                const userId = (_a = req.user) === null || _a === void 0 ? void 0 : _a.id;
+                if (!userId)
+                    return res.status(401).json({ error: 'Not authenticated' });
+                const { locationId, returnUrl } = req.body;
+                if (!locationId || !returnUrl) {
+                    return res.status(400).json({ error: 'locationId and returnUrl are required' });
+                }
+                const result = yield this.service.createBillingPortalSession(userId, locationId, returnUrl);
+                res.json(result);
+            }
+            catch (error) {
+                logger_1.logger.error({ err: error }, 'Error creating billing portal session');
+                res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
+            }
+        });
         this.subscribe = (req, res) => __awaiter(this, void 0, void 0, function* () {
             var _a, _b;
             try {
@@ -68,34 +86,6 @@ class MembershipController {
                 if ((_b = error.message) === null || _b === void 0 ? void 0 : _b.includes('already have')) {
                     return res.status(409).json({ error: error.message });
                 }
-                res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
-            }
-        });
-        this.cancel = (req, res) => __awaiter(this, void 0, void 0, function* () {
-            var _a;
-            try {
-                const userId = (_a = req.user) === null || _a === void 0 ? void 0 : _a.id;
-                if (!userId)
-                    return res.status(401).json({ error: 'Not authenticated' });
-                const { membershipId } = req.params;
-                const { immediate } = req.body || {};
-                const result = yield this.service.cancelMembership(membershipId, userId, !!immediate);
-                if (immediate) {
-                    const refundDollars = result.refundAmount ? (result.refundAmount / 100).toFixed(2) : '0.00';
-                    res.json({
-                        success: true,
-                        message: `Membership canceled immediately. Refund of $${refundDollars} issued.`,
-                        refundAmount: result.refundAmount || 0,
-                    });
-                }
-                else {
-                    res.json({ success: true, message: 'Membership will be canceled at the end of the billing period' });
-                }
-            }
-            catch (error) {
-                logger_1.logger.error({ err: error }, 'Error canceling membership');
-                if (error.message === 'Access denied')
-                    return res.status(403).json({ error: error.message });
                 res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
@@ -124,6 +114,9 @@ class MembershipController {
         // =====================================================
         this.createPlan = (req, res) => __awaiter(this, void 0, void 0, function* () {
             try {
+                const locationErr = this.validateEmployeeLocation(req, req.body.locationId);
+                if (locationErr)
+                    return res.status(403).json({ error: locationErr });
                 const plan = yield this.service.createPlan(req.body);
                 res.status(201).json(plan);
             }
@@ -154,11 +147,50 @@ class MembershipController {
                 res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
+        this.employeeCancelMembership = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            try {
+                const { membershipId } = req.params;
+                const { immediate } = req.body || {};
+                const result = yield this.service.cancelMembership(membershipId, '', !!immediate, true);
+                if (immediate) {
+                    const refundDollars = result.refundAmount ? (result.refundAmount / 100).toFixed(2) : '0.00';
+                    res.json({
+                        success: true,
+                        message: `Membership canceled immediately. Refund of $${refundDollars} issued.`,
+                        refundAmount: result.refundAmount || 0,
+                    });
+                }
+                else {
+                    res.json({ success: true, message: 'Membership will be canceled at the end of the billing period' });
+                }
+            }
+            catch (error) {
+                logger_1.logger.error({ err: error }, 'Error canceling membership (employee)');
+                res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
+            }
+        });
+        this.employeeChangePlan = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            try {
+                const { membershipId } = req.params;
+                const { newPlanId } = req.body;
+                if (!newPlanId)
+                    return res.status(400).json({ error: 'newPlanId is required' });
+                yield this.service.changePlan(membershipId, '', newPlanId, true);
+                res.json({ success: true, message: 'Plan changed successfully' });
+            }
+            catch (error) {
+                logger_1.logger.error({ err: error }, 'Error changing plan (employee)');
+                res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
+            }
+        });
         this.getSubscribers = (req, res) => __awaiter(this, void 0, void 0, function* () {
             try {
                 const { locationId } = req.query;
                 if (!locationId)
                     return res.status(400).json({ error: 'locationId is required' });
+                const locationErr = this.validateEmployeeLocation(req, locationId);
+                if (locationErr)
+                    return res.status(403).json({ error: locationErr });
                 const subscribers = yield this.service.getSubscribersForLocation(locationId);
                 res.json(subscribers);
             }
@@ -173,6 +205,9 @@ class MembershipController {
         this.getLocationSettings = (req, res) => __awaiter(this, void 0, void 0, function* () {
             try {
                 const { locationId } = req.params;
+                const locationErr = this.validateEmployeeLocation(req, locationId);
+                if (locationErr)
+                    return res.status(403).json({ error: locationErr });
                 const settings = yield this.service.getLocationMembershipSettings(locationId);
                 res.json(settings);
             }
@@ -184,6 +219,9 @@ class MembershipController {
         this.updateLocationSettings = (req, res) => __awaiter(this, void 0, void 0, function* () {
             try {
                 const { locationId } = req.params;
+                const locationErr = this.validateEmployeeLocation(req, locationId);
+                if (locationErr)
+                    return res.status(403).json({ error: locationErr });
                 yield this.service.updateLocationMembershipSettings(locationId, req.body);
                 res.json({ success: true });
             }
@@ -192,6 +230,15 @@ class MembershipController {
                 res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
+    }
+    /** Verify the authenticated employee belongs to the requested location */
+    validateEmployeeLocation(req, locationId) {
+        var _a;
+        const employeeLocationId = (_a = req.employeeProfile) === null || _a === void 0 ? void 0 : _a.location_id;
+        if (!employeeLocationId || employeeLocationId !== locationId) {
+            return 'Access denied: you do not belong to this location';
+        }
+        return null;
     }
 }
 exports.MembershipController = MembershipController;
