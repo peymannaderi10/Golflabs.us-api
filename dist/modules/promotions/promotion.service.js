@@ -355,6 +355,30 @@ class PromotionService {
         });
     }
     /**
+     * Check if a user has already used a specific promotion (confirmed booking with this promotion_id)
+     */
+    hasUserUsedPromotion(userId, promotionId) {
+        return __awaiter(this, void 0, void 0, function* () {
+            // Check bookings table — any confirmed/cancelled booking that used this promo
+            const { count } = yield database_1.supabase
+                .from('bookings')
+                .select('id', { count: 'exact', head: true })
+                .eq('user_id', userId)
+                .eq('promotion_id', promotionId)
+                .in('status', ['confirmed', 'cancelled']);
+            if (count && count > 0)
+                return true;
+            // Also check user_promotions for pre-assigned promos that were redeemed
+            const { count: redeemedCount } = yield database_1.supabase
+                .from('user_promotions')
+                .select('id', { count: 'exact', head: true })
+                .eq('user_id', userId)
+                .eq('promotion_id', promotionId)
+                .not('redeemed_at', 'is', null);
+            return (redeemedCount !== null && redeemedCount !== void 0 ? redeemedCount : 0) > 0;
+        });
+    }
+    /**
      * Get promotion by code (for manual entry)
      */
     getPromotionByCode(code) {

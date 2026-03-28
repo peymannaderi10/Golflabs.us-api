@@ -80,14 +80,47 @@ export class SocketService {
       });
 
       // Register an employee dashboard to receive real-time updates for a location
-      socket.on('register_dashboard', (payload: { locationId: string }) => {
-        if (payload.locationId) {
-          const locationRoom = `location-${payload.locationId}`;
-          const dashboardRoom = `dashboard-${payload.locationId}`;
-          socket.join(locationRoom);
-          socket.join(dashboardRoom);
-          socket.data.isDashboard = true;
-          logger.info({ socketId: socket.id, locationId: payload.locationId, dashboardRoom }, 'Dashboard joined location rooms');
+      socket.on('register_dashboard', async (payload: { locationId: string }) => {
+        const token = socket.handshake.auth?.token as string | undefined;
+        if (!token) {
+          socket.emit('auth_error', { message: 'Authentication required' });
+          return;
+        }
+
+        try {
+          const { data: { user }, error } = await supabase.auth.getUser(token);
+          if (error || !user) {
+            socket.emit('auth_error', { message: 'Invalid token' });
+            return;
+          }
+
+          const { data: profile } = await supabase
+            .from('user_profiles')
+            .select('role, location_id')
+            .eq('id', user.id)
+            .single();
+
+          if (!profile || (profile.role !== 'employee' && profile.role !== 'admin')) {
+            socket.emit('auth_error', { message: 'Employee access required' });
+            return;
+          }
+
+          if (profile.location_id !== payload.locationId) {
+            socket.emit('auth_error', { message: 'Access denied for this location' });
+            return;
+          }
+
+          if (payload.locationId) {
+            const locationRoom = `location-${payload.locationId}`;
+            const dashboardRoom = `dashboard-${payload.locationId}`;
+            socket.join(locationRoom);
+            socket.join(dashboardRoom);
+            socket.data.isDashboard = true;
+            logger.info({ socketId: socket.id, locationId: payload.locationId, dashboardRoom }, 'Dashboard joined location rooms');
+          }
+        } catch (err) {
+          logger.error({ err, socketId: socket.id }, 'Dashboard socket auth failed');
+          socket.emit('auth_error', { message: 'Authentication failed' });
         }
       });
 

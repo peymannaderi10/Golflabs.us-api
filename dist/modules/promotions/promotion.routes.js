@@ -9,13 +9,13 @@ router.get('/user/:userId', auth_1.authenticateUser, (req, res) => promotion_con
 // Check if user has first booking free promotion
 router.get('/user/:userId/first-booking', auth_1.authenticateUser, (req, res) => promotion_controller_1.promotionController.checkFirstBookingPromo(req, res));
 // Calculate discount for a booking
-router.post('/calculate-discount', (req, res) => promotion_controller_1.promotionController.calculateDiscount(req, res));
+router.post('/calculate-discount', auth_1.authenticateUser, (req, res) => promotion_controller_1.promotionController.calculateDiscount(req, res));
 // Apply a promotion to a booking
 router.post('/apply', auth_1.authenticateUser, (req, res) => promotion_controller_1.promotionController.applyPromotion(req, res));
 // Redeem a promotion code (assigns to user permanently)
 router.post('/redeem-code', auth_1.authenticateUser, (req, res) => promotion_controller_1.promotionController.redeemCode(req, res));
 // Validate a promo code and calculate discount (doesn't assign, just calculates)
-router.post('/validate-code', (req, res) => promotion_controller_1.promotionController.validateCode(req, res));
-// Get all promotions (admin)
-router.get('/', (req, res) => promotion_controller_1.promotionController.getAllPromotions(req, res));
+router.post('/validate-code', auth_1.authenticateUser, (req, res) => promotion_controller_1.promotionController.validateCode(req, res));
+// Get all promotions (admin only)
+router.get('/', auth_1.authenticateEmployee, (req, res) => promotion_controller_1.promotionController.getAllPromotions(req, res));
 exports.default = router;

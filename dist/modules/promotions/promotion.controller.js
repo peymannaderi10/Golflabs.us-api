@@ -19,10 +19,12 @@ class PromotionController {
      */
     getUserPromotions(req, res) {
         return __awaiter(this, void 0, void 0, function* () {
+            var _a;
             try {
+                const authenticatedUserId = (_a = req.user) === null || _a === void 0 ? void 0 : _a.id;
                 const { userId } = req.params;
-                if (!userId) {
-                    return res.status(400).json({ error: 'User ID is required' });
+                if (authenticatedUserId !== userId) {
+                    return res.status(403).json({ error: 'Access denied' });
                 }
                 const promotions = yield promotion_service_1.promotionService.getUserAvailablePromotions(userId);
                 return res.json({ promotions });
@@ -41,10 +43,12 @@ class PromotionController {
      */
     checkFirstBookingPromo(req, res) {
         return __awaiter(this, void 0, void 0, function* () {
+            var _a;
             try {
+                const authenticatedUserId = (_a = req.user) === null || _a === void 0 ? void 0 : _a.id;
                 const { userId } = req.params;
-                if (!userId) {
-                    return res.status(400).json({ error: 'User ID is required' });
+                if (authenticatedUserId !== userId) {
+                    return res.status(403).json({ error: 'Access denied' });
                 }
                 const result = yield promotion_service_1.promotionService.hasFirstBookingPromo(userId);
                 return res.json(result);
@@ -65,7 +69,8 @@ class PromotionController {
     calculateDiscount(req, res) {
         return __awaiter(this, void 0, void 0, function* () {
             try {
-                const { userId, locationId, date, startTime, endTime, originalAmount } = req.body;
+                const userId = req.user.id;
+                const { locationId, date, startTime, endTime, originalAmount } = req.body;
                 if (!userId || originalAmount === undefined) {
                     return res.status(400).json({
                         error: 'userId and originalAmount are required'
@@ -101,7 +106,8 @@ class PromotionController {
     applyPromotion(req, res) {
         return __awaiter(this, void 0, void 0, function* () {
             try {
-                const { userId, bookingId, promotionId, discountAmount, freeMinutes } = req.body;
+                const userId = req.user.id;
+                const { bookingId, promotionId, discountAmount, freeMinutes } = req.body;
                 if (!userId || !bookingId || !promotionId) {
                     return res.status(400).json({
                         error: 'userId, bookingId, and promotionId are required'
@@ -131,9 +137,10 @@ class PromotionController {
     redeemCode(req, res) {
         return __awaiter(this, void 0, void 0, function* () {
             try {
-                const { userId, code } = req.body;
-                if (!userId || !code) {
-                    return res.status(400).json({ error: 'userId and code are required' });
+                const userId = req.user.id;
+                const { code } = req.body;
+                if (!code) {
+                    return res.status(400).json({ error: 'code is required' });
                 }
                 // Find the promotion by code
                 const promotion = yield promotion_service_1.promotionService.getPromotionByCode(code);
@@ -168,6 +175,7 @@ class PromotionController {
      */
     validateCode(req, res) {
         return __awaiter(this, void 0, void 0, function* () {
+            var _a;
             try {
                 const { code, locationId, date, startTime, endTime, originalAmount } = req.body;
                 if (!code) {
@@ -182,6 +190,16 @@ class PromotionController {
                 const promotion = yield promotion_service_1.promotionService.getPromotionByCode(code);
                 if (!promotion) {
                     return res.status(404).json({ error: 'Invalid or expired promo code' });
+                }
+                // Check single-use enforcement: has this user already used this code?
+                if (promotion.is_single_use) {
+                    const userId = (_a = req.user) === null || _a === void 0 ? void 0 : _a.id;
+                    if (userId) {
+                        const alreadyUsed = yield promotion_service_1.promotionService.hasUserUsedPromotion(userId, promotion.id);
+                        if (alreadyUsed) {
+                            return res.status(400).json({ error: 'You have already used this promo code' });
+                        }
+                    }
                 }
                 // Calculate the discount this code would give
                 const discount = yield promotion_service_1.promotionService.calculateDiscountForPromotion(promotion, locationId, date, startTime, endTime, originalAmount);

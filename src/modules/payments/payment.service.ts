@@ -7,23 +7,44 @@ import { logger } from '../../shared/utils/logger';
 import { fetchPricingContext, splitRules, findRuleForSlot, localSlotInfo } from '../../shared/utils/pricing.utils';
 
 export class PaymentService {
+  /**
+   * Update the booking record with server-computed promotion info.
+   */
+  private async updateBookingPromotion(
+    bookingId: string,
+    promotionId: string | undefined,
+    originalSubtotal: number,
+    serverDiscountAmount: number,
+    subtotal: number
+  ) {
+    if (promotionId && serverDiscountAmount > 0) {
+      await supabase.from('bookings').update({
+        original_amount: originalSubtotal / 100,
+        discount_amount: serverDiscountAmount / 100,
+        promotion_id: promotionId,
+        total_amount: subtotal / 100,
+      }).eq('id', bookingId);
+    } else {
+      await supabase.from('bookings').update({
+        original_amount: null,
+        discount_amount: 0,
+        promotion_id: null,
+        total_amount: originalSubtotal / 100,
+      }).eq('id', bookingId);
+    }
+  }
+
   async createPaymentIntent(
-    bookingId: string, 
-    amount: number, 
+    bookingId: string,
+    authenticatedUserId: string,
     promotionInfo?: {
       promotionId: string;
-      discountAmount: number;
-      freeMinutes?: number;
-      originalAmount: number;
     },
     memberPricingInfo?: {
       membershipId: string;
       freeMinutesApplied: number;
     }
   ) {
-    if (amount === undefined) {
-      throw new Error('Amount is required');
-    }
     if (!bookingId) {
       throw new Error('Booking ID is required');
     }
@@ -31,12 +52,18 @@ export class PaymentService {
     // 1. Verify the booking is valid for payment
     const { data: booking, error: fetchError } = await supabase
       .from('bookings')
-      .select('id, status, expires_at, user_id, bay_id, location_id, created_at, total_amount')
+      .select('id, status, expires_at, user_id, bay_id, location_id, created_at, total_amount, start_time, end_time')
       .eq('id', bookingId)
       .single();
 
     if (fetchError || !booking) {
       logger.error({ bookingId, err: fetchError }, 'Booking not found');
+      throw new Error('Booking not found.');
+    }
+
+    // Verify the authenticated user owns this booking
+    if (booking.user_id !== authenticatedUserId) {
+      logger.warn({ bookingId, bookingUserId: booking.user_id, authenticatedUserId }, 'User attempted to pay for another user\'s booking');
       throw new Error('Booking not found.');
     }
 
@@ -59,6 +86,95 @@ export class PaymentService {
       throw new Error('Booking reservation has expired.');
     }
 
+    // 1b. Compute the price server-side (never trust client amount)
+    const priceResult = await this.calculatePrice(
+      booking.location_id,
+      booking.start_time,
+      booking.end_time,
+      booking.user_id
+    );
+    let subtotal = priceResult.total; // in cents, includes membership discounts
+    const originalSubtotal = subtotal;
+
+    // 1c. If a promotion is claimed, validate and apply it server-side
+    let serverDiscountAmount = 0;
+    if (promotionInfo?.promotionId) {
+      try {
+        // First check if user has this promo pre-assigned (first-booking flow)
+        const { data: userPromo } = await supabase
+          .from('user_promotions')
+          .select('id, promotion_id, redeemed_at, promotions(*)')
+          .eq('user_id', booking.user_id)
+          .eq('promotion_id', promotionInfo.promotionId)
+          .is('redeemed_at', null)
+          .maybeSingle();
+
+        let promo: any = null;
+
+        if (userPromo?.promotions) {
+          // Promotion was pre-assigned to the user (e.g. first-booking promo)
+          promo = userPromo.promotions;
+        } else {
+          // Promotion applied via code at checkout — look up directly and verify it's active
+          const { data: directPromo } = await supabase
+            .from('promotions')
+            .select('*')
+            .eq('id', promotionInfo.promotionId)
+            .eq('is_active', true)
+            .single();
+
+          if (directPromo) {
+            // Enforce is_single_use: check if user already used this promo
+            if (directPromo.is_single_use) {
+              const alreadyUsed = await promotionService.hasUserUsedPromotion(booking.user_id, directPromo.id);
+              if (alreadyUsed) {
+                logger.warn({ bookingId, promotionId: directPromo.id, userId: booking.user_id }, 'Single-use promotion already used by this user');
+              } else {
+                promo = directPromo;
+              }
+            } else {
+              promo = directPromo;
+            }
+          } else {
+            logger.warn({ bookingId, promotionId: promotionInfo.promotionId }, 'Promotion not found or not active');
+          }
+        }
+
+        if (promo) {
+          if (promo.discount_type === 'percentage') {
+            serverDiscountAmount = Math.round(subtotal * (promo.discount_value / 100));
+          } else if (promo.discount_type === 'fixed') {
+            serverDiscountAmount = Math.min(Math.round(promo.discount_value * 100), subtotal);
+          } else if (promo.discount_type === 'free_minutes') {
+            const totalMinutes = (new Date(booking.end_time).getTime() - new Date(booking.start_time).getTime()) / 60000;
+            const freeMinutes = Math.min(promo.discount_value, totalMinutes);
+            const freeSlots = Math.floor(freeMinutes / 15);
+            const totalSlots = totalMinutes / 15;
+            if (totalSlots > 0) {
+              serverDiscountAmount = Math.round((freeSlots / totalSlots) * subtotal);
+            }
+          }
+          subtotal = Math.max(0, subtotal - serverDiscountAmount);
+          logger.info({ bookingId, promotionId: promotionInfo.promotionId, discountType: promo.discount_type, serverDiscountAmount, subtotalAfterDiscount: subtotal }, 'Server-applied promotion discount');
+        }
+      } catch (promoErr) {
+        logger.error({ err: promoErr, promotionId: promotionInfo.promotionId }, 'Error validating promotion server-side');
+        // Continue without discount — charge full price rather than fail
+      }
+    }
+
+    // 1d. Apply sales tax
+    const { data: locationData } = await supabase
+      .from('locations')
+      .select('sales_tax_rate')
+      .eq('id', booking.location_id)
+      .single();
+    const taxRate = parseFloat(locationData?.sales_tax_rate) || 0;
+    const taxAmount = Math.round(subtotal * taxRate);
+    let amount = subtotal + taxAmount;
+
+    logger.info({ bookingId, originalSubtotal, serverDiscountAmount, subtotal, taxRate, taxAmount, finalAmount: amount }, 'Server-computed payment amount');
+
     // 2. Check if a payment intent already exists for this booking
     const { data: existingPayment, error: paymentCheckError } = await supabase
       .from('payments')
@@ -74,7 +190,7 @@ export class PaymentService {
       throw paymentCheckError;
     }
 
-    // If we found an existing pending/processing payment, retrieve the intent
+    // If we found an existing pending/processing payment, try to reuse or update it
     if (existingPayment?.stripe_payment_intent_id) {
       const existingId = existingPayment.stripe_payment_intent_id;
       const isSetupIntent = existingId.startsWith('seti_');
@@ -82,25 +198,39 @@ export class PaymentService {
       try {
         if (isSetupIntent) {
           const existingSetupIntent = await stripe.setupIntents.retrieve(existingId);
-          if (['requires_payment_method', 'requires_confirmation', 'requires_action'].includes(existingSetupIntent.status)) {
+          if (amount > 0) {
+            // Was free, now has a cost (promo removed or changed) — cancel setup intent and create payment intent
+            logger.info({ setupIntentId: existingSetupIntent.id, bookingId }, 'Amount changed from free to paid, cancelling setup intent');
+            await stripe.setupIntents.cancel(existingSetupIntent.id);
+          } else if (['requires_payment_method', 'requires_confirmation', 'requires_action'].includes(existingSetupIntent.status)) {
             logger.info({ setupIntentId: existingSetupIntent.id, bookingId }, 'Reusing existing setup intent');
-            return {
-              clientSecret: existingSetupIntent.client_secret,
-              bookingId: booking.id,
-              type: 'setup' as const
-            };
-          } else {
-            logger.info({ setupIntentId: existingSetupIntent.id, status: existingSetupIntent.status }, 'Existing setup intent has non-reusable status, creating new one');
+            return { clientSecret: existingSetupIntent.client_secret, bookingId: booking.id, type: 'setup' as const };
           }
         } else {
           const existingPaymentIntent = await stripe.paymentIntents.retrieve(existingId);
-          if (['requires_payment_method', 'requires_confirmation', 'requires_action', 'processing'].includes(existingPaymentIntent.status)) {
-            logger.info({ paymentIntentId: existingPaymentIntent.id, bookingId }, 'Reusing existing payment intent');
-            return {
-              clientSecret: existingPaymentIntent.client_secret,
-              bookingId: booking.id,
-              type: 'payment' as const
-            };
+          if (['requires_payment_method', 'requires_confirmation', 'requires_action'].includes(existingPaymentIntent.status)) {
+            // If the amount changed (e.g. promo applied/removed), update the existing intent
+            if (existingPaymentIntent.amount !== amount) {
+              logger.info({ paymentIntentId: existingPaymentIntent.id, oldAmount: existingPaymentIntent.amount, newAmount: amount, bookingId }, 'Updating existing payment intent with new amount');
+              const updated = await stripe.paymentIntents.update(existingPaymentIntent.id, {
+                amount,
+                metadata: {
+                  ...existingPaymentIntent.metadata,
+                  promotion_id: promotionInfo?.promotionId || '',
+                  discount_amount: serverDiscountAmount.toString(),
+                  original_amount: (originalSubtotal / 100).toString(),
+                },
+              });
+              // Update local payment record and booking
+              await supabase.from('payments').update({ amount: amount / 100 }).eq('stripe_payment_intent_id', existingId);
+              await this.updateBookingPromotion(bookingId, promotionInfo?.promotionId, originalSubtotal, serverDiscountAmount, subtotal);
+              return { clientSecret: updated.client_secret, bookingId: booking.id, type: 'payment' as const };
+            }
+            logger.info({ paymentIntentId: existingPaymentIntent.id, bookingId }, 'Reusing existing payment intent (same amount)');
+            return { clientSecret: existingPaymentIntent.client_secret, bookingId: booking.id, type: 'payment' as const };
+          } else if (existingPaymentIntent.status === 'processing') {
+            logger.info({ paymentIntentId: existingPaymentIntent.id, bookingId }, 'Existing payment intent is processing, returning as-is');
+            return { clientSecret: existingPaymentIntent.client_secret, bookingId: booking.id, type: 'payment' as const };
           } else {
             logger.info({ paymentIntentId: existingPaymentIntent.id, status: existingPaymentIntent.status }, 'Existing payment intent has non-reusable status, creating new one');
           }
@@ -155,25 +285,8 @@ export class PaymentService {
       // Continue without customer - payment will still work, just won't save card
     }
 
-    // 4. If promotion info is provided, update the booking with discount info
-    if (promotionInfo && promotionInfo.promotionId) {
-      const { error: updateBookingError } = await supabase
-        .from('bookings')
-        .update({
-          original_amount: promotionInfo.originalAmount,
-          discount_amount: promotionInfo.discountAmount,
-          promotion_id: promotionInfo.promotionId,
-          total_amount: amount / 100 // Update total to discounted amount in dollars
-        })
-        .eq('id', bookingId);
-
-      if (updateBookingError) {
-        logger.error({ err: updateBookingError }, 'Error updating booking with promotion info');
-        // Continue anyway, the booking can still be paid
-      } else {
-        logger.info({ bookingId, discountAmount: promotionInfo.discountAmount }, 'Updated booking with promotion discount');
-      }
-    }
+    // 4. Update booking with server-computed pricing info
+    await this.updateBookingPromotion(bookingId, promotionInfo?.promotionId, originalSubtotal, serverDiscountAmount, subtotal);
 
     const intentMetadata: Record<string, string> = {
       booking_id: booking.id,
@@ -181,9 +294,8 @@ export class PaymentService {
       bay_id: booking.bay_id,
       location_id: booking.location_id,
       promotion_id: promotionInfo?.promotionId || '',
-      discount_amount: promotionInfo?.discountAmount?.toString() || '0',
-      free_minutes: promotionInfo?.freeMinutes?.toString() || '0',
-      original_amount: promotionInfo?.originalAmount?.toString() || (amount / 100).toString()
+      discount_amount: (serverDiscountAmount / 100).toString(),
+      original_amount: (originalSubtotal / 100).toString(),
     };
 
     if (memberPricingInfo?.membershipId) {
@@ -223,7 +335,7 @@ export class PaymentService {
         throw paymentError;
       }
 
-      logger.info({ setupIntentId: setupIntent.id, bookingId, discountAmount: promotionInfo?.discountAmount || 0 }, 'Created setup intent for free booking');
+      logger.info({ setupIntentId: setupIntent.id, bookingId, discountAmount: serverDiscountAmount / 100 }, 'Created setup intent for free booking');
 
       return {
         clientSecret: setupIntent.client_secret,
@@ -267,7 +379,7 @@ export class PaymentService {
       throw paymentError;
     }
 
-    logger.info({ paymentIntentId: paymentIntent.id, bookingId, amount: amount / 100, discountAmount: promotionInfo?.discountAmount || 0 }, 'Created new payment intent');
+    logger.info({ paymentIntentId: paymentIntent.id, bookingId, amount: amount / 100, discountAmount: serverDiscountAmount / 100 }, 'Created new payment intent');
 
     // 8. Send the client secret back to the frontend
     return {

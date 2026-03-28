@@ -53,7 +53,14 @@ export interface CampaignDetail extends Campaign {
 }
 
 const BATCH_SIZE = 100;
-const UNSUBSCRIBE_SECRET = process.env.RESEND_WEBHOOK_SECRET || 'marketing-unsubscribe-fallback-secret';
+function getUnsubscribeSecret(): string {
+  const secret = process.env.MARKETING_UNSUBSCRIBE_SECRET || process.env.RESEND_WEBHOOK_SECRET;
+  if (!secret) {
+    throw new Error('MARKETING_UNSUBSCRIBE_SECRET (or RESEND_WEBHOOK_SECRET) environment variable is required');
+  }
+  return secret;
+}
+const UNSUBSCRIBE_SECRET: string = getUnsubscribeSecret();
 
 export class MarketingService {
 

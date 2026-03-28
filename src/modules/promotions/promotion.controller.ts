@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { promotionService } from './promotion.service';
+import { AuthenticatedRequest } from '../auth/auth.middleware';
 import { logger } from '../../shared/utils/logger';
 
 export class PromotionController {
@@ -9,10 +10,11 @@ export class PromotionController {
    */
   async getUserPromotions(req: Request, res: Response) {
     try {
+      const authenticatedUserId = (req as AuthenticatedRequest).user?.id;
       const { userId } = req.params;
 
-      if (!userId) {
-        return res.status(400).json({ error: 'User ID is required' });
+      if (authenticatedUserId !== userId) {
+        return res.status(403).json({ error: 'Access denied' });
       }
 
       const promotions = await promotionService.getUserAvailablePromotions(userId);
@@ -31,10 +33,11 @@ export class PromotionController {
    */
   async checkFirstBookingPromo(req: Request, res: Response) {
     try {
+      const authenticatedUserId = (req as AuthenticatedRequest).user?.id;
       const { userId } = req.params;
 
-      if (!userId) {
-        return res.status(400).json({ error: 'User ID is required' });
+      if (authenticatedUserId !== userId) {
+        return res.status(403).json({ error: 'Access denied' });
       }
 
       const result = await promotionService.hasFirstBookingPromo(userId);
@@ -54,7 +57,8 @@ export class PromotionController {
    */
   async calculateDiscount(req: Request, res: Response) {
     try {
-      const { userId, locationId, date, startTime, endTime, originalAmount } = req.body;
+      const userId = (req as AuthenticatedRequest).user!.id;
+      const { locationId, date, startTime, endTime, originalAmount } = req.body;
 
       if (!userId || originalAmount === undefined) {
         return res.status(400).json({ 
@@ -92,7 +96,8 @@ export class PromotionController {
    */
   async applyPromotion(req: Request, res: Response) {
     try {
-      const { userId, bookingId, promotionId, discountAmount, freeMinutes } = req.body;
+      const userId = (req as AuthenticatedRequest).user!.id;
+      const { bookingId, promotionId, discountAmount, freeMinutes } = req.body;
 
       if (!userId || !bookingId || !promotionId) {
         return res.status(400).json({ 
@@ -123,15 +128,16 @@ export class PromotionController {
    */
   async redeemCode(req: Request, res: Response) {
     try {
-      const { userId, code } = req.body;
+      const userId = (req as AuthenticatedRequest).user!.id;
+      const { code } = req.body;
 
-      if (!userId || !code) {
-        return res.status(400).json({ error: 'userId and code are required' });
+      if (!code) {
+        return res.status(400).json({ error: 'code is required' });
       }
 
       // Find the promotion by code
       const promotion = await promotionService.getPromotionByCode(code);
-      
+
       if (!promotion) {
         return res.status(404).json({ error: 'Invalid or expired promotion code' });
       }
@@ -178,9 +184,20 @@ export class PromotionController {
 
       // Find the promotion by code
       const promotion = await promotionService.getPromotionByCode(code);
-      
+
       if (!promotion) {
         return res.status(404).json({ error: 'Invalid or expired promo code' });
+      }
+
+      // Check single-use enforcement: has this user already used this code?
+      if (promotion.is_single_use) {
+        const userId = (req as AuthenticatedRequest).user?.id;
+        if (userId) {
+          const alreadyUsed = await promotionService.hasUserUsedPromotion(userId, promotion.id);
+          if (alreadyUsed) {
+            return res.status(400).json({ error: 'You have already used this promo code' });
+          }
+        }
       }
 
       // Calculate the discount this code would give

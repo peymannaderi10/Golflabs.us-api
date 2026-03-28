@@ -17,8 +17,10 @@ const logger_1 = require("../../shared/utils/logger");
 class BookingController {
     constructor(socketService) {
         this.reserveBooking = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            var _a;
             try {
-                const result = yield this.bookingService.reserveBooking(req.body);
+                const authenticatedUserId = (_a = req.user) === null || _a === void 0 ? void 0 : _a.id;
+                const result = yield this.bookingService.reserveBooking(Object.assign(Object.assign({}, req.body), { userId: authenticatedUserId }));
                 res.status(201).json(result);
             }
             catch (error) {
@@ -69,8 +71,13 @@ class BookingController {
             }
         });
         this.getUserReservedBookings = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            var _a;
             try {
                 const { userId } = req.params;
+                const authenticatedUserId = (_a = req.user) === null || _a === void 0 ? void 0 : _a.id;
+                if (authenticatedUserId !== userId) {
+                    return res.status(403).json({ error: 'Access denied' });
+                }
                 const result = yield this.bookingService.getUserReservedBookings(userId);
                 res.json(result);
             }
@@ -80,8 +87,13 @@ class BookingController {
             }
         });
         this.getUserFutureBookings = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            var _a;
             try {
                 const { userId } = req.params;
+                const authenticatedUserId = (_a = req.user) === null || _a === void 0 ? void 0 : _a.id;
+                if (authenticatedUserId !== userId) {
+                    return res.status(403).json({ error: 'Access denied' });
+                }
                 const bookings = yield this.bookingService.getUserFutureBookings(userId);
                 res.json(bookings);
             }
@@ -91,8 +103,13 @@ class BookingController {
             }
         });
         this.getUserPastBookings = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            var _a;
             try {
                 const { userId } = req.params;
+                const authenticatedUserId = (_a = req.user) === null || _a === void 0 ? void 0 : _a.id;
+                if (authenticatedUserId !== userId) {
+                    return res.status(403).json({ error: 'Access denied' });
+                }
                 const bookings = yield this.bookingService.getUserPastBookings(userId);
                 res.json(bookings);
             }
@@ -104,7 +121,7 @@ class BookingController {
         this.cancelBooking = (req, res) => __awaiter(this, void 0, void 0, function* () {
             try {
                 const { bookingId } = req.params;
-                const { userId } = req.body;
+                const userId = req.user.id;
                 const result = yield this.bookingService.cancelBooking(bookingId, userId);
                 res.json(result);
                 // After successfully cancelling, trigger a real-time update
@@ -169,7 +186,7 @@ class BookingController {
         this.cancelReservedBooking = (req, res) => __awaiter(this, void 0, void 0, function* () {
             try {
                 const { bookingId } = req.params;
-                const { userId } = req.body;
+                const userId = req.user.id;
                 const result = yield this.bookingService.cancelReservedBooking(bookingId, userId);
                 res.json(result);
                 // After successfully cancelling, trigger a real-time update

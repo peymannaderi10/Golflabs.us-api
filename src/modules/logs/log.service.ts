@@ -97,7 +97,6 @@ export class LogService {
         metadata,
         unlock_method,
         response_time_ms,
-        unlock_token_used,
         bookings:booking_id (
           id,
           start_time,

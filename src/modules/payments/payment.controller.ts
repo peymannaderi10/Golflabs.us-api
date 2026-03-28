@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { PaymentService } from './payment.service';
+import { AuthenticatedRequest } from '../auth/auth.middleware';
 import { logger } from '../../shared/utils/logger';
 
 export class PaymentController {
@@ -12,22 +13,17 @@ export class PaymentController {
   createPaymentIntent = async (req: Request, res: Response) => {
     try {
       const { bookingId } = req.params;
-      const { amount, promotionId, discountAmount, freeMinutes, originalAmount, membershipId, memberFreeMinutesApplied } = req.body;
-      
-      // Build promotion info if a promotion is being applied
-      const promotionInfo = promotionId ? {
-        promotionId,
-        discountAmount: discountAmount || 0,
-        freeMinutes: freeMinutes || 0,
-        originalAmount: originalAmount || (amount / 100)
-      } : undefined;
+      const authenticatedUserId = (req as AuthenticatedRequest).user!.id;
+      const { promotionId, membershipId, memberFreeMinutesApplied } = req.body;
+
+      const promotionInfo = promotionId ? { promotionId } : undefined;
 
       const memberPricingInfo = membershipId ? {
         membershipId,
         freeMinutesApplied: memberFreeMinutesApplied || 0,
       } : undefined;
-      
-      const result = await this.paymentService.createPaymentIntent(bookingId, amount, promotionInfo, memberPricingInfo);
+
+      const result = await this.paymentService.createPaymentIntent(bookingId, authenticatedUserId, promotionInfo, memberPricingInfo);
       res.json(result);
     } catch (error: any) {
       logger.error({ err: error, bookingId: req.params.bookingId }, 'Error in create-payment-intent');

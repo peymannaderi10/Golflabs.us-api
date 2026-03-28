@@ -40,6 +40,10 @@ export function validateEnvironment(): EnvironmentConfig {
     console.warn("KIOSK_API_KEY not set in .env. Kiosk endpoints will reject all requests.");
   }
 
+  if (!process.env.MARKETING_UNSUBSCRIBE_SECRET && !process.env.RESEND_WEBHOOK_SECRET) {
+    console.warn("MARKETING_UNSUBSCRIBE_SECRET not set in .env. Marketing unsubscribe links will not work.");
+  }
+
   return {
     stripe: {
       secretKey: stripeSecretKey,

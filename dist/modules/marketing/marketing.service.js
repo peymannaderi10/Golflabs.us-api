@@ -20,7 +20,14 @@ const resend_1 = require("../../config/resend");
 const email_template_defaults_1 = require("../email/email-template.defaults");
 const logger_1 = require("../../shared/utils/logger");
 const BATCH_SIZE = 100;
-const UNSUBSCRIBE_SECRET = process.env.RESEND_WEBHOOK_SECRET || 'marketing-unsubscribe-fallback-secret';
+function getUnsubscribeSecret() {
+    const secret = process.env.MARKETING_UNSUBSCRIBE_SECRET || process.env.RESEND_WEBHOOK_SECRET;
+    if (!secret) {
+        throw new Error('MARKETING_UNSUBSCRIBE_SECRET (or RESEND_WEBHOOK_SECRET) environment variable is required');
+    }
+    return secret;
+}
+const UNSUBSCRIBE_SECRET = getUnsubscribeSecret();
 class MarketingService {
     // ------------------------------------------------------------------
     // Marketing template CRUD

@@ -406,6 +406,31 @@ export class PromotionService {
   }
 
   /**
+   * Check if a user has already used a specific promotion (confirmed booking with this promotion_id)
+   */
+  async hasUserUsedPromotion(userId: string, promotionId: string): Promise<boolean> {
+    // Check bookings table — any confirmed/cancelled booking that used this promo
+    const { count } = await supabase
+      .from('bookings')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('promotion_id', promotionId)
+      .in('status', ['confirmed', 'cancelled']);
+
+    if (count && count > 0) return true;
+
+    // Also check user_promotions for pre-assigned promos that were redeemed
+    const { count: redeemedCount } = await supabase
+      .from('user_promotions')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('promotion_id', promotionId)
+      .not('redeemed_at', 'is', null);
+
+    return (redeemedCount ?? 0) > 0;
+  }
+
+  /**
    * Get promotion by code (for manual entry)
    */
   async getPromotionByCode(code: string): Promise<Promotion | null> {

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { body, param, query } from 'express-validator';
 import { PaymentController } from './payment.controller';
+import { authenticateUser } from '../auth';
 import { handleValidationErrors } from '../../shared/middleware/validation';
 
 export const paymentRoutes = Router();
@@ -17,15 +18,16 @@ const paymentRateLimit = rateLimit({
 });
 
 // Payment routes with validation and rate limiting
-paymentRoutes.post('/bookings/:bookingId/create-payment-intent', 
+paymentRoutes.post('/bookings/:bookingId/create-payment-intent',
+  authenticateUser,
   paymentRateLimit,
   param('bookingId').isUUID().withMessage('Booking ID must be a valid UUID'),
-  body('amount').isInt({ min: 0 }).withMessage('Amount must be a non-negative integer'),
   handleValidationErrors,
   controller.createPaymentIntent
 );
 
-paymentRoutes.post('/update-payment-intent', 
+paymentRoutes.post('/update-payment-intent',
+  authenticateUser,
   paymentRateLimit,
   body('paymentIntentId').matches(/^pi_[a-zA-Z0-9_]+$/).withMessage('Invalid payment intent ID format'),
   body('email').optional().isEmail().withMessage('Invalid email format'),

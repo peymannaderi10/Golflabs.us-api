@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { promotionController } from './promotion.controller';
-import { authenticateUser } from '../auth';
+import { authenticateUser, authenticateEmployee } from '../auth';
 
 const router = Router();
 
@@ -11,7 +11,7 @@ router.get('/user/:userId', authenticateUser, (req, res) => promotionController.
 router.get('/user/:userId/first-booking', authenticateUser, (req, res) => promotionController.checkFirstBookingPromo(req, res));
 
 // Calculate discount for a booking
-router.post('/calculate-discount', (req, res) => promotionController.calculateDiscount(req, res));
+router.post('/calculate-discount', authenticateUser, (req, res) => promotionController.calculateDiscount(req, res));
 
 // Apply a promotion to a booking
 router.post('/apply', authenticateUser, (req, res) => promotionController.applyPromotion(req, res));
@@ -20,9 +20,9 @@ router.post('/apply', authenticateUser, (req, res) => promotionController.applyP
 router.post('/redeem-code', authenticateUser, (req, res) => promotionController.redeemCode(req, res));
 
 // Validate a promo code and calculate discount (doesn't assign, just calculates)
-router.post('/validate-code', (req, res) => promotionController.validateCode(req, res));
+router.post('/validate-code', authenticateUser, (req, res) => promotionController.validateCode(req, res));
 
-// Get all promotions (admin)
-router.get('/', (req, res) => promotionController.getAllPromotions(req, res));
+// Get all promotions (admin only)
+router.get('/', authenticateEmployee, (req, res) => promotionController.getAllPromotions(req, res));
 
 export default router;

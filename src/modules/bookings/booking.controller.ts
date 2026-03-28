@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { BookingService } from './booking.service';
 import { CapacityHoldService } from './capacity-hold.service';
 import { SocketService } from '../sockets/socket.service';
+import { AuthenticatedRequest } from '../auth/auth.middleware';
 import { sanitizeError } from '../../shared/utils/error.utils';
 import { logger } from '../../shared/utils/logger';
 
@@ -18,7 +19,11 @@ export class BookingController {
 
   reserveBooking = async (req: Request, res: Response) => {
     try {
-      const result = await this.bookingService.reserveBooking(req.body);
+      const authenticatedUserId = (req as AuthenticatedRequest).user?.id;
+      const result = await this.bookingService.reserveBooking({
+        ...req.body,
+        userId: authenticatedUserId,
+      });
       res.status(201).json(result);
     } catch (error: any) {
       logger.error({ err: error }, 'Error in /bookings/reserve');
@@ -80,6 +85,10 @@ export class BookingController {
   getUserReservedBookings = async (req: Request, res: Response) => {
     try {
       const { userId } = req.params;
+      const authenticatedUserId = (req as AuthenticatedRequest).user?.id;
+      if (authenticatedUserId !== userId) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
       const result = await this.bookingService.getUserReservedBookings(userId);
       res.json(result);
     } catch (error: any) {
@@ -91,6 +100,10 @@ export class BookingController {
   getUserFutureBookings = async (req: Request, res: Response) => {
     try {
       const { userId } = req.params;
+      const authenticatedUserId = (req as AuthenticatedRequest).user?.id;
+      if (authenticatedUserId !== userId) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
       const bookings = await this.bookingService.getUserFutureBookings(userId);
       res.json(bookings);
     } catch (error: any) {
@@ -102,6 +115,10 @@ export class BookingController {
   getUserPastBookings = async (req: Request, res: Response) => {
     try {
       const { userId } = req.params;
+      const authenticatedUserId = (req as AuthenticatedRequest).user?.id;
+      if (authenticatedUserId !== userId) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
       const bookings = await this.bookingService.getUserPastBookings(userId);
       res.json(bookings);
     } catch (error: any) {
@@ -113,7 +130,7 @@ export class BookingController {
   cancelBooking = async (req: Request, res: Response) => {
     try {
       const { bookingId } = req.params;
-      const { userId } = req.body;
+      const userId = (req as AuthenticatedRequest).user!.id;
       const result = await this.bookingService.cancelBooking(bookingId, userId);
       res.json(result);
 
@@ -192,7 +209,7 @@ export class BookingController {
   cancelReservedBooking = async (req: Request, res: Response) => {
     try {
       const { bookingId } = req.params;
-      const { userId } = req.body;
+      const userId = (req as AuthenticatedRequest).user!.id;
       const result = await this.bookingService.cancelReservedBooking(bookingId, userId);
       res.json(result);
 
