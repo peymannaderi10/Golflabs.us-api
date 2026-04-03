@@ -163,5 +163,21 @@ export interface CustomerDetails extends Customer {
         cancellationRate: number;
         memberSince: string;
     };
-    membership?: any;
+    membership?: {
+        id: string;
+        status: string;
+        billing_interval: string;
+        current_period_end: string | null;
+        canceled_at: string | null;
+        free_minutes_used: number;
+        guest_passes_used: number;
+        plan_id: string;
+        membership_plans: {
+            id: string;
+            name: string;
+            monthly_price: number;
+            annual_price: number | null;
+            benefits: Record<string, unknown>;
+        }[] | null;
+    } | null;
 }

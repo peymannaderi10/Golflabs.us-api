@@ -36,12 +36,13 @@ class MembershipService {
             if (!locationId || !name || monthlyPrice == null) {
                 throw new Error('locationId, name, and monthlyPrice are required');
             }
+            const stripeOpts = yield (0, stripe_1.getStripeOptions)(locationId);
             // Create Stripe Product
             const product = yield stripe_1.stripe.products.create({
                 name,
                 description: description || undefined,
                 metadata: { location_id: locationId },
-            });
+            }, stripeOpts);
             // Create monthly Stripe Price
             const monthlyStripePrice = yield stripe_1.stripe.prices.create({
                 product: product.id,
@@ -49,7 +50,7 @@ class MembershipService {
                 currency: 'usd',
                 recurring: { interval: 'month' },
                 metadata: { location_id: locationId, interval: 'monthly' },
-            });
+            }, stripeOpts);
             // Optionally create annual Stripe Price
             let annualStripePrice = null;
             if (annualPrice != null) {
@@ -59,7 +60,7 @@ class MembershipService {
                     currency: 'usd',
                     recurring: { interval: 'year' },
                     metadata: { location_id: locationId, interval: 'annual' },
-                });
+                }, stripeOpts);
             }
             const { data: plan, error } = yield database_1.supabase
                 .from('membership_plans')
@@ -84,6 +85,28 @@ class MembershipService {
             return plan;
         });
     }
+    getPlanLocationId(planId) {
+        return __awaiter(this, void 0, void 0, function* () {
+            var _a;
+            const { data } = yield database_1.supabase
+                .from('membership_plans')
+                .select('location_id')
+                .eq('id', planId)
+                .single();
+            return (_a = data === null || data === void 0 ? void 0 : data.location_id) !== null && _a !== void 0 ? _a : null;
+        });
+    }
+    getMembershipLocationId(membershipId) {
+        return __awaiter(this, void 0, void 0, function* () {
+            var _a;
+            const { data } = yield database_1.supabase
+                .from('memberships')
+                .select('location_id')
+                .eq('id', membershipId)
+                .single();
+            return (_a = data === null || data === void 0 ? void 0 : data.location_id) !== null && _a !== void 0 ? _a : null;
+        });
+    }
     updatePlan(planId, data) {
         return __awaiter(this, void 0, void 0, function* () {
             if (!planId)
@@ -105,13 +128,14 @@ class MembershipService {
             if (needsStripe) {
                 const { data: existing, error: fetchErr } = yield database_1.supabase
                     .from('membership_plans')
-                    .select('stripe_product_id, monthly_price, annual_price')
+                    .select('stripe_product_id, monthly_price, annual_price, location_id')
                     .eq('id', planId)
                     .single();
                 if (fetchErr || !(existing === null || existing === void 0 ? void 0 : existing.stripe_product_id)) {
                     throw new Error('Plan not found');
                 }
                 const stripeProductId = existing.stripe_product_id;
+                const stripeOpts = yield (0, stripe_1.getStripeOptions)(existing.location_id);
                 // Price changes: create new Stripe Prices on the same Product
                 if (data.monthlyPrice !== undefined && data.monthlyPrice !== existing.monthly_price) {
                     const newPrice = yield stripe_1.stripe.prices.create({
@@ -119,7 +143,7 @@ class MembershipService {
                         unit_amount: Math.round(data.monthlyPrice * 100),
                         currency: 'usd',
                         recurring: { interval: 'month' },
-                    });
+                    }, stripeOpts);
                     updates.monthly_price = data.monthlyPrice;
                     updates.stripe_monthly_price_id = newPrice.id;
                 }
@@ -134,7 +158,7 @@ class MembershipService {
                             unit_amount: Math.round(data.annualPrice * 100),
                             currency: 'usd',
                             recurring: { interval: 'year' },
-                        });
+                        }, stripeOpts);
                         updates.annual_price = data.annualPrice;
                         updates.stripe_annual_price_id = newPrice.id;
                     }
@@ -146,7 +170,7 @@ class MembershipService {
                         productUpdate.name = data.name;
                     if (data.description !== undefined)
                         productUpdate.description = data.description || '';
-                    yield stripe_1.stripe.products.update(stripeProductId, productUpdate);
+                    yield stripe_1.stripe.products.update(stripeProductId, productUpdate, stripeOpts);
                 }
             }
             const { data: updated, error } = yield database_1.supabase
@@ -201,24 +225,41 @@ class MembershipService {
     // =====================================================
     createBillingPortalSession(userId, locationId, returnUrl) {
         return __awaiter(this, void 0, void 0, function* () {
+            var _a, _b;
             // Validate returnUrl against allowed frontend origin to prevent open redirect
             const allowedOrigin = process.env.FRONTEND_URL || 'http://localhost:8080';
             if (!returnUrl.startsWith(allowedOrigin)) {
                 throw new Error('Invalid returnUrl');
             }
-            // Get Stripe customer ID from user profile (1:1 mapping: user = Stripe customer)
-            const { data: profile, error } = yield database_1.supabase
-                .from('user_profiles')
-                .select('stripe_customer_id')
-                .eq('id', userId)
-                .single();
-            if (error || !(profile === null || profile === void 0 ? void 0 : profile.stripe_customer_id)) {
+            const stripeOpts = yield (0, stripe_1.getStripeOptions)(locationId);
+            // Resolve Stripe customer for this user + location
+            let customerId = null;
+            if (stripeOpts) {
+                // Connected account — look up customer_stripe_accounts
+                const { data: csa } = yield database_1.supabase
+                    .from('customer_stripe_accounts')
+                    .select('stripe_customer_id')
+                    .eq('user_id', userId)
+                    .eq('stripe_account_id', stripeOpts.stripeAccount)
+                    .maybeSingle();
+                customerId = (_a = csa === null || csa === void 0 ? void 0 : csa.stripe_customer_id) !== null && _a !== void 0 ? _a : null;
+            }
+            else {
+                // Platform account — use user_profiles
+                const { data: profile } = yield database_1.supabase
+                    .from('user_profiles')
+                    .select('stripe_customer_id')
+                    .eq('id', userId)
+                    .single();
+                customerId = (_b = profile === null || profile === void 0 ? void 0 : profile.stripe_customer_id) !== null && _b !== void 0 ? _b : null;
+            }
+            if (!customerId) {
                 throw new Error('No Stripe customer found for this account');
             }
             const session = yield stripe_1.stripe.billingPortal.sessions.create({
-                customer: profile.stripe_customer_id,
+                customer: customerId,
                 return_url: returnUrl,
-            });
+            }, stripeOpts);
             return { url: session.url };
         });
     }
@@ -260,6 +301,7 @@ class MembershipService {
             if (existing) {
                 throw new Error('You already have an active membership at this location');
             }
+            const stripeOpts = yield (0, stripe_1.getStripeOptions)(plan.location_id);
             // Clean up any orphaned incomplete or cancelled memberships so re-subscribe works
             const { data: staleRows } = yield database_1.supabase
                 .from('memberships')
@@ -271,7 +313,7 @@ class MembershipService {
                 for (const row of staleRows) {
                     if (row.status === 'incomplete') {
                         try {
-                            yield stripe_1.stripe.subscriptions.cancel(row.stripe_subscription_id);
+                            yield stripe_1.stripe.subscriptions.cancel(row.stripe_subscription_id, stripeOpts);
                         }
                         catch (cancelErr) {
                             logger_1.logger.warn({ stripeSubscriptionId: row.stripe_subscription_id, err: cancelErr }, 'Failed to cancel orphaned Stripe subscription');
@@ -281,42 +323,8 @@ class MembershipService {
                 }
                 logger_1.logger.info({ count: staleRows.length, userId }, 'Cleaned up stale memberships before re-subscribe');
             }
-            // 3. Ensure Stripe Customer
-            const { data: profile, error: profileErr } = yield database_1.supabase
-                .from('user_profiles')
-                .select('stripe_customer_id, email, full_name')
-                .eq('id', userId)
-                .single();
-            if (profileErr || !profile)
-                throw new Error('User profile not found');
-            let stripeCustomerId = profile.stripe_customer_id;
-            // Verify the stored customer still exists in Stripe (handles prod/sandbox mismatch)
-            if (stripeCustomerId) {
-                try {
-                    yield stripe_1.stripe.customers.retrieve(stripeCustomerId);
-                }
-                catch (err) {
-                    if (err.code === 'resource_missing') {
-                        logger_1.logger.warn({ stripeCustomerId, userId }, 'Stored Stripe customer not found, creating new one');
-                        stripeCustomerId = null;
-                    }
-                    else {
-                        throw err;
-                    }
-                }
-            }
-            if (!stripeCustomerId) {
-                const customer = yield stripe_1.stripe.customers.create({
-                    email: profile.email,
-                    name: profile.full_name || undefined,
-                    metadata: { user_id: userId },
-                });
-                stripeCustomerId = customer.id;
-                yield database_1.supabase
-                    .from('user_profiles')
-                    .update({ stripe_customer_id: customer.id })
-                    .eq('id', userId);
-            }
+            // 3. Ensure Stripe Customer scoped to the correct account
+            const { customerId: stripeCustomerId } = yield (0, stripe_1.getOrCreateCustomerForLocation)(userId, plan.location_id);
             // 4. Create Stripe Checkout Session for subscription
             const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:8080';
             const checkoutSession = yield stripe_1.stripe.checkout.sessions.create({
@@ -339,7 +347,7 @@ class MembershipService {
                     location_id: plan.location_id,
                     billing_interval: billingInterval,
                 },
-            });
+            }, stripeOpts);
             return {
                 url: checkoutSession.url,
             };
@@ -359,12 +367,13 @@ class MembershipService {
             if (!['active', 'trialing', 'past_due'].includes(membership.status)) {
                 throw new Error('This membership cannot be canceled (current status: ' + membership.status + ')');
             }
+            const stripeOpts = yield (0, stripe_1.getStripeOptions)(membership.location_id);
             if (immediate) {
                 // Cancel immediately with prorated refund
                 const deletedSub = yield stripe_1.stripe.subscriptions.cancel(membership.stripe_subscription_id, {
                     prorate: true,
                     invoice_now: true,
-                });
+                }, stripeOpts);
                 // Stripe creates a final invoice with prorated credits.
                 // Retrieve the latest invoice to find the credit amount.
                 let refundAmount = 0;
@@ -372,7 +381,7 @@ class MembershipService {
                     const invoices = yield stripe_1.stripe.invoices.list({
                         subscription: membership.stripe_subscription_id,
                         limit: 1,
-                    });
+                    }, stripeOpts);
                     const finalInvoice = invoices.data[0];
                     if (finalInvoice && finalInvoice.amount_due < 0) {
                         // Negative amount = credit owed to customer
@@ -382,14 +391,14 @@ class MembershipService {
                         refundAmount = Math.abs(finalInvoice.ending_balance);
                     }
                     if (refundAmount > 0 && deletedSub.latest_invoice) {
-                        const latestInvoice = yield stripe_1.stripe.invoices.retrieve(deletedSub.latest_invoice);
+                        const latestInvoice = yield stripe_1.stripe.invoices.retrieve(deletedSub.latest_invoice, stripeOpts);
                         const chargeId = latestInvoice.charge;
                         if (chargeId) {
                             yield stripe_1.stripe.refunds.create({
                                 charge: chargeId,
                                 amount: refundAmount,
                                 reason: 'requested_by_customer',
-                            });
+                            }, stripeOpts);
                             logger_1.logger.info({ refundAmountDollars: (refundAmount / 100).toFixed(2), membershipId }, 'Issued prorated refund');
                         }
                         else {
@@ -413,7 +422,7 @@ class MembershipService {
             // Cancel at period end — member keeps access until billing cycle ends
             yield stripe_1.stripe.subscriptions.update(membership.stripe_subscription_id, {
                 cancel_at_period_end: true,
-            });
+            }, stripeOpts);
             yield database_1.supabase
                 .from('memberships')
                 .update({ canceled_at: new Date().toISOString() })
@@ -450,8 +459,9 @@ class MembershipService {
                 : newPlan.stripe_monthly_price_id;
             if (!newPriceId)
                 throw new Error('Pricing not available for your billing interval on the new plan');
+            const stripeOpts = yield (0, stripe_1.getStripeOptions)(membership.location_id);
             // Get current subscription items
-            const sub = yield stripe_1.stripe.subscriptions.retrieve(membership.stripe_subscription_id);
+            const sub = yield stripe_1.stripe.subscriptions.retrieve(membership.stripe_subscription_id, stripeOpts);
             yield stripe_1.stripe.subscriptions.update(membership.stripe_subscription_id, {
                 items: [{
                         id: sub.items.data[0].id,
@@ -462,7 +472,7 @@ class MembershipService {
                 },
                 proration_behavior: 'create_prorations',
                 cancel_at_period_end: false,
-            });
+            }, stripeOpts);
             // Update local record
             yield database_1.supabase
                 .from('memberships')
@@ -528,14 +538,15 @@ class MembershipService {
             // Auto-sync from Stripe if local status is stale (e.g. webhook failed)
             if (data.status === 'incomplete' && data.stripe_subscription_id) {
                 try {
-                    const sub = yield stripe_1.stripe.subscriptions.retrieve(data.stripe_subscription_id);
+                    const stripeOpts = yield (0, stripe_1.getStripeOptions)(locationId);
+                    const sub = yield stripe_1.stripe.subscriptions.retrieve(data.stripe_subscription_id, stripeOpts);
                     // If Stripe says it's dead, delete the stale row and return null
                     if (['canceled', 'incomplete_expired'].includes(sub.status)) {
                         yield database_1.supabase.from('memberships').delete().eq('id', data.id);
                         logger_1.logger.info({ membershipId: data.id }, 'Cleaned up stale incomplete membership');
                         return null;
                     }
-                    const synced = yield this.syncFromStripe(data.id, data.stripe_subscription_id);
+                    const synced = yield this.syncFromStripe(data.id, data.stripe_subscription_id, stripeOpts);
                     if (synced) {
                         const { membership_plans } = synced, membership = __rest(synced, ["membership_plans"]);
                         return Object.assign(Object.assign({}, membership), { plan: membership_plans });
@@ -554,10 +565,10 @@ class MembershipService {
             return Object.assign(Object.assign({}, membership), { plan: membership_plans });
         });
     }
-    syncFromStripe(membershipId, stripeSubscriptionId) {
+    syncFromStripe(membershipId, stripeSubscriptionId, stripeOpts) {
         return __awaiter(this, void 0, void 0, function* () {
             try {
-                const sub = yield stripe_1.stripe.subscriptions.retrieve(stripeSubscriptionId);
+                const sub = yield stripe_1.stripe.subscriptions.retrieve(stripeSubscriptionId, stripeOpts);
                 const updateData = { status: sub.status };
                 if (sub.current_period_start && typeof sub.current_period_start === 'number') {
                     updateData.current_period_start = new Date(sub.current_period_start * 1000).toISOString();
@@ -582,20 +593,24 @@ class MembershipService {
             }
         });
     }
-    getSubscribersForLocation(locationId) {
-        return __awaiter(this, void 0, void 0, function* () {
+    getSubscribersForLocation(locationId_1) {
+        return __awaiter(this, arguments, void 0, function* (locationId, page = 1, pageSize = 50) {
             if (!locationId)
                 throw new Error('Location ID is required');
-            const { data, error } = yield database_1.supabase
+            const cappedPageSize = Math.min(pageSize, 100);
+            const from = (page - 1) * cappedPageSize;
+            const to = from + cappedPageSize - 1;
+            const { data, error, count } = yield database_1.supabase
                 .from('memberships')
-                .select('*, membership_plans(name, monthly_price, annual_price), user_profiles(email, full_name, phone)')
+                .select('*, membership_plans(name, monthly_price, annual_price), user_profiles(email, full_name, phone)', { count: 'exact' })
                 .eq('location_id', locationId)
-                .order('created_at', { ascending: false });
+                .order('created_at', { ascending: false })
+                .range(from, to);
             if (error) {
                 logger_1.logger.error({ err: error }, 'Error fetching subscribers');
                 throw new Error('Failed to fetch subscribers');
             }
-            return data || [];
+            return { data: data || [], total: count || 0 };
         });
     }
     // =====================================================
@@ -693,6 +708,7 @@ class MembershipService {
             }
             // When memberships are disabled, cancel all active subscriptions at period end
             if (updates.membershipsEnabled === false) {
+                const stripeOpts = yield (0, stripe_1.getStripeOptions)(locationId);
                 const { data: activeMembers } = yield database_1.supabase
                     .from('memberships')
                     .select('id, stripe_subscription_id')
@@ -705,7 +721,7 @@ class MembershipService {
                         try {
                             yield stripe_1.stripe.subscriptions.update(member.stripe_subscription_id, {
                                 cancel_at_period_end: true,
-                            });
+                            }, stripeOpts);
                             yield database_1.supabase
                                 .from('memberships')
                                 .update({ canceled_at: new Date().toISOString() })

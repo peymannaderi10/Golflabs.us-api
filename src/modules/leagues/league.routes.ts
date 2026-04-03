@@ -1,18 +1,34 @@
 import { Router } from 'express';
 import { LeagueController } from './league.controller';
 import { SocketService } from '../sockets/socket.service';
-import { authenticateEmployee, authenticateUser, authenticateKiosk } from '../auth';
+import { authenticateEmployee, authenticateUser, authenticateKiosk, authenticateKioskOrEmployee, validateLocationAccess } from '../auth';
 import { body, param, query } from 'express-validator';
 import { handleValidationErrors } from '../../shared/middleware/validation';
+import { validateLeagueAccess } from './league.middleware';
 
 export const createLeagueRoutes = (socketService: SocketService): Router => {
   const router = Router();
   const controller = new LeagueController(socketService);
 
+  // --- Schedule Preview (no auth needed — stateless) ---
+  router.post('/preview-schedule', controller.previewSchedule);
+
+  // --- Course Catalog (no auth — public read) ---
+  router.get('/course-catalog', controller.getCourseCatalog);
+
   // --- League CRUD (employee-only for create/update/activate) ---
-  router.post('/', authenticateEmployee, [
+  router.post('/', authenticateEmployee, validateLocationAccess('body'), [
     body('locationId').isUUID().withMessage('locationId must be a valid UUID'),
     body('name').isString().notEmpty().withMessage('name is required'),
+    body('scheduleConfig').isObject().withMessage('scheduleConfig is required'),
+    body('scheduleConfig.startDate').isString().matches(/^\d{4}-\d{2}-\d{2}$/).withMessage('scheduleConfig.startDate must be YYYY-MM-DD'),
+    body('scheduleConfig.daysOfWeek').isArray({ min: 1 }).withMessage('scheduleConfig.daysOfWeek must have at least 1 day'),
+    body('scheduleConfig.startTime').isString().matches(/^\d{2}:\d{2}$/).withMessage('scheduleConfig.startTime must be HH:MM'),
+    body('scheduleConfig.endTime').isString().matches(/^\d{2}:\d{2}$/).withMessage('scheduleConfig.endTime must be HH:MM'),
+    body('numHoles').optional().isInt({ min: 1, max: 18 }).withMessage('numHoles must be 1-18'),
+    body('maxPlayers').optional().isInt({ min: 2, max: 200 }).withMessage('maxPlayers must be 2-200'),
+    body('seasonFee').optional().isFloat({ min: 0, max: 10000 }).withMessage('seasonFee must be 0-10000'),
+    body('playersPerBay').optional().isInt({ min: 1, max: 8 }).withMessage('playersPerBay must be 1-8'),
     handleValidationErrors,
   ], controller.createLeague);
   router.get('/', controller.getLeaguesByLocation);                                 // ?locationId=
@@ -24,51 +40,82 @@ export const createLeagueRoutes = (socketService: SocketService): Router => {
     param('leagueId').isUUID().withMessage('leagueId must be a valid UUID'),
     handleValidationErrors,
   ], controller.getLeague);
-  router.put('/:leagueId', authenticateEmployee, [
+  router.put('/:leagueId', authenticateEmployee, validateLeagueAccess, [
     param('leagueId').isUUID().withMessage('leagueId must be a valid UUID'),
     handleValidationErrors,
   ], controller.updateLeague);
-  router.delete('/:leagueId', authenticateEmployee, [
+  router.delete('/:leagueId', authenticateEmployee, validateLeagueAccess, [
     param('leagueId').isUUID().withMessage('leagueId must be a valid UUID'),
     handleValidationErrors,
   ], controller.deleteLeague);
-  router.post('/:leagueId/activate', authenticateEmployee, [
+  router.post('/:leagueId/activate', authenticateEmployee, validateLeagueAccess, [
     param('leagueId').isUUID().withMessage('leagueId must be a valid UUID'),
     handleValidationErrors,
   ], controller.activateLeague);
+  router.post('/:leagueId/complete', authenticateEmployee, validateLeagueAccess, [
+    param('leagueId').isUUID().withMessage('leagueId must be a valid UUID'),
+    handleValidationErrors,
+  ], controller.completeLeague);
 
   // --- Course management ---
-  router.post('/:leagueId/courses', authenticateEmployee, controller.addCourse);
+  router.post('/:leagueId/courses', authenticateEmployee, validateLeagueAccess, controller.addCourse);
   router.get('/:leagueId/courses', controller.getCourses);
-  router.put('/:leagueId/courses/:courseId', authenticateEmployee, controller.updateCourse);
-  router.delete('/:leagueId/courses/:courseId', authenticateEmployee, controller.deleteCourse);
+  router.put('/:leagueId/courses/:courseId', authenticateEmployee, validateLeagueAccess, controller.updateCourse);
+  router.delete('/:leagueId/courses/:courseId', authenticateEmployee, validateLeagueAccess, controller.deleteCourse);
+
+  // --- Player search (kiosk) ---
+  router.get('/:leagueId/players/search', authenticateKiosk, [
+    param('leagueId').isUUID().withMessage('leagueId must be a valid UUID'),
+    handleValidationErrors,
+  ], controller.searchPlayers);
 
   // --- Player enrollment ---
-  router.post('/:leagueId/enroll', [
+  router.post('/:leagueId/enroll', authenticateUser, [
     param('leagueId').isUUID().withMessage('leagueId must be a valid UUID'),
     handleValidationErrors,
   ], controller.enrollPlayer);
-  router.get('/:leagueId/players', controller.getPlayers);
-  router.post('/:leagueId/players/:playerId/withdraw', authenticateEmployee, controller.withdrawPlayer);
-  router.post('/:leagueId/players/:playerId/override-handicap', authenticateEmployee, controller.overrideHandicap);
+  router.get('/:leagueId/players', authenticateEmployee, validateLeagueAccess, controller.getPlayers);
+  router.post('/:leagueId/players/:playerId/withdraw', authenticateEmployee, validateLeagueAccess, controller.withdrawPlayer);
+  router.post('/:leagueId/players/:playerId/override-handicap', authenticateEmployee, validateLeagueAccess, controller.overrideHandicap);
+  router.post('/:leagueId/players/:playerId/refund-weekly', authenticateEmployee, validateLeagueAccess, [
+    param('leagueId').isUUID().withMessage('leagueId must be a valid UUID'),
+    param('playerId').isUUID().withMessage('playerId must be a valid UUID'),
+    body('reason').isString().notEmpty().isLength({ max: 500 }).withMessage('reason is required (max 500 chars)'),
+    handleValidationErrors,
+  ], controller.refundWeeklyBuyIn);
+  router.post('/:leagueId/players/:playerId/remove-and-refund', authenticateEmployee, validateLeagueAccess, [
+    param('leagueId').isUUID().withMessage('leagueId must be a valid UUID'),
+    param('playerId').isUUID().withMessage('playerId must be a valid UUID'),
+    body('refundType').isIn(['full', 'prorated', 'none']).withMessage('refundType must be full, prorated, or none'),
+    body('reason').isString().notEmpty().isLength({ max: 500 }).withMessage('reason is required (max 500 chars)'),
+    handleValidationErrors,
+  ], controller.removeAndRefund);
 
   // --- Weekly sessions ---
   router.get('/:leagueId/weeks', controller.getWeeks);
-  router.post('/:leagueId/weeks/:weekId/activate', authenticateEmployee, controller.activateWeek);
-  router.post('/:leagueId/weeks/:weekId/finalize', authenticateEmployee, controller.finalizeWeek);
-  router.post('/:leagueId/weeks/:weekId/assign-course', authenticateEmployee, controller.assignCourseToWeek);
-  router.post('/:leagueId/weeks/:weekId/confirm-scores', authenticateEmployee, controller.confirmWeekScores);
+  router.post('/:leagueId/weeks/:weekId/activate', authenticateEmployee, validateLeagueAccess, controller.activateWeek);
+  router.post('/:leagueId/weeks/:weekId/finalize', authenticateEmployee, validateLeagueAccess, controller.finalizeWeek);
+  router.post('/:leagueId/weeks/:weekId/assign-course', authenticateEmployee, validateLeagueAccess, controller.assignCourseToWeek);
+  router.post('/:leagueId/weeks/:weekId/confirm-scores', authenticateEmployee, validateLeagueAccess, controller.confirmWeekScores);
 
-  router.post('/:leagueId/scores', authenticateKiosk, [
+  router.post('/:leagueId/scores', authenticateKioskOrEmployee, [
     param('leagueId').isUUID().withMessage('leagueId must be a valid UUID'),
     handleValidationErrors,
   ], controller.submitScore);
-  router.get('/:leagueId/weeks/:weekId/scores', controller.getWeekScores);
-  router.get('/:leagueId/weeks/:weekId/scorecard/:playerId', controller.getPlayerScorecard);
+  router.post('/:leagueId/scores/bulk', authenticateEmployee, [
+    param('leagueId').isUUID().withMessage('leagueId must be a valid UUID'),
+    handleValidationErrors,
+  ], controller.submitScoresBulk);
+  router.get('/:leagueId/weeks/:weekId/scores', authenticateKioskOrEmployee, controller.getWeekScores);
+  router.get('/:leagueId/weeks/:weekId/scorecard/:playerId', authenticateKioskOrEmployee, controller.getPlayerScorecard);
 
   // --- Score auditability (employee-only) ---
-  router.post('/:leagueId/scores/:scoreId/confirm', authenticateEmployee, controller.confirmScore);
-  router.post('/:leagueId/scores/:scoreId/override', authenticateEmployee, controller.overrideScore);
+  router.post('/:leagueId/scores/:scoreId/confirm', authenticateEmployee, validateLeagueAccess, controller.confirmScore);
+  router.post('/:leagueId/scores/:scoreId/override', authenticateEmployee, validateLeagueAccess, [
+    body('strokes').isInt({ min: 1, max: 20 }).withMessage('strokes must be an integer between 1 and 20'),
+    body('reason').isString().notEmpty().isLength({ max: 500 }).withMessage('reason is required (max 500 chars)'),
+    handleValidationErrors,
+  ], controller.overrideScore);
 
   // --- Leaderboard (public, no auth) ---
   router.get('/:leagueId/standings', controller.getStandings);
@@ -84,8 +131,8 @@ export const createLeagueRoutes = (socketService: SocketService): Router => {
   // --- Prize pool ledger ---
   router.get('/:leagueId/prize-pool', controller.getPrizePoolSummary);
   router.get('/:leagueId/prize-pool/player/:playerId', controller.getPlayerPrizeHistory);
-  router.post('/:leagueId/weeks/:weekId/confirm-payouts', authenticateEmployee, controller.confirmWeekPayouts);
-  router.post('/:leagueId/prize-ledger/:entryId/confirm', authenticateEmployee, controller.confirmSinglePayout);
+  router.post('/:leagueId/weeks/:weekId/confirm-payouts', authenticateEmployee, validateLeagueAccess, controller.confirmWeekPayouts);
+  router.post('/:leagueId/prize-ledger/:entryId/confirm', authenticateEmployee, validateLeagueAccess, controller.confirmSinglePayout);
 
   router.get('/:leagueId/kiosk-state', authenticateKiosk, [
     param('leagueId').isUUID().withMessage('leagueId must be a valid UUID'),
@@ -101,19 +148,20 @@ export const createLeagueRoutes = (socketService: SocketService): Router => {
   router.get('/:leagueId/teams/:teamId', controller.getTeam);
   router.post('/:leagueId/teams/:teamId/invites', authenticateUser, controller.inviteTeammates);
   router.post('/:leagueId/teams/:teamId/pay', authenticateUser, controller.enrollTeamPlayer);
-  router.post('/:leagueId/teams/:teamId/disqualify', authenticateEmployee, controller.disqualifyTeam);
+  router.post('/:leagueId/teams/:teamId/disqualify', authenticateEmployee, validateLeagueAccess, controller.disqualifyTeam);
 
   // --- Week management (employee-only) ---
   router.get('/:leagueId/holds', controller.getLeagueHolds);
-  router.post('/:leagueId/weeks/:weekId/skip', authenticateEmployee, controller.skipWeek);
-  router.post('/:leagueId/weeks/:weekId/unskip', authenticateEmployee, controller.unskipWeek);
+  router.post('/:leagueId/weeks/:weekId/skip', authenticateEmployee, validateLeagueAccess, controller.skipWeek);
+  router.post('/:leagueId/weeks/:weekId/unskip', authenticateEmployee, validateLeagueAccess, controller.unskipWeek);
 
   // --- Attendance confirmation ---
   router.get('/:leagueId/weeks/:weekId/attendance', controller.getWeekAttendance);
   router.get('/:leagueId/weeks/:weekId/attendance/summary', controller.getWeekAttendanceSummary);
   router.put('/:leagueId/weeks/:weekId/attendance', authenticateUser, controller.updateAttendance);
   router.get('/:leagueId/attendance/me', authenticateUser, controller.getMyAttendance);
-  router.post('/:leagueId/weeks/:weekId/attendance/adjust', authenticateEmployee, controller.manualAdjustCapacity);
+  router.get('/:leagueId/attendance/player/:userId', authenticateEmployee, validateLeagueAccess, controller.getPlayerAttendance);
+  router.post('/:leagueId/weeks/:weekId/attendance/adjust', authenticateEmployee, validateLeagueAccess, controller.manualAdjustCapacity);
 
   // --- Team invites (public - token-based) ---
   // Note: these routes are mounted BEFORE /:leagueId to avoid route capture

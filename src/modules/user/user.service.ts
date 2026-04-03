@@ -2,6 +2,7 @@ import { supabase } from '../../config/database';
 import { stripe } from '../../config/stripe';
 import { logger } from '../../shared/utils/logger';
 import { SocketService } from '../sockets/socket.service';
+import { NotificationService } from '../email/notification.service';
 
 export class UserService {
   async deleteAccount(userId: string, socketService?: SocketService): Promise<{ success: boolean; message: string }> {
@@ -31,17 +32,48 @@ export class UserService {
       if (activeBookings && activeBookings.length > 0) {
         const bookingIds = activeBookings.map(b => b.id);
 
+        // Cancel all active bookings and expire them immediately
         await supabase
           .from('bookings')
-          .update({ status: 'cancelled' })
+          .update({ status: 'cancelled', expires_at: new Date().toISOString() })
           .in('id', bookingIds);
+
+        // Create cancellation records for audit trail
+        const cancellationRows = bookingIds.map(id => ({
+          booking_id: id,
+          cancelled_by: userId,
+          cancellation_reason: 'Account deleted by customer',
+          cancellation_fee: 0,
+          refund_amount: 0,
+          cancelled_at: new Date().toISOString(),
+        }));
+        const { error: cancellationError } = await supabase
+          .from('booking_cancellations')
+          .insert(cancellationRows);
+        if (cancellationError) {
+          logger.error({ err: cancellationError, userId }, 'Error creating cancellation records for deleted account');
+        }
+
+        // Delete pending reminder notifications so they don't fire after deletion
+        for (const bookingId of bookingIds) {
+          try {
+            await NotificationService.deleteNotificationsByBookingAndType(bookingId, 'reminder');
+          } catch (notifErr) {
+            logger.error({ err: notifErr, bookingId }, 'Error deleting reminder notification for cancelled booking');
+          }
+        }
 
         logger.info({ userId, cancelledCount: bookingIds.length }, 'Cancelled active bookings for deleted account');
 
+        // Notify kiosks so bay screens update
         if (socketService) {
           for (const booking of activeBookings) {
             if (booking.location_id && booking.bay_id) {
-              socketService.triggerBookingUpdate(booking.location_id, booking.bay_id, booking.id);
+              try {
+                socketService.triggerBookingUpdate(booking.location_id, booking.bay_id, booking.id);
+              } catch (socketErr) {
+                logger.error({ err: socketErr, bookingId: booking.id }, 'Error notifying kiosk of cancelled booking');
+              }
             }
           }
         }

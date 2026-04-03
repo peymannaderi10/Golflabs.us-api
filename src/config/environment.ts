@@ -35,6 +35,14 @@ export function validateEnvironment(): EnvironmentConfig {
     process.exit(1);
   }
 
+  if (!process.env.NODE_ENV) {
+    console.warn("NODE_ENV not set — defaulting to 'development'. Set NODE_ENV=production for production deployments.");
+  }
+
+  if (!process.env.RESEND_API_KEY) {
+    console.warn("RESEND_API_KEY not set in .env. Email sending will fail.");
+  }
+
   if (!process.env.KIOSK_API_KEY) {
     // Intentionally using console here to avoid circular dependency with logger
     console.warn("KIOSK_API_KEY not set in .env. Kiosk endpoints will reject all requests.");

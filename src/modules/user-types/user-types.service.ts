@@ -61,7 +61,7 @@ export class UserTypesService {
     return this.mapRow(data);
   }
 
-  async update(id: string, updates: { slug?: string; label?: string; isDefault?: boolean }): Promise<UserTypeRecord> {
+  async update(id: string, updates: { slug?: string; label?: string; isDefault?: boolean }, callerLocationId?: string): Promise<UserTypeRecord> {
     const { data: existing, error: fetchErr } = await supabase
       .from('user_types')
       .select('*')
@@ -70,6 +70,10 @@ export class UserTypesService {
 
     if (fetchErr || !existing) {
       throw new Error('User type not found');
+    }
+
+    if (callerLocationId && existing.location_id !== callerLocationId) {
+      throw new Error('Access denied: user type belongs to a different location');
     }
 
     const updateData: Record<string, any> = { updated_at: new Date().toISOString() };
@@ -108,12 +112,13 @@ export class UserTypesService {
       throw new Error('Failed to update user type');
     }
 
-    // Cascade slug rename to user_profiles and pricing_rules
+    // Cascade slug rename to user_profiles and pricing_rules (scoped to this location)
     if (newSlug && newSlug !== oldSlug) {
       await supabase
         .from('user_profiles')
         .update({ user_type: newSlug })
-        .eq('user_type', oldSlug);
+        .eq('user_type', oldSlug)
+        .eq('location_id', existing.location_id);
 
       await supabase
         .from('pricing_rules')
@@ -125,7 +130,7 @@ export class UserTypesService {
     return this.mapRow(data);
   }
 
-  async delete(id: string): Promise<void> {
+  async delete(id: string, callerLocationId?: string): Promise<void> {
     const { data: existing, error: fetchErr } = await supabase
       .from('user_types')
       .select('*')
@@ -136,15 +141,20 @@ export class UserTypesService {
       throw new Error('User type not found');
     }
 
+    if (callerLocationId && existing.location_id !== callerLocationId) {
+      throw new Error('Access denied: user type belongs to a different location');
+    }
+
     if (existing.is_default) {
       throw new Error('Cannot delete the default user type');
     }
 
-    // Check for users still assigned this type
+    // Check for users still assigned this type at this location
     const { count: userCount } = await supabase
       .from('user_profiles')
       .select('id', { count: 'exact', head: true })
-      .eq('user_type', existing.slug);
+      .eq('user_type', existing.slug)
+      .eq('location_id', existing.location_id);
 
     if (userCount && userCount > 0) {
       throw new Error(`Cannot delete: ${userCount} customer(s) are still assigned this type. Reassign them first.`);

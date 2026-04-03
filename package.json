@@ -9,6 +9,9 @@
     "dev": "ts-node-dev src/server.ts",
     "start": "node dist/server.js"
   },
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "keywords": [],
   "author": "",
   "license": "ISC",

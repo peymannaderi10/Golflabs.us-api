@@ -130,22 +130,25 @@ export class PricingService {
       throw new Error('Location ID is required');
     }
 
-    // Look up the default user type slug for this location
-    const { data: defaultType } = await supabase
-      .from('user_types')
-      .select('slug')
-      .eq('location_id', locationId)
-      .eq('is_default', true)
-      .single();
-    const defaultSlug = defaultType?.slug || 'regular';
+    // Fetch default slug and pricing rules in parallel
+    const [defaultTypeResult, rulesResult] = await Promise.all([
+      supabase
+        .from('user_types')
+        .select('slug')
+        .eq('location_id', locationId)
+        .eq('is_default', true)
+        .single(),
+      supabase
+        .from('pricing_rules')
+        .select('name, hourly_rate, start_time, end_time, days_of_week, user_type, is_extension_rate')
+        .eq('location_id', locationId)
+        .eq('is_active', true)
+        .eq('is_extension_rate', false),
+    ]);
 
-    const { data, error } = await supabase
-      .from('pricing_rules')
-      .select('name, hourly_rate, start_time, end_time, days_of_week, user_type, is_extension_rate')
-      .eq('location_id', locationId)
-      .eq('is_active', true)
-      .eq('is_extension_rate', false)
-      .eq('user_type', defaultSlug);
+    const defaultSlug = defaultTypeResult.data?.slug || 'regular';
+    const data = (rulesResult.data || []).filter(r => r.user_type === defaultSlug);
+    const error = rulesResult.error;
 
     if (error) {
       logger.error({ err: error }, 'Error fetching pricing rules');
@@ -228,7 +231,7 @@ export class PricingService {
     return mapRow(data);
   }
 
-  async updatePricingRule(ruleId: string, updates: Partial<Omit<PricingRuleFull, 'id' | 'locationId' | 'createdAt' | 'updatedAt'>>): Promise<PricingRuleFull> {
+  async updatePricingRule(ruleId: string, updates: Partial<Omit<PricingRuleFull, 'id' | 'locationId' | 'createdAt' | 'updatedAt'>>, employeeLocationId: string): Promise<PricingRuleFull> {
     if (!ruleId) {
       throw new Error('Pricing rule ID is required');
     }
@@ -242,6 +245,11 @@ export class PricingService {
 
     if (fetchErr || !current) {
       throw new Error('Pricing rule not found');
+    }
+
+    // Verify employee owns this location's pricing rule
+    if (current.location_id !== employeeLocationId) {
+      throw new Error('Access denied: pricing rule belongs to a different location');
     }
 
     const mergedUserType = updates.userType !== undefined ? updates.userType : current.user_type;
@@ -294,9 +302,24 @@ export class PricingService {
     return mapRow(data);
   }
 
-  async deletePricingRule(ruleId: string): Promise<void> {
+  async deletePricingRule(ruleId: string, employeeLocationId: string): Promise<void> {
     if (!ruleId) {
       throw new Error('Pricing rule ID is required');
+    }
+
+    // Verify employee owns this location's pricing rule
+    const { data: rule, error: fetchErr } = await supabase
+      .from('pricing_rules')
+      .select('location_id')
+      .eq('id', ruleId)
+      .single();
+
+    if (fetchErr || !rule) {
+      throw new Error('Pricing rule not found');
+    }
+
+    if (rule.location_id !== employeeLocationId) {
+      throw new Error('Access denied: pricing rule belongs to a different location');
     }
 
     const { error } = await supabase

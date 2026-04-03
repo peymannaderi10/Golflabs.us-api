@@ -11,6 +11,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.userTypesController = exports.UserTypesController = void 0;
 const user_types_service_1 = require("./user-types.service");
+const error_utils_1 = require("../../shared/utils/error.utils");
 const logger_1 = require("../../shared/utils/logger");
 class UserTypesController {
     constructor() {
@@ -25,7 +26,7 @@ class UserTypesController {
             }
             catch (error) {
                 logger_1.logger.error({ err: error }, 'Error in getByLocation user-types');
-                res.status(500).json({ error: error.message || 'An unexpected error occurred' });
+                res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
         this.create = (req, res) => __awaiter(this, void 0, void 0, function* () {
@@ -48,37 +49,43 @@ class UserTypesController {
             }
         });
         this.update = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            var _a;
             try {
                 const { id } = req.params;
                 if (!id) {
                     return res.status(400).json({ error: 'id is required' });
                 }
+                const callerLocationId = (_a = req.employeeProfile) === null || _a === void 0 ? void 0 : _a.location_id;
                 const { slug, label, isDefault } = req.body;
-                const userType = yield user_types_service_1.userTypesService.update(id, { slug, label, isDefault });
+                const userType = yield user_types_service_1.userTypesService.update(id, { slug, label, isDefault }, callerLocationId);
                 res.json(userType);
             }
             catch (error) {
                 logger_1.logger.error({ err: error }, 'Error in update user-type');
-                const status = error.message.includes('not found') ? 404
-                    : error.message.includes('already exists') ? 409
-                        : 500;
+                const status = error.message.includes('Access denied') ? 403
+                    : error.message.includes('not found') ? 404
+                        : error.message.includes('already exists') ? 409
+                            : 500;
                 res.status(status).json({ error: error.message || 'An unexpected error occurred' });
             }
         });
         this.delete = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            var _a;
             try {
                 const { id } = req.params;
                 if (!id) {
                     return res.status(400).json({ error: 'id is required' });
                 }
-                yield user_types_service_1.userTypesService.delete(id);
+                const callerLocationId = (_a = req.employeeProfile) === null || _a === void 0 ? void 0 : _a.location_id;
+                yield user_types_service_1.userTypesService.delete(id, callerLocationId);
                 res.json({ success: true });
             }
             catch (error) {
                 logger_1.logger.error({ err: error }, 'Error in delete user-type');
-                const status = error.message.includes('Cannot delete') ? 400
-                    : error.message.includes('not found') ? 404
-                        : 500;
+                const status = error.message.includes('Access denied') ? 403
+                    : error.message.includes('Cannot delete') ? 400
+                        : error.message.includes('not found') ? 404
+                            : 500;
                 res.status(status).json({ error: error.message || 'An unexpected error occurred' });
             }
         });

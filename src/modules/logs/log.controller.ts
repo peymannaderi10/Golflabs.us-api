@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { LogService } from './log.service';
+import { sanitizeError } from '../../shared/utils/error.utils';
 import { logger } from '../../shared/utils/logger';
 
 export class LogController {
@@ -21,7 +22,7 @@ export class LogController {
       res.status(201).json(newLog);
     } catch (error: any) {
       logger.error({ err: error }, 'Error in logAccess controller');
-      res.status(500).json({ message: 'Failed to log access event', error: error.message });
+      res.status(500).json({ error: 'Failed to log access event' });
     }
   };
 
@@ -29,7 +30,7 @@ export class LogController {
     try {
       const { locationId } = req.query;
       const page = parseInt(req.query.page as string) || 1;
-      const pageSize = parseInt(req.query.pageSize as string) || 50;
+      const pageSize = Math.min(parseInt(req.query.pageSize as string) || 50, 200);
       const startDate = req.query.startDate as string;
       const endDate = req.query.endDate as string;
       const action = req.query.action as string;
@@ -51,7 +52,7 @@ export class LogController {
       res.json(result);
     } catch (error: any) {
       logger.error({ err: error }, 'Error in getAccessLogs controller');
-      res.status(500).json({ error: error.message || 'Failed to fetch access logs' });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 } 

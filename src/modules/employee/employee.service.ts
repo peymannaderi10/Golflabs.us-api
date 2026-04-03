@@ -416,16 +416,29 @@ export class EmployeeService {
     /**
      * Export report data as CSV
      */
+    private escapeCSV(value: unknown): string {
+        const str = String(value ?? '');
+        if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+            return `"${str.replace(/"/g, '""')}"`;
+        }
+        // Prevent CSV injection: escape leading =, +, -, @, tab, CR
+        if (/^[=+\-@\t\r]/.test(str)) {
+            return `"'${str}"`;
+        }
+        return str;
+    }
+
     async exportCSV(locationId: string, startDate: string, endDate: string, type: 'revenue' | 'bays'): Promise<string> {
+        const esc = this.escapeCSV.bind(this);
         if (type === 'revenue') {
             const stats = await this.getRevenueStats(locationId, startDate, endDate);
             const header = 'Date,Revenue,Bookings\n';
-            const rows = stats.dailyRevenue.map(d => `${d.date},${d.revenue},${d.bookingCount}`).join('\n');
+            const rows = stats.dailyRevenue.map(d => `${esc(d.date)},${esc(d.revenue)},${esc(d.bookingCount)}`).join('\n');
             return header + rows;
         } else if (type === 'bays') {
             const stats = await this.getBayStats(locationId, startDate, endDate);
             const header = 'Bay Number,Bay Name,Hours Booked,Bookings,Revenue,Utilization %\n';
-            const rows = stats.bays.map(b => `${b.bayNumber},${b.bayName},${b.totalHoursBooked},${b.totalBookings},${b.revenue},${b.utilizationRate}`).join('\n');
+            const rows = stats.bays.map(b => `${esc(b.bayNumber)},${esc(b.bayName)},${esc(b.totalHoursBooked)},${esc(b.totalBookings)},${esc(b.revenue)},${esc(b.utilizationRate)}`).join('\n');
             return header + rows;
         }
         return '';
@@ -476,10 +489,13 @@ export class EmployeeService {
         const to = from + pageSize - 1;
         query = query.range(from, to);
 
-        // Sorting
-        // Note: Sorting by computed fields (totalSpend, etc.) is not supported in this simple query
-        // We fallback to createdAt or simple fields
-        const sortColumn = sortBy === 'createdAt' ? 'created_at' : 'created_at';
+        // Sorting — computed fields (totalSpend, etc.) are post-query, so DB sort is limited
+        const sortMap: Record<string, string> = {
+            createdAt: 'created_at',
+            email: 'email',
+            fullName: 'full_name',
+        };
+        const sortColumn = sortMap[sortBy] || 'created_at';
         query = query.order(sortColumn, { ascending: sortOrder === 'asc' });
 
         const { data: profiles, count, error } = await query;
@@ -489,26 +505,31 @@ export class EmployeeService {
             throw error;
         }
 
-        // Fetch stats for these users at this location
-        const customers: Customer[] = await Promise.all((profiles || []).map(async (profile) => {
-            const { data: bookings } = await supabase
+        // Batch fetch booking stats for all profiles in one query (avoids N+1)
+        const profileIds = (profiles || []).map(p => p.id);
+        const { data: allBookings } = profileIds.length > 0
+            ? await supabase
                 .from('bookings')
-                .select('total_amount, start_time')
-                .eq('user_id', profile.id)
+                .select('user_id, total_amount, start_time')
+                .in('user_id', profileIds)
                 .eq('location_id', locationId)
-                .eq('status', 'confirmed');
+                .eq('status', 'confirmed')
+            : { data: [] };
 
-            const totalBookings = bookings?.length || 0;
-            const totalSpend = bookings?.reduce((sum, b) => sum + (b.total_amount || 0), 0) || 0;
-
-            // Find last visit
-            let lastVisit = null;
-            if (bookings && bookings.length > 0) {
-                // simple sort to find latest
-                const times = bookings.map(b => b.start_time).sort();
-                lastVisit = times[times.length - 1];
+        // Group by user_id
+        const bookingsByUser = new Map<string, { totalBookings: number; totalSpend: number; lastVisit: string | null }>();
+        for (const b of allBookings || []) {
+            const existing = bookingsByUser.get(b.user_id) || { totalBookings: 0, totalSpend: 0, lastVisit: null };
+            existing.totalBookings++;
+            existing.totalSpend += b.total_amount || 0;
+            if (!existing.lastVisit || b.start_time > existing.lastVisit) {
+                existing.lastVisit = b.start_time;
             }
+            bookingsByUser.set(b.user_id, existing);
+        }
 
+        const customers: Customer[] = (profiles || []).map((profile) => {
+            const stats = bookingsByUser.get(profile.id) || { totalBookings: 0, totalSpend: 0, lastVisit: null };
             return {
                 id: profile.id,
                 email: profile.email,
@@ -516,11 +537,11 @@ export class EmployeeService {
                 phone: profile.phone,
                 userType: profile.user_type || 'regular',
                 createdAt: profile.created_at,
-                totalBookings,
-                totalSpend,
-                lastVisit,
+                totalBookings: stats.totalBookings,
+                totalSpend: stats.totalSpend,
+                lastVisit: stats.lastVisit,
             };
-        }));
+        });
 
         // Post-query filters on computed fields
         const filtered = customers.filter(c => {
@@ -536,6 +557,34 @@ export class EmployeeService {
      * Get detailed customer profile
      */
     async getCustomerDetails(locationId: string, customerId: string): Promise<CustomerDetails> {
+        // Verify the customer has a relationship with this location
+        // Check 1: profile registered at this location
+        const { count: profileCount } = await supabase
+            .from('user_profiles')
+            .select('id', { count: 'exact', head: true })
+            .eq('id', customerId)
+            .eq('location_id', locationId);
+
+        if (!profileCount || profileCount === 0) {
+            // Check 2: has bookings at this location
+            const { count: bookingCount } = await supabase
+                .from('bookings')
+                .select('id', { count: 'exact', head: true })
+                .eq('user_id', customerId)
+                .eq('location_id', locationId);
+
+            // Check 3: has memberships at this location
+            const { count: membershipCount } = await supabase
+                .from('memberships')
+                .select('id', { count: 'exact', head: true })
+                .eq('user_id', customerId)
+                .eq('location_id', locationId);
+
+            if ((bookingCount ?? 0) === 0 && (membershipCount ?? 0) === 0) {
+                throw new Error('Customer not found at this location');
+            }
+        }
+
         // Fetch profile
         const { data: profile, error: profileError } = await supabase
             .from('user_profiles')
@@ -621,7 +670,32 @@ export class EmployeeService {
             membership: membership || null,
         };
     }
-    async updateCustomer(id: string, updates: { fullName?: string; phone?: string; email?: string; userType?: string }, locationId?: string): Promise<void> {
+    async updateCustomer(id: string, updates: { fullName?: string; phone?: string; email?: string; userType?: string }, locationId: string): Promise<void> {
+        // Verify the customer has a relationship with this location
+        const { count: profileCount } = await supabase
+            .from('user_profiles')
+            .select('id', { count: 'exact', head: true })
+            .eq('id', id)
+            .eq('location_id', locationId);
+
+        if (!profileCount || profileCount === 0) {
+            const { count: bookingCount } = await supabase
+                .from('bookings')
+                .select('id', { count: 'exact', head: true })
+                .eq('user_id', id)
+                .eq('location_id', locationId);
+
+            const { count: membershipCount } = await supabase
+                .from('memberships')
+                .select('id', { count: 'exact', head: true })
+                .eq('user_id', id)
+                .eq('location_id', locationId);
+
+            if ((bookingCount ?? 0) === 0 && (membershipCount ?? 0) === 0) {
+                throw new Error('Customer not found at this location');
+            }
+        }
+
         const updateData: Record<string, any> = {
             full_name: updates.fullName,
             phone: updates.phone,

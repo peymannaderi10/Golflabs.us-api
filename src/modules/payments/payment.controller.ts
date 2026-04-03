@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { PaymentService } from './payment.service';
 import { AuthenticatedRequest } from '../auth/auth.middleware';
+import { sanitizeError } from '../../shared/utils/error.utils';
 import { logger } from '../../shared/utils/logger';
 
 export class PaymentController {
@@ -36,7 +37,7 @@ export class PaymentController {
       if (error.message === 'Booking reservation has expired.') {
         return res.status(410).json({ error: error.message });
       }
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 
@@ -46,10 +47,7 @@ export class PaymentController {
       res.json(result);
     } catch (error: any) {
       logger.error({ err: error }, 'Error updating payment intent');
-      res.status(500).json({ 
-        error: 'Failed to update payment intent',
-        details: error.message
-      });
+      res.status(500).json({ error: 'Failed to update payment intent' });
     }
   };
 

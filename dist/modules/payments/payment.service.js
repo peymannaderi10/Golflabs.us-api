@@ -159,7 +159,9 @@ class PaymentService {
             const taxAmount = Math.round(subtotal * taxRate);
             let amount = subtotal + taxAmount;
             logger_1.logger.info({ bookingId, originalSubtotal, serverDiscountAmount, subtotal, taxRate, taxAmount, finalAmount: amount }, 'Server-computed payment amount');
-            // 2. Check if a payment intent already exists for this booking
+            // 2. Resolve Stripe Connect options for this location
+            const stripeOpts = yield (0, stripe_1.getStripeOptions)(booking.location_id);
+            // 3. Check if a payment intent already exists for this booking
             const { data: existingPayment, error: paymentCheckError } = yield database_1.supabase
                 .from('payments')
                 .select('stripe_payment_intent_id, status')
@@ -178,11 +180,11 @@ class PaymentService {
                 const isSetupIntent = existingId.startsWith('seti_');
                 try {
                     if (isSetupIntent) {
-                        const existingSetupIntent = yield stripe_1.stripe.setupIntents.retrieve(existingId);
+                        const existingSetupIntent = yield stripe_1.stripe.setupIntents.retrieve(existingId, stripeOpts);
                         if (amount > 0) {
                             // Was free, now has a cost (promo removed or changed) — cancel setup intent and create payment intent
                             logger_1.logger.info({ setupIntentId: existingSetupIntent.id, bookingId }, 'Amount changed from free to paid, cancelling setup intent');
-                            yield stripe_1.stripe.setupIntents.cancel(existingSetupIntent.id);
+                            yield stripe_1.stripe.setupIntents.cancel(existingSetupIntent.id, stripeOpts);
                         }
                         else if (['requires_payment_method', 'requires_confirmation', 'requires_action'].includes(existingSetupIntent.status)) {
                             logger_1.logger.info({ setupIntentId: existingSetupIntent.id, bookingId }, 'Reusing existing setup intent');
@@ -190,7 +192,7 @@ class PaymentService {
                         }
                     }
                     else {
-                        const existingPaymentIntent = yield stripe_1.stripe.paymentIntents.retrieve(existingId);
+                        const existingPaymentIntent = yield stripe_1.stripe.paymentIntents.retrieve(existingId, stripeOpts);
                         if (['requires_payment_method', 'requires_confirmation', 'requires_action'].includes(existingPaymentIntent.status)) {
                             // If the amount changed (e.g. promo applied/removed), update the existing intent
                             if (existingPaymentIntent.amount !== amount) {
@@ -198,7 +200,7 @@ class PaymentService {
                                 const updated = yield stripe_1.stripe.paymentIntents.update(existingPaymentIntent.id, {
                                     amount,
                                     metadata: Object.assign(Object.assign({}, existingPaymentIntent.metadata), { promotion_id: (promotionInfo === null || promotionInfo === void 0 ? void 0 : promotionInfo.promotionId) || '', discount_amount: serverDiscountAmount.toString(), original_amount: (originalSubtotal / 100).toString() }),
-                                });
+                                }, stripeOpts);
                                 // Update local payment record and booking
                                 yield database_1.supabase.from('payments').update({ amount: amount / 100 }).eq('stripe_payment_intent_id', existingId);
                                 yield this.updateBookingPromotion(bookingId, promotionInfo === null || promotionInfo === void 0 ? void 0 : promotionInfo.promotionId, originalSubtotal, serverDiscountAmount, subtotal);
@@ -220,45 +222,12 @@ class PaymentService {
                     logger_1.logger.error({ err: stripeError }, 'Error retrieving existing Stripe intent');
                 }
             }
-            // 3. Ensure user has a Stripe Customer (for saving cards for future off-session charges)
+            // 4. Ensure user has a Stripe Customer scoped to the correct account
             let stripeCustomerId = null;
             try {
-                const { data: userProfile, error: userError } = yield database_1.supabase
-                    .from('user_profiles')
-                    .select('stripe_customer_id, email')
-                    .eq('id', booking.user_id)
-                    .single();
-                if (!userError && userProfile) {
-                    if (userProfile.stripe_customer_id) {
-                        try {
-                            yield stripe_1.stripe.customers.retrieve(userProfile.stripe_customer_id);
-                            stripeCustomerId = userProfile.stripe_customer_id;
-                            logger_1.logger.info({ stripeCustomerId, userId: booking.user_id }, 'Using existing Stripe customer');
-                        }
-                        catch (err) {
-                            if (err.code === 'resource_missing') {
-                                logger_1.logger.warn({ stripeCustomerId: userProfile.stripe_customer_id }, 'Stored Stripe customer not found, will create new one');
-                            }
-                            else {
-                                throw err;
-                            }
-                        }
-                    }
-                    if (!stripeCustomerId && userProfile.email) {
-                        // Create a new Stripe Customer
-                        const customer = yield stripe_1.stripe.customers.create({
-                            email: userProfile.email,
-                            metadata: { user_id: booking.user_id }
-                        });
-                        stripeCustomerId = customer.id;
-                        // Save the Stripe Customer ID to user_profiles
-                        yield database_1.supabase
-                            .from('user_profiles')
-                            .update({ stripe_customer_id: customer.id })
-                            .eq('id', booking.user_id);
-                        logger_1.logger.info({ stripeCustomerId: customer.id, userId: booking.user_id }, 'Created new Stripe customer');
-                    }
-                }
+                const { customerId } = yield (0, stripe_1.getOrCreateCustomerForLocation)(booking.user_id, booking.location_id);
+                stripeCustomerId = customerId;
+                logger_1.logger.info({ stripeCustomerId, userId: booking.user_id }, 'Resolved Stripe customer for location');
             }
             catch (customerError) {
                 logger_1.logger.error({ userId: booking.user_id, err: customerError }, 'Error setting up Stripe customer');
@@ -279,7 +248,7 @@ class PaymentService {
                 intentMetadata.membership_id = memberPricingInfo.membershipId;
                 intentMetadata.member_free_minutes_applied = memberPricingInfo.freeMinutesApplied.toString();
             }
-            // 5. Free booking (amount = 0): create SetupIntent to save card for future charges
+            // 6. Free booking (amount = 0): create SetupIntent to save card for future charges
             if (amount === 0) {
                 if (!stripeCustomerId) {
                     throw new Error('A Stripe customer is required for free bookings to save payment method.');
@@ -289,7 +258,7 @@ class PaymentService {
                     payment_method_types: ['card'],
                     metadata: intentMetadata,
                     usage: 'off_session',
-                });
+                }, stripeOpts);
                 // Create a $0 payment record linked to the setup intent
                 const { error: paymentError } = yield database_1.supabase
                     .from('payments')
@@ -303,7 +272,7 @@ class PaymentService {
                     location_id: booking.location_id
                 });
                 if (paymentError) {
-                    yield stripe_1.stripe.setupIntents.cancel(setupIntent.id);
+                    yield stripe_1.stripe.setupIntents.cancel(setupIntent.id, stripeOpts);
                     logger_1.logger.error({ err: paymentError }, 'Error creating payment record for free booking, cancelling setup intent');
                     throw paymentError;
                 }
@@ -314,7 +283,7 @@ class PaymentService {
                     type: 'setup'
                 };
             }
-            // 6. Paid booking: create Stripe Payment Intent (with customer + save card for future use)
+            // 7. Paid booking: create Stripe Payment Intent (with customer + save card for future use)
             const paymentIntentParams = {
                 amount,
                 currency: 'usd',
@@ -326,7 +295,7 @@ class PaymentService {
                 paymentIntentParams.customer = stripeCustomerId;
                 paymentIntentParams.setup_future_usage = 'off_session';
             }
-            const paymentIntent = yield stripe_1.stripe.paymentIntents.create(paymentIntentParams);
+            const paymentIntent = yield stripe_1.stripe.paymentIntents.create(paymentIntentParams, stripeOpts);
             // 7. Create a corresponding payment record
             const { error: paymentError } = yield database_1.supabase
                 .from('payments')
@@ -340,7 +309,7 @@ class PaymentService {
                 location_id: booking.location_id
             });
             if (paymentError) {
-                yield stripe_1.stripe.paymentIntents.cancel(paymentIntent.id);
+                yield stripe_1.stripe.paymentIntents.cancel(paymentIntent.id, stripeOpts);
                 logger_1.logger.error({ err: paymentError }, 'Error creating payment record, cancelling payment intent');
                 throw paymentError;
             }
@@ -353,22 +322,21 @@ class PaymentService {
             };
         });
     }
-    updatePaymentIntent(data) {
+    updatePaymentIntent(data, stripeOpts) {
         return __awaiter(this, void 0, void 0, function* () {
             const { paymentIntentId, email, firstName, lastName, phone } = data;
-            const existing = yield stripe_1.stripe.paymentIntents.retrieve(paymentIntentId);
             const paymentIntent = yield stripe_1.stripe.paymentIntents.update(paymentIntentId, {
                 receipt_email: email,
-            });
+            }, stripeOpts);
             return { success: true, paymentIntent };
         });
     }
-    getPaymentIntentStatus(paymentIntentId) {
+    getPaymentIntentStatus(paymentIntentId, stripeOpts) {
         return __awaiter(this, void 0, void 0, function* () {
             if (!paymentIntentId) {
                 throw new Error("Payment Intent ID is required");
             }
-            const paymentIntent = yield stripe_1.stripe.paymentIntents.retrieve(paymentIntentId);
+            const paymentIntent = yield stripe_1.stripe.paymentIntents.retrieve(paymentIntentId, stripeOpts);
             return {
                 status: paymentIntent.status,
                 amount: paymentIntent.amount,
@@ -376,12 +344,12 @@ class PaymentService {
             };
         });
     }
-    getSetupIntentStatus(setupIntentId) {
+    getSetupIntentStatus(setupIntentId, stripeOpts) {
         return __awaiter(this, void 0, void 0, function* () {
             if (!setupIntentId) {
                 throw new Error('Setup Intent ID is required');
             }
-            const setupIntent = yield stripe_1.stripe.setupIntents.retrieve(setupIntentId);
+            const setupIntent = yield stripe_1.stripe.setupIntents.retrieve(setupIntentId, stripeOpts);
             return {
                 status: setupIntent.status,
                 amount: 0,

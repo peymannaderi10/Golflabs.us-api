@@ -89,21 +89,37 @@ function findRuleForSlot(userTypeRules, defaultRules, localHour, dow) {
 }
 /**
  * Split rules into user-type and default-type lists.
- * For extensions, prefers extension-flagged rules but falls back to standard rules.
+ * For extensions, prefers extension-flagged rules PER USER TYPE,
+ * falling back to that type's standard rules if no extension rules exist for it.
  */
 function splitRules(allRules, userType, defaultSlug, forExtension) {
-    let pool;
+    const standardRules = allRules.filter(r => !r.is_extension_rate);
+    const extensionRules = allRules.filter(r => r.is_extension_rate);
+    // Pick rules for the user's specific type (if not default)
+    let userTypeRules = [];
+    if (userType !== defaultSlug) {
+        if (forExtension) {
+            // Prefer extension rules for this user type; fall back to their standard rules
+            const userExtRules = extensionRules.filter(r => r.user_type === userType);
+            userTypeRules = userExtRules.length > 0
+                ? userExtRules
+                : standardRules.filter(r => r.user_type === userType);
+        }
+        else {
+            userTypeRules = standardRules.filter(r => r.user_type === userType);
+        }
+    }
+    // Pick rules for the default type (fallback)
+    let defaultRules;
     if (forExtension) {
-        const extRules = allRules.filter(r => r.is_extension_rate);
-        pool = extRules.length > 0 ? extRules : allRules.filter(r => !r.is_extension_rate);
+        const defaultExtRules = extensionRules.filter(r => r.user_type === defaultSlug);
+        defaultRules = defaultExtRules.length > 0
+            ? defaultExtRules
+            : standardRules.filter(r => r.user_type === defaultSlug);
     }
     else {
-        pool = allRules.filter(r => !r.is_extension_rate);
+        defaultRules = standardRules.filter(r => r.user_type === defaultSlug);
     }
-    const userTypeRules = userType !== defaultSlug
-        ? pool.filter(r => r.user_type === userType)
-        : [];
-    const defaultRules = pool.filter(r => r.user_type === defaultSlug);
     if (userTypeRules.length === 0 && defaultRules.length === 0) {
         throw new Error('No pricing rules found');
     }

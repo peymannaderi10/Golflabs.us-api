@@ -20,15 +20,40 @@ const resend_1 = require("../../config/resend");
 const email_template_defaults_1 = require("../email/email-template.defaults");
 const logger_1 = require("../../shared/utils/logger");
 const BATCH_SIZE = 100;
+let _unsubscribeSecret = null;
 function getUnsubscribeSecret() {
-    const secret = process.env.MARKETING_UNSUBSCRIBE_SECRET || process.env.RESEND_WEBHOOK_SECRET;
-    if (!secret) {
-        throw new Error('MARKETING_UNSUBSCRIBE_SECRET (or RESEND_WEBHOOK_SECRET) environment variable is required');
+    if (!_unsubscribeSecret) {
+        const secret = process.env.MARKETING_UNSUBSCRIBE_SECRET || process.env.RESEND_WEBHOOK_SECRET;
+        if (!secret) {
+            throw new Error('MARKETING_UNSUBSCRIBE_SECRET (or RESEND_WEBHOOK_SECRET) environment variable is required');
+        }
+        _unsubscribeSecret = secret;
     }
-    return secret;
+    return _unsubscribeSecret;
 }
-const UNSUBSCRIBE_SECRET = getUnsubscribeSecret();
 class MarketingService {
+    static getCampaignLocationId(campaignId) {
+        return __awaiter(this, void 0, void 0, function* () {
+            var _a;
+            const { data } = yield database_1.supabase
+                .from('marketing_campaigns')
+                .select('location_id')
+                .eq('id', campaignId)
+                .single();
+            return (_a = data === null || data === void 0 ? void 0 : data.location_id) !== null && _a !== void 0 ? _a : null;
+        });
+    }
+    static getTemplateLocationId(templateId) {
+        return __awaiter(this, void 0, void 0, function* () {
+            var _a;
+            const { data } = yield database_1.supabase
+                .from('email_templates')
+                .select('location_id')
+                .eq('id', templateId)
+                .single();
+            return (_a = data === null || data === void 0 ? void 0 : data.location_id) !== null && _a !== void 0 ? _a : null;
+        });
+    }
     // ------------------------------------------------------------------
     // Marketing template CRUD
     // ------------------------------------------------------------------
@@ -737,7 +762,7 @@ class MarketingService {
     // ------------------------------------------------------------------
     static generateUnsubscribeSignature(userId) {
         return crypto_1.default
-            .createHmac('sha256', UNSUBSCRIBE_SECRET)
+            .createHmac('sha256', getUnsubscribeSecret())
             .update(userId)
             .digest('hex');
     }

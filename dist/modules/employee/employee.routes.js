@@ -18,62 +18,62 @@ const logController = new log_controller_1.LogController();
  * GET /employee/reports/overview
  * Combined dashboard summary with key metrics
  */
-router.get('/reports/overview', auth_1.authenticateEmployee, (req, res) => employee_controller_1.employeeController.getOverview(req, res));
+router.get('/reports/overview', auth_1.authenticateEmployee, (0, auth_1.validateLocationAccess)('query'), (req, res) => employee_controller_1.employeeController.getOverview(req, res));
 /**
  * GET /employee/reports/revenue
  * Detailed revenue statistics with daily breakdown
  */
-router.get('/reports/revenue', auth_1.authenticateEmployee, (req, res) => employee_controller_1.employeeController.getRevenueStats(req, res));
+router.get('/reports/revenue', auth_1.authenticateEmployee, (0, auth_1.validateLocationAccess)('query'), (req, res) => employee_controller_1.employeeController.getRevenueStats(req, res));
 /**
  * GET /employee/reports/bookings
  * Booking analytics including hourly distribution for heatmap
  */
-router.get('/reports/bookings', auth_1.authenticateEmployee, (req, res) => employee_controller_1.employeeController.getBookingStats(req, res));
+router.get('/reports/bookings', auth_1.authenticateEmployee, (0, auth_1.validateLocationAccess)('query'), (req, res) => employee_controller_1.employeeController.getBookingStats(req, res));
 /**
  * GET /employee/reports/bays
  * Bay performance and utilization statistics
  */
-router.get('/reports/bays', auth_1.authenticateEmployee, (req, res) => employee_controller_1.employeeController.getBayStats(req, res));
+router.get('/reports/bays', auth_1.authenticateEmployee, (0, auth_1.validateLocationAccess)('query'), (req, res) => employee_controller_1.employeeController.getBayStats(req, res));
 /**
  * GET /employee/reports/access-logs
  * Access log statistics including success rates and common errors
  */
-router.get('/reports/access-logs', auth_1.authenticateEmployee, (req, res) => employee_controller_1.employeeController.getAccessLogStats(req, res));
+router.get('/reports/access-logs', auth_1.authenticateEmployee, (0, auth_1.validateLocationAccess)('query'), (req, res) => employee_controller_1.employeeController.getAccessLogStats(req, res));
 /**
  * GET /employee/reports/export
  * Export reports as CSV
  */
-router.get('/reports/export', auth_1.authenticateEmployee, (req, res) => employee_controller_1.employeeController.exportReport(req, res));
+router.get('/reports/export', auth_1.authenticateEmployee, (0, auth_1.validateLocationAccess)('query'), (req, res) => employee_controller_1.employeeController.exportReport(req, res));
 /**
  * GET /employee/customers
  * List customers (paginated)
  */
-router.get('/customers', auth_1.authenticateEmployee, (req, res) => employee_controller_1.employeeController.getCustomers(req, res));
+router.get('/customers', auth_1.authenticateEmployee, (0, auth_1.validateLocationAccess)('query'), (req, res) => employee_controller_1.employeeController.getCustomers(req, res));
 /**
  * GET /employee/customers/:id
  * Get customer details
  */
-router.get('/customers/:id', auth_1.authenticateEmployee, (req, res) => employee_controller_1.employeeController.getCustomerDetails(req, res));
+router.get('/customers/:id', auth_1.authenticateEmployee, (0, auth_1.validateLocationAccess)('query'), (req, res) => employee_controller_1.employeeController.getCustomerDetails(req, res));
 /**
  * PUT /employee/customers/:id
  * Update customer details
  */
-router.put('/customers/:id', auth_1.authenticateEmployee, (req, res) => employee_controller_1.employeeController.updateCustomer(req, res));
+router.put('/customers/:id', auth_1.authenticateEmployee, (0, auth_1.validateLocationAccess)('body'), (req, res) => employee_controller_1.employeeController.updateCustomer(req, res));
 /**
  * PUT /employee/locations/:locationId
  * Update location settings (requires employee authentication)
  */
-router.put('/locations/:locationId', auth_1.authenticateEmployee, (req, res) => locationController.updateLocation(req, res));
+router.put('/locations/:locationId', auth_1.authenticateEmployee, (0, auth_1.validateLocationAccess)('params'), (req, res) => locationController.updateLocation(req, res));
 /**
  * GET /employee/pricing-rules
  * Get all pricing rules for a location (requires employee authentication)
  */
-router.get('/pricing-rules', auth_1.authenticateEmployee, (req, res) => pricingController.getAllPricingRules(req, res));
+router.get('/pricing-rules', auth_1.authenticateEmployee, (0, auth_1.validateLocationAccess)('query'), (req, res) => pricingController.getAllPricingRules(req, res));
 /**
  * POST /employee/locations/:locationId/pricing-rules
  * Create a new pricing rule (requires employee authentication)
  */
-router.post('/locations/:locationId/pricing-rules', auth_1.authenticateEmployee, (req, res) => pricingController.createPricingRule(req, res));
+router.post('/locations/:locationId/pricing-rules', auth_1.authenticateEmployee, (0, auth_1.validateLocationAccess)('params'), (req, res) => pricingController.createPricingRule(req, res));
 /**
  * PUT /employee/pricing-rules/:ruleId
  * Update a pricing rule (requires employee authentication)
@@ -88,17 +88,17 @@ router.delete('/pricing-rules/:ruleId', auth_1.authenticateEmployee, (req, res) 
  * GET /employee/access-logs
  * Get access logs for a location (requires employee authentication)
  */
-router.get('/access-logs', auth_1.authenticateEmployee, (req, res) => logController.getAccessLogs(req, res));
+router.get('/access-logs', auth_1.authenticateEmployee, (0, auth_1.validateLocationAccess)('query'), (req, res) => logController.getAccessLogs(req, res));
 /**
  * GET /employee/user-types?locationId=...
  * List user types for a location
  */
-router.get('/user-types', auth_1.authenticateEmployee, (req, res) => user_types_controller_1.userTypesController.getByLocation(req, res));
+router.get('/user-types', auth_1.authenticateEmployee, (0, auth_1.validateLocationAccess)('query'), (req, res) => user_types_controller_1.userTypesController.getByLocation(req, res));
 /**
  * POST /employee/locations/:locationId/user-types
  * Create a new user type
  */
-router.post('/locations/:locationId/user-types', auth_1.authenticateEmployee, (req, res) => user_types_controller_1.userTypesController.create(req, res));
+router.post('/locations/:locationId/user-types', auth_1.authenticateEmployee, (0, auth_1.validateLocationAccess)('params'), (req, res) => user_types_controller_1.userTypesController.create(req, res));
 /**
  * PUT /employee/user-types/:id
  * Update a user type

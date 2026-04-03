@@ -128,6 +128,12 @@ class MembershipController {
         this.updatePlan = (req, res) => __awaiter(this, void 0, void 0, function* () {
             try {
                 const { planId } = req.params;
+                const planLocationId = yield this.service.getPlanLocationId(planId);
+                if (!planLocationId)
+                    return res.status(404).json({ error: 'Plan not found' });
+                const locationErr = this.validateEmployeeLocation(req, planLocationId);
+                if (locationErr)
+                    return res.status(403).json({ error: locationErr });
                 const plan = yield this.service.updatePlan(planId, req.body);
                 res.json(plan);
             }
@@ -139,6 +145,12 @@ class MembershipController {
         this.deactivatePlan = (req, res) => __awaiter(this, void 0, void 0, function* () {
             try {
                 const { planId } = req.params;
+                const planLocationId = yield this.service.getPlanLocationId(planId);
+                if (!planLocationId)
+                    return res.status(404).json({ error: 'Plan not found' });
+                const locationErr = this.validateEmployeeLocation(req, planLocationId);
+                if (locationErr)
+                    return res.status(403).json({ error: locationErr });
                 yield this.service.deactivatePlan(planId);
                 res.json({ success: true });
             }
@@ -151,6 +163,12 @@ class MembershipController {
             try {
                 const { membershipId } = req.params;
                 const { immediate } = req.body || {};
+                const membershipLocationId = yield this.service.getMembershipLocationId(membershipId);
+                if (!membershipLocationId)
+                    return res.status(404).json({ error: 'Membership not found' });
+                const locationErr = this.validateEmployeeLocation(req, membershipLocationId);
+                if (locationErr)
+                    return res.status(403).json({ error: locationErr });
                 const result = yield this.service.cancelMembership(membershipId, '', !!immediate, true);
                 if (immediate) {
                     const refundDollars = result.refundAmount ? (result.refundAmount / 100).toFixed(2) : '0.00';
@@ -175,6 +193,12 @@ class MembershipController {
                 const { newPlanId } = req.body;
                 if (!newPlanId)
                     return res.status(400).json({ error: 'newPlanId is required' });
+                const membershipLocationId = yield this.service.getMembershipLocationId(membershipId);
+                if (!membershipLocationId)
+                    return res.status(404).json({ error: 'Membership not found' });
+                const locationErr = this.validateEmployeeLocation(req, membershipLocationId);
+                if (locationErr)
+                    return res.status(403).json({ error: locationErr });
                 yield this.service.changePlan(membershipId, '', newPlanId, true);
                 res.json({ success: true, message: 'Plan changed successfully' });
             }
@@ -191,8 +215,10 @@ class MembershipController {
                 const locationErr = this.validateEmployeeLocation(req, locationId);
                 if (locationErr)
                     return res.status(403).json({ error: locationErr });
-                const subscribers = yield this.service.getSubscribersForLocation(locationId);
-                res.json(subscribers);
+                const page = parseInt(req.query.page) || 1;
+                const pageSize = parseInt(req.query.pageSize) || 50;
+                const result = yield this.service.getSubscribersForLocation(locationId, page, pageSize);
+                res.json(result);
             }
             catch (error) {
                 logger_1.logger.error({ err: error }, 'Error fetching subscribers');

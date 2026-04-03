@@ -34,6 +34,11 @@ function handleStripeWebhook(req, res, socketService) {
             logger_1.logger.error({ err }, 'Webhook signature verification failed');
             return res.status(400).send(`Webhook Error: ${err.message}`);
         }
+        // Stripe Connect: extract connected account from the event (if present)
+        const connectAccount = event.account;
+        const webhookStripeOpts = connectAccount
+            ? { stripeAccount: connectAccount }
+            : undefined;
         // Handle the event based on type
         switch (event.type) {
             case 'payment_intent.succeeded':
@@ -125,7 +130,7 @@ function handleStripeWebhook(req, res, socketService) {
                                             .single();
                                         if (userProfile === null || userProfile === void 0 ? void 0 : userProfile.email) {
                                             const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-                                            const formatLabels = { stroke_play: 'Individual (Stroke Play)', team: 'Team' };
+                                            const formatLabels = { stroke_play: 'Individual', team: 'Team' };
                                             const prizePotTotal = parseFloat(paymentIntent.metadata.prize_pot_total || '0');
                                             const totalPaid = (paymentIntent.amount || 0) / 100;
                                             const startDate = (firstWeek === null || firstWeek === void 0 ? void 0 : firstWeek.date)
@@ -188,6 +193,16 @@ function handleStripeWebhook(req, res, socketService) {
                 }
                 if (event.type === 'payment_intent.succeeded') {
                     logger_1.logger.info({ bookingId }, 'Payment succeeded, updating database');
+                    // Idempotency: skip if already confirmed (prevents double-processing on Stripe retry)
+                    const { data: existingBooking } = yield database_1.supabase
+                        .from('bookings')
+                        .select('status')
+                        .eq('id', bookingId)
+                        .single();
+                    if ((existingBooking === null || existingBooking === void 0 ? void 0 : existingBooking.status) === 'confirmed') {
+                        logger_1.logger.info({ bookingId }, 'Booking already confirmed — idempotent skip');
+                        return res.status(200).json({ received: true, message: 'Already processed' });
+                    }
                     // Update booking status to 'confirmed' and clear expiration
                     const { error: bookingError } = yield database_1.supabase
                         .from('bookings')
@@ -201,7 +216,7 @@ function handleStripeWebhook(req, res, socketService) {
                             const pmId = typeof paymentIntent.payment_method === 'string'
                                 ? paymentIntent.payment_method
                                 : paymentIntent.payment_method.id;
-                            const pm = yield stripe_1.stripe.paymentMethods.retrieve(pmId);
+                            const pm = yield stripe_1.stripe.paymentMethods.retrieve(pmId, webhookStripeOpts);
                             if (pm.card) {
                                 paymentUpdate.card_last_four = pm.card.last4;
                                 paymentUpdate.card_brand = pm.card.brand;
@@ -219,6 +234,7 @@ function handleStripeWebhook(req, res, socketService) {
                         .eq('stripe_payment_intent_id', paymentIntent.id);
                     if (bookingError || paymentError) {
                         logger_1.logger.error({ err: bookingError || paymentError, bookingId }, 'Error updating database after payment');
+                        return res.status(500).json({ error: 'Database update failed — Stripe will retry' });
                     }
                     else {
                         logger_1.logger.info({ bookingId }, 'Successfully updated booking to confirmed');
@@ -392,7 +408,7 @@ function handleStripeWebhook(req, res, socketService) {
                         const pmId = typeof setupIntent.payment_method === 'string'
                             ? setupIntent.payment_method
                             : setupIntent.payment_method.id;
-                        const pm = yield stripe_1.stripe.paymentMethods.retrieve(pmId);
+                        const pm = yield stripe_1.stripe.paymentMethods.retrieve(pmId, webhookStripeOpts);
                         if (pm.card) {
                             setupPaymentUpdate.card_last_four = pm.card.last4;
                             setupPaymentUpdate.card_brand = pm.card.brand;

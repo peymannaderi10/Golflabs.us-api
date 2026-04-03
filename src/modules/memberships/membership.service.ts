@@ -1,5 +1,6 @@
 import { supabase } from '../../config/database';
-import { stripe } from '../../config/stripe';
+import { stripe, getStripeOptions, getOrCreateCustomerForLocation } from '../../config/stripe';
+import Stripe from 'stripe';
 import { EmailService } from '../email/email.service';
 import { MembershipEmailData } from '../email/email.types';
 import { logger } from '../../shared/utils/logger';
@@ -25,12 +26,14 @@ export class MembershipService {
       throw new Error('locationId, name, and monthlyPrice are required');
     }
 
+    const stripeOpts = await getStripeOptions(locationId);
+
     // Create Stripe Product
     const product = await stripe.products.create({
       name,
       description: description || undefined,
       metadata: { location_id: locationId },
-    });
+    }, stripeOpts);
 
     // Create monthly Stripe Price
     const monthlyStripePrice = await stripe.prices.create({
@@ -39,7 +42,7 @@ export class MembershipService {
       currency: 'usd',
       recurring: { interval: 'month' },
       metadata: { location_id: locationId, interval: 'monthly' },
-    });
+    }, stripeOpts);
 
     // Optionally create annual Stripe Price
     let annualStripePrice = null;
@@ -50,7 +53,7 @@ export class MembershipService {
         currency: 'usd',
         recurring: { interval: 'year' },
         metadata: { location_id: locationId, interval: 'annual' },
-      });
+      }, stripeOpts);
     }
 
     const { data: plan, error } = await supabase
@@ -78,6 +81,24 @@ export class MembershipService {
     return plan;
   }
 
+  async getPlanLocationId(planId: string): Promise<string | null> {
+    const { data } = await supabase
+      .from('membership_plans')
+      .select('location_id')
+      .eq('id', planId)
+      .single();
+    return data?.location_id ?? null;
+  }
+
+  async getMembershipLocationId(membershipId: string): Promise<string | null> {
+    const { data } = await supabase
+      .from('memberships')
+      .select('location_id')
+      .eq('id', membershipId)
+      .single();
+    return data?.location_id ?? null;
+  }
+
   async updatePlan(planId: string, data: UpdatePlanBody): Promise<MembershipPlan> {
     if (!planId) throw new Error('Plan ID is required');
 
@@ -95,7 +116,7 @@ export class MembershipService {
     if (needsStripe) {
       const { data: existing, error: fetchErr } = await supabase
         .from('membership_plans')
-        .select('stripe_product_id, monthly_price, annual_price')
+        .select('stripe_product_id, monthly_price, annual_price, location_id')
         .eq('id', planId)
         .single();
 
@@ -104,6 +125,7 @@ export class MembershipService {
       }
 
       const stripeProductId = existing.stripe_product_id;
+      const stripeOpts = await getStripeOptions(existing.location_id);
 
       // Price changes: create new Stripe Prices on the same Product
       if (data.monthlyPrice !== undefined && data.monthlyPrice !== existing.monthly_price) {
@@ -112,7 +134,7 @@ export class MembershipService {
           unit_amount: Math.round(data.monthlyPrice * 100),
           currency: 'usd',
           recurring: { interval: 'month' },
-        });
+        }, stripeOpts);
         updates.monthly_price = data.monthlyPrice;
         updates.stripe_monthly_price_id = newPrice.id;
       }
@@ -127,7 +149,7 @@ export class MembershipService {
             unit_amount: Math.round(data.annualPrice * 100),
             currency: 'usd',
             recurring: { interval: 'year' },
-          });
+          }, stripeOpts);
           updates.annual_price = data.annualPrice;
           updates.stripe_annual_price_id = newPrice.id;
         }
@@ -138,7 +160,7 @@ export class MembershipService {
         const productUpdate: Record<string, any> = {};
         if (data.name !== undefined) productUpdate.name = data.name;
         if (data.description !== undefined) productUpdate.description = data.description || '';
-        await stripe.products.update(stripeProductId, productUpdate);
+        await stripe.products.update(stripeProductId, productUpdate, stripeOpts);
       }
     }
 
@@ -205,21 +227,37 @@ export class MembershipService {
       throw new Error('Invalid returnUrl');
     }
 
-    // Get Stripe customer ID from user profile (1:1 mapping: user = Stripe customer)
-    const { data: profile, error } = await supabase
-      .from('user_profiles')
-      .select('stripe_customer_id')
-      .eq('id', userId)
-      .single();
+    const stripeOpts = await getStripeOptions(locationId);
 
-    if (error || !profile?.stripe_customer_id) {
+    // Resolve Stripe customer for this user + location
+    let customerId: string | null = null;
+    if (stripeOpts) {
+      // Connected account — look up customer_stripe_accounts
+      const { data: csa } = await supabase
+        .from('customer_stripe_accounts')
+        .select('stripe_customer_id')
+        .eq('user_id', userId)
+        .eq('stripe_account_id', stripeOpts.stripeAccount!)
+        .maybeSingle();
+      customerId = csa?.stripe_customer_id ?? null;
+    } else {
+      // Platform account — use user_profiles
+      const { data: profile } = await supabase
+        .from('user_profiles')
+        .select('stripe_customer_id')
+        .eq('id', userId)
+        .single();
+      customerId = profile?.stripe_customer_id ?? null;
+    }
+
+    if (!customerId) {
       throw new Error('No Stripe customer found for this account');
     }
 
     const session = await stripe.billingPortal.sessions.create({
-      customer: profile.stripe_customer_id,
+      customer: customerId,
       return_url: returnUrl,
-    });
+    }, stripeOpts);
 
     return { url: session.url };
   }
@@ -268,6 +306,8 @@ export class MembershipService {
       throw new Error('You already have an active membership at this location');
     }
 
+    const stripeOpts = await getStripeOptions(plan.location_id);
+
     // Clean up any orphaned incomplete or cancelled memberships so re-subscribe works
     const { data: staleRows } = await supabase
       .from('memberships')
@@ -280,7 +320,7 @@ export class MembershipService {
       for (const row of staleRows) {
         if (row.status === 'incomplete') {
           try {
-            await stripe.subscriptions.cancel(row.stripe_subscription_id);
+            await stripe.subscriptions.cancel(row.stripe_subscription_id, stripeOpts);
           } catch (cancelErr: any) {
             logger.warn({ stripeSubscriptionId: row.stripe_subscription_id, err: cancelErr }, 'Failed to cancel orphaned Stripe subscription');
           }
@@ -290,44 +330,8 @@ export class MembershipService {
       logger.info({ count: staleRows.length, userId }, 'Cleaned up stale memberships before re-subscribe');
     }
 
-    // 3. Ensure Stripe Customer
-    const { data: profile, error: profileErr } = await supabase
-      .from('user_profiles')
-      .select('stripe_customer_id, email, full_name')
-      .eq('id', userId)
-      .single();
-
-    if (profileErr || !profile) throw new Error('User profile not found');
-
-    let stripeCustomerId = profile.stripe_customer_id;
-
-    // Verify the stored customer still exists in Stripe (handles prod/sandbox mismatch)
-    if (stripeCustomerId) {
-      try {
-        await stripe.customers.retrieve(stripeCustomerId);
-      } catch (err: any) {
-        if (err.code === 'resource_missing') {
-          logger.warn({ stripeCustomerId, userId }, 'Stored Stripe customer not found, creating new one');
-          stripeCustomerId = null;
-        } else {
-          throw err;
-        }
-      }
-    }
-
-    if (!stripeCustomerId) {
-      const customer = await stripe.customers.create({
-        email: profile.email,
-        name: profile.full_name || undefined,
-        metadata: { user_id: userId },
-      });
-      stripeCustomerId = customer.id;
-
-      await supabase
-        .from('user_profiles')
-        .update({ stripe_customer_id: customer.id })
-        .eq('id', userId);
-    }
+    // 3. Ensure Stripe Customer scoped to the correct account
+    const { customerId: stripeCustomerId } = await getOrCreateCustomerForLocation(userId, plan.location_id);
 
     // 4. Create Stripe Checkout Session for subscription
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:8080';
@@ -351,7 +355,7 @@ export class MembershipService {
         location_id: plan.location_id,
         billing_interval: billingInterval,
       },
-    });
+    }, stripeOpts);
 
     return {
       url: checkoutSession.url,
@@ -372,12 +376,14 @@ export class MembershipService {
       throw new Error('This membership cannot be canceled (current status: ' + membership.status + ')');
     }
 
+    const stripeOpts = await getStripeOptions(membership.location_id);
+
     if (immediate) {
       // Cancel immediately with prorated refund
       const deletedSub = await stripe.subscriptions.cancel(membership.stripe_subscription_id, {
         prorate: true,
         invoice_now: true,
-      });
+      } as any, stripeOpts);
 
       // Stripe creates a final invoice with prorated credits.
       // Retrieve the latest invoice to find the credit amount.
@@ -386,7 +392,7 @@ export class MembershipService {
         const invoices = await stripe.invoices.list({
           subscription: membership.stripe_subscription_id,
           limit: 1,
-        });
+        }, stripeOpts);
         const finalInvoice = invoices.data[0];
         if (finalInvoice && finalInvoice.amount_due < 0) {
           // Negative amount = credit owed to customer
@@ -396,7 +402,7 @@ export class MembershipService {
         }
 
         if (refundAmount > 0 && deletedSub.latest_invoice) {
-          const latestInvoice = await stripe.invoices.retrieve(deletedSub.latest_invoice as string);
+          const latestInvoice = await stripe.invoices.retrieve(deletedSub.latest_invoice as string, stripeOpts);
           const chargeId = latestInvoice.charge as string | null;
 
           if (chargeId) {
@@ -404,7 +410,7 @@ export class MembershipService {
               charge: chargeId,
               amount: refundAmount,
               reason: 'requested_by_customer',
-            });
+            }, stripeOpts);
             logger.info({ refundAmountDollars: (refundAmount / 100).toFixed(2), membershipId }, 'Issued prorated refund');
           } else {
             logger.warn({ membershipId }, 'No charge found on latest invoice, skipping refund');
@@ -430,7 +436,7 @@ export class MembershipService {
     // Cancel at period end — member keeps access until billing cycle ends
     await stripe.subscriptions.update(membership.stripe_subscription_id, {
       cancel_at_period_end: true,
-    });
+    }, stripeOpts);
 
     await supabase
       .from('memberships')
@@ -472,8 +478,10 @@ export class MembershipService {
 
     if (!newPriceId) throw new Error('Pricing not available for your billing interval on the new plan');
 
+    const stripeOpts = await getStripeOptions(membership.location_id);
+
     // Get current subscription items
-    const sub = await stripe.subscriptions.retrieve(membership.stripe_subscription_id);
+    const sub = await stripe.subscriptions.retrieve(membership.stripe_subscription_id, stripeOpts);
 
     await stripe.subscriptions.update(membership.stripe_subscription_id, {
       items: [{
@@ -485,7 +493,7 @@ export class MembershipService {
       },
       proration_behavior: 'create_prorations',
       cancel_at_period_end: false,
-    });
+    }, stripeOpts);
 
     // Update local record
     await supabase
@@ -560,14 +568,15 @@ export class MembershipService {
     // Auto-sync from Stripe if local status is stale (e.g. webhook failed)
     if (data.status === 'incomplete' && data.stripe_subscription_id) {
       try {
-        const sub = await stripe.subscriptions.retrieve(data.stripe_subscription_id);
+        const stripeOpts = await getStripeOptions(locationId);
+        const sub = await stripe.subscriptions.retrieve(data.stripe_subscription_id, stripeOpts);
         // If Stripe says it's dead, delete the stale row and return null
         if (['canceled', 'incomplete_expired'].includes(sub.status)) {
           await supabase.from('memberships').delete().eq('id', data.id);
           logger.info({ membershipId: data.id }, 'Cleaned up stale incomplete membership');
           return null;
         }
-        const synced = await this.syncFromStripe(data.id, data.stripe_subscription_id);
+        const synced = await this.syncFromStripe(data.id, data.stripe_subscription_id, stripeOpts);
         if (synced) {
           const { membership_plans, ...membership } = synced;
           return { ...membership, plan: membership_plans };
@@ -586,9 +595,9 @@ export class MembershipService {
     return { ...membership, plan: membership_plans };
   }
 
-  private async syncFromStripe(membershipId: string, stripeSubscriptionId: string): Promise<any | null> {
+  private async syncFromStripe(membershipId: string, stripeSubscriptionId: string, stripeOpts?: Stripe.RequestOptions): Promise<any | null> {
     try {
-      const sub = await stripe.subscriptions.retrieve(stripeSubscriptionId);
+      const sub = await stripe.subscriptions.retrieve(stripeSubscriptionId, stripeOpts);
 
       const updateData: any = { status: sub.status };
 
@@ -617,21 +626,26 @@ export class MembershipService {
     }
   }
 
-  async getSubscribersForLocation(locationId: string): Promise<any[]> {
+  async getSubscribersForLocation(locationId: string, page = 1, pageSize = 50): Promise<{ data: any[]; total: number }> {
     if (!locationId) throw new Error('Location ID is required');
 
-    const { data, error } = await supabase
+    const cappedPageSize = Math.min(pageSize, 100);
+    const from = (page - 1) * cappedPageSize;
+    const to = from + cappedPageSize - 1;
+
+    const { data, error, count } = await supabase
       .from('memberships')
-      .select('*, membership_plans(name, monthly_price, annual_price), user_profiles(email, full_name, phone)')
+      .select('*, membership_plans(name, monthly_price, annual_price), user_profiles(email, full_name, phone)', { count: 'exact' })
       .eq('location_id', locationId)
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      .range(from, to);
 
     if (error) {
       logger.error({ err: error }, 'Error fetching subscribers');
       throw new Error('Failed to fetch subscribers');
     }
 
-    return data || [];
+    return { data: data || [], total: count || 0 };
   }
 
   // =====================================================
@@ -736,6 +750,8 @@ export class MembershipService {
 
     // When memberships are disabled, cancel all active subscriptions at period end
     if (updates.membershipsEnabled === false) {
+      const stripeOpts = await getStripeOptions(locationId);
+
       const { data: activeMembers } = await supabase
         .from('memberships')
         .select('id, stripe_subscription_id')
@@ -749,7 +765,7 @@ export class MembershipService {
           try {
             await stripe.subscriptions.update(member.stripe_subscription_id, {
               cancel_at_period_end: true,
-            });
+            }, stripeOpts);
             await supabase
               .from('memberships')
               .update({ canceled_at: new Date().toISOString() })

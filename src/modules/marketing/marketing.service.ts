@@ -53,16 +53,37 @@ export interface CampaignDetail extends Campaign {
 }
 
 const BATCH_SIZE = 100;
+let _unsubscribeSecret: string | null = null;
 function getUnsubscribeSecret(): string {
-  const secret = process.env.MARKETING_UNSUBSCRIBE_SECRET || process.env.RESEND_WEBHOOK_SECRET;
-  if (!secret) {
-    throw new Error('MARKETING_UNSUBSCRIBE_SECRET (or RESEND_WEBHOOK_SECRET) environment variable is required');
+  if (!_unsubscribeSecret) {
+    const secret = process.env.MARKETING_UNSUBSCRIBE_SECRET || process.env.RESEND_WEBHOOK_SECRET;
+    if (!secret) {
+      throw new Error('MARKETING_UNSUBSCRIBE_SECRET (or RESEND_WEBHOOK_SECRET) environment variable is required');
+    }
+    _unsubscribeSecret = secret;
   }
-  return secret;
+  return _unsubscribeSecret;
 }
-const UNSUBSCRIBE_SECRET: string = getUnsubscribeSecret();
 
 export class MarketingService {
+
+  static async getCampaignLocationId(campaignId: string): Promise<string | null> {
+    const { data } = await supabase
+      .from('marketing_campaigns')
+      .select('location_id')
+      .eq('id', campaignId)
+      .single();
+    return data?.location_id ?? null;
+  }
+
+  static async getTemplateLocationId(templateId: string): Promise<string | null> {
+    const { data } = await supabase
+      .from('email_templates')
+      .select('location_id')
+      .eq('id', templateId)
+      .single();
+    return data?.location_id ?? null;
+  }
 
   // ------------------------------------------------------------------
   // Marketing template CRUD
@@ -883,7 +904,7 @@ export class MarketingService {
 
   static generateUnsubscribeSignature(userId: string): string {
     return crypto
-      .createHmac('sha256', UNSUBSCRIBE_SECRET)
+      .createHmac('sha256', getUnsubscribeSecret())
       .update(userId)
       .digest('hex');
   }

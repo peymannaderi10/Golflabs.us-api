@@ -216,6 +216,8 @@ export class SocketService {
         userId: booking.user_id,
         startTime: startTimeLocal,
         endTime: endTimeLocal,
+        startTimeISO: booking.start_time,
+        endTimeISO: booking.end_time,
         status: booking.status
       },
       timestamp: new Date().toISOString()
@@ -254,6 +256,8 @@ export class SocketService {
         userId: booking.userId,
         startTime: booking.startTime,
         endTime: booking.endTime,
+        startTimeISO: booking.startTimeISO,
+        endTimeISO: booking.endTimeISO,
         status: 'confirmed' // All bookings from getBookings are confirmed
       })),
       timestamp: new Date().toISOString()

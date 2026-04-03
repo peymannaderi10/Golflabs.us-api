@@ -11,16 +11,18 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.agreementController = exports.AgreementController = void 0;
 const agreement_service_1 = require("./agreement.service");
+const error_utils_1 = require("../../shared/utils/error.utils");
 const logger_1 = require("../../shared/utils/logger");
 class AgreementController {
     constructor() {
         this.acceptAgreements = (req, res) => __awaiter(this, void 0, void 0, function* () {
-            var _a, _b;
+            var _a, _b, _c;
             try {
-                const { userId, signerName, signerEmail, bookingId, locationId, agreements, documentHashes, } = req.body;
+                const userId = (_a = req.user) === null || _a === void 0 ? void 0 : _a.id;
+                const { signerName, signerEmail, bookingId, locationId, agreements, documentHashes, } = req.body;
                 if (!userId || !bookingId || !locationId || !agreements) {
                     return res.status(400).json({
-                        error: 'userId, bookingId, locationId, and agreements are required',
+                        error: 'bookingId, locationId, and agreements are required',
                     });
                 }
                 if (!signerName || !signerEmail) {
@@ -38,7 +40,7 @@ class AgreementController {
                         error: 'documentHashes must be an object mapping agreement types to SHA-256 hashes',
                     });
                 }
-                const ipAddress = ((_b = (_a = req.headers['x-forwarded-for']) === null || _a === void 0 ? void 0 : _a.split(',')[0]) === null || _b === void 0 ? void 0 : _b.trim()) ||
+                const ipAddress = ((_c = (_b = req.headers['x-forwarded-for']) === null || _b === void 0 ? void 0 : _b.split(',')[0]) === null || _c === void 0 ? void 0 : _c.trim()) ||
                     req.socket.remoteAddress ||
                     undefined;
                 const userAgent = req.headers['user-agent'] || undefined;
@@ -64,16 +66,17 @@ class AgreementController {
                 if (error.message.includes('Missing required')) {
                     return res.status(400).json({ error: error.message });
                 }
-                res.status(500).json({ error: error.message || 'Failed to record agreements' });
+                res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
         this.checkAgreements = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            var _a;
             try {
                 const { bookingId } = req.params;
-                const { userId } = req.query;
+                const userId = (_a = req.user) === null || _a === void 0 ? void 0 : _a.id;
                 if (!bookingId || !userId) {
                     return res.status(400).json({
-                        error: 'bookingId (param) and userId (query) are required',
+                        error: 'bookingId (param) is required and user must be authenticated',
                     });
                 }
                 const result = yield agreement_service_1.agreementService.checkAgreements(userId, bookingId);
@@ -81,7 +84,7 @@ class AgreementController {
             }
             catch (error) {
                 logger_1.logger.error({ err: error }, 'Error checking agreements');
-                res.status(500).json({ error: error.message || 'Failed to check agreements' });
+                res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
     }

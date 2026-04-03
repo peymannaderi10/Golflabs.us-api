@@ -215,18 +215,133 @@ class PromotionController {
     }
     /**
      * GET /promotions
-     * Get all promotions (admin)
+     * Get all promotions (admin), optionally filtered by locationId query param
      */
     getAllPromotions(req, res) {
         return __awaiter(this, void 0, void 0, function* () {
             try {
-                const promotions = yield promotion_service_1.promotionService.getAllPromotions();
+                const locationId = req.query.locationId;
+                const promotions = yield promotion_service_1.promotionService.getAllPromotions(locationId);
                 return res.json({ promotions });
             }
             catch (error) {
                 logger_1.logger.error({ err: error }, 'Error getting all promotions');
                 return res.status(500).json({
                     error: error instanceof Error ? error.message : 'Failed to get promotions'
+                });
+            }
+        });
+    }
+    /**
+     * Verify that the promotion belongs to the employee's location.
+     * Returns the promotion if authorized, or sends a 403/404 and returns null.
+     */
+    verifyPromotionOwnership(req, res, promotionId) {
+        return __awaiter(this, void 0, void 0, function* () {
+            var _a;
+            const employeeLocationId = (_a = req.employeeProfile) === null || _a === void 0 ? void 0 : _a.location_id;
+            const promo = yield promotion_service_1.promotionService.getPromotionById(promotionId);
+            if (!promo) {
+                res.status(404).json({ error: 'Promotion not found' });
+                return null;
+            }
+            if (promo.location_id !== employeeLocationId) {
+                res.status(403).json({ error: 'Access denied: you do not belong to this location' });
+                return null;
+            }
+            return promo;
+        });
+    }
+    /**
+     * POST /promotions
+     * Create a new promotion (employee)
+     */
+    createPromotion(req, res) {
+        return __awaiter(this, void 0, void 0, function* () {
+            try {
+                const { locationId, name, code, description, discountType, discountValue, maxDiscountAmount, minBookingMinutes, maxFreeMinutes, isAutoAssigned, isSingleUse, validFrom, validTo } = req.body;
+                const promotion = yield promotion_service_1.promotionService.createPromotion({
+                    locationId, name, code, description, discountType, discountValue,
+                    maxDiscountAmount, minBookingMinutes, maxFreeMinutes,
+                    isAutoAssigned, isSingleUse, validFrom, validTo,
+                });
+                return res.status(201).json({ success: true, promotion });
+            }
+            catch (error) {
+                logger_1.logger.error({ err: error }, 'Error creating promotion');
+                const message = error instanceof Error ? error.message : 'Failed to create promotion';
+                const status = message.includes('already exists') ? 409 : 500;
+                return res.status(status).json({ error: message });
+            }
+        });
+    }
+    /**
+     * PUT /promotions/:id
+     * Update a promotion (employee)
+     */
+    updatePromotion(req, res) {
+        return __awaiter(this, void 0, void 0, function* () {
+            try {
+                const { id } = req.params;
+                const existing = yield this.verifyPromotionOwnership(req, res, id);
+                if (!existing)
+                    return;
+                const { name, code, description, discountType, discountValue, maxDiscountAmount, minBookingMinutes, maxFreeMinutes, isAutoAssigned, isSingleUse, isActive, validFrom, validTo } = req.body;
+                const promotion = yield promotion_service_1.promotionService.updatePromotion(id, {
+                    name, code, description, discountType, discountValue,
+                    maxDiscountAmount, minBookingMinutes, maxFreeMinutes,
+                    isAutoAssigned, isSingleUse, isActive, validFrom, validTo,
+                });
+                return res.json({ success: true, promotion });
+            }
+            catch (error) {
+                logger_1.logger.error({ err: error }, 'Error updating promotion');
+                const message = error instanceof Error ? error.message : 'Failed to update promotion';
+                const status = message.includes('already exists') ? 409 : 500;
+                return res.status(status).json({ error: message });
+            }
+        });
+    }
+    /**
+     * DELETE /promotions/:id
+     * Soft-delete (deactivate) a promotion (employee)
+     */
+    deletePromotion(req, res) {
+        return __awaiter(this, void 0, void 0, function* () {
+            try {
+                const { id } = req.params;
+                const existing = yield this.verifyPromotionOwnership(req, res, id);
+                if (!existing)
+                    return;
+                yield promotion_service_1.promotionService.deactivatePromotion(id);
+                return res.json({ success: true });
+            }
+            catch (error) {
+                logger_1.logger.error({ err: error }, 'Error deactivating promotion');
+                return res.status(500).json({
+                    error: error instanceof Error ? error.message : 'Failed to deactivate promotion'
+                });
+            }
+        });
+    }
+    /**
+     * GET /promotions/:id/usage
+     * Get usage stats for a promotion (employee)
+     */
+    getUsageStats(req, res) {
+        return __awaiter(this, void 0, void 0, function* () {
+            try {
+                const { id } = req.params;
+                const existing = yield this.verifyPromotionOwnership(req, res, id);
+                if (!existing)
+                    return;
+                const stats = yield promotion_service_1.promotionService.getPromotionUsageStats(id);
+                return res.json(stats);
+            }
+            catch (error) {
+                logger_1.logger.error({ err: error }, 'Error getting promotion usage stats');
+                return res.status(500).json({
+                    error: error instanceof Error ? error.message : 'Failed to get usage stats'
                 });
             }
         });

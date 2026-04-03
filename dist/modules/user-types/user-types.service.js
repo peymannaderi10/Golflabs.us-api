@@ -59,7 +59,7 @@ class UserTypesService {
             return this.mapRow(data);
         });
     }
-    update(id, updates) {
+    update(id, updates, callerLocationId) {
         return __awaiter(this, void 0, void 0, function* () {
             const { data: existing, error: fetchErr } = yield database_1.supabase
                 .from('user_types')
@@ -68,6 +68,9 @@ class UserTypesService {
                 .single();
             if (fetchErr || !existing) {
                 throw new Error('User type not found');
+            }
+            if (callerLocationId && existing.location_id !== callerLocationId) {
+                throw new Error('Access denied: user type belongs to a different location');
             }
             const updateData = { updated_at: new Date().toISOString() };
             if (updates.slug !== undefined) {
@@ -99,12 +102,13 @@ class UserTypesService {
                 logger_1.logger.error({ err: error }, 'Error updating user type');
                 throw new Error('Failed to update user type');
             }
-            // Cascade slug rename to user_profiles and pricing_rules
+            // Cascade slug rename to user_profiles and pricing_rules (scoped to this location)
             if (newSlug && newSlug !== oldSlug) {
                 yield database_1.supabase
                     .from('user_profiles')
                     .update({ user_type: newSlug })
-                    .eq('user_type', oldSlug);
+                    .eq('user_type', oldSlug)
+                    .eq('location_id', existing.location_id);
                 yield database_1.supabase
                     .from('pricing_rules')
                     .update({ user_type: newSlug })
@@ -114,7 +118,7 @@ class UserTypesService {
             return this.mapRow(data);
         });
     }
-    delete(id) {
+    delete(id, callerLocationId) {
         return __awaiter(this, void 0, void 0, function* () {
             const { data: existing, error: fetchErr } = yield database_1.supabase
                 .from('user_types')
@@ -124,14 +128,18 @@ class UserTypesService {
             if (fetchErr || !existing) {
                 throw new Error('User type not found');
             }
+            if (callerLocationId && existing.location_id !== callerLocationId) {
+                throw new Error('Access denied: user type belongs to a different location');
+            }
             if (existing.is_default) {
                 throw new Error('Cannot delete the default user type');
             }
-            // Check for users still assigned this type
+            // Check for users still assigned this type at this location
             const { count: userCount } = yield database_1.supabase
                 .from('user_profiles')
                 .select('id', { count: 'exact', head: true })
-                .eq('user_type', existing.slug);
+                .eq('user_type', existing.slug)
+                .eq('location_id', existing.location_id);
             if (userCount && userCount > 0) {
                 throw new Error(`Cannot delete: ${userCount} customer(s) are still assigned this type. Reassign them first.`);
             }

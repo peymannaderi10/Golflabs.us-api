@@ -2,13 +2,16 @@ import { supabase } from '../../config/database';
 import { createISOTimestamp } from '../../shared/utils/date.utils';
 import { logger } from '../../shared/utils/logger';
 import { fetchPricingContext, splitRules, findRuleForSlot, localSlotInfo } from '../../shared/utils/pricing.utils';
-import { 
-  Promotion, 
-  UserPromotion, 
-  CalculatedDiscount, 
+import {
+  Promotion,
+  UserPromotion,
+  CalculatedDiscount,
   ApplyPromotionRequest,
   CheckDiscountRequest,
-  CheckDiscountWithTimesRequest
+  CheckDiscountWithTimesRequest,
+  CreatePromotionRequest,
+  UpdatePromotionRequest,
+  PromotionUsageStats
 } from './promotion.types';
 
 export class PromotionService {
@@ -603,13 +606,33 @@ export class PromotionService {
   }
 
   /**
-   * Get all promotions (admin use)
+   * Get a single promotion by ID
    */
-  async getAllPromotions(): Promise<Promotion[]> {
+  async getPromotionById(id: string): Promise<Promotion | null> {
     const { data, error } = await supabase
       .from('promotions')
       .select('*')
+      .eq('id', id)
+      .single();
+
+    if (error || !data) return null;
+    return data;
+  }
+
+  /**
+   * Get all promotions (admin use), filtered by location
+   */
+  async getAllPromotions(locationId?: string): Promise<Promotion[]> {
+    let query = supabase
+      .from('promotions')
+      .select('*')
       .order('created_at', { ascending: false });
+
+    if (locationId) {
+      query = query.eq('location_id', locationId);
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       logger.error({ err: error }, 'Error fetching promotions');
@@ -617,6 +640,200 @@ export class PromotionService {
     }
 
     return data || [];
+  }
+
+  /**
+   * Create a new promotion
+   */
+  async createPromotion(request: CreatePromotionRequest): Promise<Promotion> {
+    const code = request.code?.trim().toUpperCase() || null;
+
+    // Check code uniqueness within location if provided
+    if (code) {
+      const { data: existing } = await supabase
+        .from('promotions')
+        .select('id')
+        .eq('location_id', request.locationId)
+        .ilike('code', code)
+        .limit(1);
+
+      if (existing && existing.length > 0) {
+        throw new Error('A promotion with this code already exists at this location');
+      }
+    }
+
+    const { data, error } = await supabase
+      .from('promotions')
+      .insert({
+        location_id: request.locationId,
+        name: request.name,
+        code,
+        description: request.description || null,
+        discount_type: request.discountType,
+        discount_value: request.discountValue,
+        max_discount_amount: request.maxDiscountAmount ?? null,
+        min_booking_minutes: request.minBookingMinutes ?? null,
+        max_free_minutes: request.maxFreeMinutes ?? null,
+        is_auto_assigned: request.isAutoAssigned,
+        is_single_use: request.isSingleUse,
+        valid_from: request.validFrom || null,
+        valid_to: request.validTo || null,
+        is_active: true,
+      })
+      .select('*')
+      .single();
+
+    if (error) {
+      logger.error({ err: error }, 'Error creating promotion');
+      throw new Error('Failed to create promotion');
+    }
+
+    logger.info({ promotionId: data.id, name: data.name }, 'Promotion created');
+    return data;
+  }
+
+  /**
+   * Update an existing promotion
+   */
+  async updatePromotion(id: string, request: UpdatePromotionRequest): Promise<Promotion> {
+    // Build the update payload (only include provided fields)
+    const updateData: Record<string, unknown> = {};
+
+    if (request.name !== undefined) updateData.name = request.name;
+    if (request.description !== undefined) updateData.description = request.description;
+    if (request.discountType !== undefined) updateData.discount_type = request.discountType;
+    if (request.discountValue !== undefined) updateData.discount_value = request.discountValue;
+    if (request.maxDiscountAmount !== undefined) updateData.max_discount_amount = request.maxDiscountAmount;
+    if (request.minBookingMinutes !== undefined) updateData.min_booking_minutes = request.minBookingMinutes;
+    if (request.maxFreeMinutes !== undefined) updateData.max_free_minutes = request.maxFreeMinutes;
+    if (request.isAutoAssigned !== undefined) updateData.is_auto_assigned = request.isAutoAssigned;
+    if (request.isSingleUse !== undefined) updateData.is_single_use = request.isSingleUse;
+    if (request.validFrom !== undefined) updateData.valid_from = request.validFrom;
+    if (request.validTo !== undefined) updateData.valid_to = request.validTo;
+    if (request.isActive !== undefined) updateData.is_active = request.isActive;
+
+    // Handle code change — check uniqueness
+    if (request.code !== undefined) {
+      const code = request.code?.trim().toUpperCase() || null;
+      if (code) {
+        // Get the promotion's location_id first
+        const { data: promo } = await supabase
+          .from('promotions')
+          .select('location_id')
+          .eq('id', id)
+          .single();
+
+        if (promo?.location_id) {
+          const { data: existing } = await supabase
+            .from('promotions')
+            .select('id')
+            .eq('location_id', promo.location_id)
+            .ilike('code', code)
+            .neq('id', id)
+            .limit(1);
+
+          if (existing && existing.length > 0) {
+            throw new Error('A promotion with this code already exists at this location');
+          }
+        }
+      }
+      updateData.code = code;
+    }
+
+    updateData.updated_at = new Date().toISOString();
+
+    const { data, error } = await supabase
+      .from('promotions')
+      .update(updateData)
+      .eq('id', id)
+      .select('*')
+      .single();
+
+    if (error) {
+      logger.error({ err: error, promotionId: id }, 'Error updating promotion');
+      throw new Error('Failed to update promotion');
+    }
+
+    logger.info({ promotionId: id }, 'Promotion updated');
+    return data;
+  }
+
+  /**
+   * Soft-delete (deactivate) a promotion
+   */
+  async deactivatePromotion(id: string): Promise<void> {
+    const { data, error } = await supabase
+      .from('promotions')
+      .update({ is_active: false, updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .select('id')
+      .single();
+
+    if (error || !data) {
+      logger.error({ err: error, promotionId: id }, 'Error deactivating promotion');
+      throw new Error(error?.code === 'PGRST116' ? 'Promotion not found' : 'Failed to deactivate promotion');
+    }
+
+    logger.info({ promotionId: id }, 'Promotion deactivated');
+  }
+
+  /**
+   * Get usage stats for a promotion
+   */
+  async getPromotionUsageStats(promotionId: string): Promise<PromotionUsageStats> {
+    // Get aggregated stats
+    const { data: allRecords, error: statsError } = await supabase
+      .from('user_promotions')
+      .select('id, redeemed_at, discount_applied')
+      .eq('promotion_id', promotionId);
+
+    if (statsError) {
+      logger.error({ err: statsError, promotionId }, 'Error fetching promotion usage stats');
+      throw new Error('Failed to fetch usage stats');
+    }
+
+    const records = allRecords || [];
+    const totalAssigned = records.length;
+    const redeemed = records.filter(r => r.redeemed_at !== null);
+    const totalRedeemed = redeemed.length;
+    const totalDiscountGiven = redeemed.reduce((sum, r) => sum + (parseFloat(r.discount_applied) || 0), 0);
+
+    // Get recent usage with user details (last 10 redeemed)
+    const { data: recentData, error: recentError } = await supabase
+      .from('user_promotions')
+      .select(`
+        user_id,
+        redeemed_at,
+        discount_applied,
+        free_minutes_applied,
+        booking_id,
+        user:user_profiles!user_id(full_name, email)
+      `)
+      .eq('promotion_id', promotionId)
+      .not('redeemed_at', 'is', null)
+      .order('redeemed_at', { ascending: false })
+      .limit(10);
+
+    if (recentError) {
+      logger.error({ err: recentError, promotionId }, 'Error fetching recent usage');
+    }
+
+    const recentUsage = (recentData || []).map((r: any) => ({
+      userId: r.user_id,
+      fullName: r.user?.full_name || 'Unknown',
+      email: r.user?.email || '',
+      redeemedAt: r.redeemed_at,
+      discountApplied: r.discount_applied,
+      freeMinutesApplied: r.free_minutes_applied,
+      bookingId: r.booking_id,
+    }));
+
+    return {
+      totalAssigned,
+      totalRedeemed,
+      totalDiscountGiven: Math.round(totalDiscountGiven * 100) / 100,
+      recentUsage,
+    };
   }
 }
 

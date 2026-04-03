@@ -27,6 +27,12 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
+  // Stripe Connect: extract connected account from the event (if present)
+  const connectAccount = (event as any).account as string | undefined;
+  const webhookStripeOpts: Stripe.RequestOptions | undefined = connectAccount
+    ? { stripeAccount: connectAccount }
+    : undefined;
+
   // Handle the event based on type
   switch (event.type) {
     case 'payment_intent.succeeded':
@@ -133,7 +139,7 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
 
                   if (userProfile?.email) {
                     const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-                    const formatLabels: Record<string, string> = { stroke_play: 'Individual (Stroke Play)', team: 'Team' };
+                    const formatLabels: Record<string, string> = { stroke_play: 'Individual', team: 'Team' };
                     const prizePotTotal = parseFloat(paymentIntent.metadata.prize_pot_total || '0');
                     const totalPaid = (paymentIntent.amount || 0) / 100;
                     const startDate = firstWeek?.date
@@ -199,6 +205,18 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
       if (event.type === 'payment_intent.succeeded') {
         logger.info({ bookingId }, 'Payment succeeded, updating database');
 
+        // Idempotency: skip if already confirmed (prevents double-processing on Stripe retry)
+        const { data: existingBooking } = await supabase
+          .from('bookings')
+          .select('status')
+          .eq('id', bookingId)
+          .single();
+
+        if (existingBooking?.status === 'confirmed') {
+          logger.info({ bookingId }, 'Booking already confirmed — idempotent skip');
+          return res.status(200).json({ received: true, message: 'Already processed' });
+        }
+
         // Update booking status to 'confirmed' and clear expiration
         const { error: bookingError } = await supabase
           .from('bookings')
@@ -214,7 +232,7 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
             const pmId = typeof paymentIntent.payment_method === 'string' 
               ? paymentIntent.payment_method 
               : paymentIntent.payment_method.id;
-            const pm = await stripe.paymentMethods.retrieve(pmId);
+            const pm = await stripe.paymentMethods.retrieve(pmId, webhookStripeOpts);
             if (pm.card) {
               paymentUpdate.card_last_four = pm.card.last4;
               paymentUpdate.card_brand = pm.card.brand;
@@ -233,6 +251,7 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
 
         if (bookingError || paymentError) {
           logger.error({ err: bookingError || paymentError, bookingId }, 'Error updating database after payment');
+          return res.status(500).json({ error: 'Database update failed — Stripe will retry' });
         } else {
           logger.info({ bookingId }, 'Successfully updated booking to confirmed');
           
@@ -422,7 +441,7 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
           const pmId = typeof setupIntent.payment_method === 'string'
             ? setupIntent.payment_method
             : setupIntent.payment_method.id;
-          const pm = await stripe.paymentMethods.retrieve(pmId);
+          const pm = await stripe.paymentMethods.retrieve(pmId, webhookStripeOpts);
           if (pm.card) {
             setupPaymentUpdate.card_last_four = pm.card.last4;
             setupPaymentUpdate.card_brand = pm.card.brand;

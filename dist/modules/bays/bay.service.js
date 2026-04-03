@@ -13,6 +13,17 @@ exports.BayService = void 0;
 const database_1 = require("../../config/database");
 const logger_1 = require("../../shared/utils/logger");
 class BayService {
+    getBayLocationId(bayId) {
+        return __awaiter(this, void 0, void 0, function* () {
+            var _a;
+            const { data } = yield database_1.supabase
+                .from('bays')
+                .select('location_id')
+                .eq('id', bayId)
+                .single();
+            return (_a = data === null || data === void 0 ? void 0 : data.location_id) !== null && _a !== void 0 ? _a : null;
+        });
+    }
     createBay(locationId, name, bayNumber, equipment) {
         return __awaiter(this, void 0, void 0, function* () {
             if (!locationId || !name || bayNumber === undefined) {
@@ -99,7 +110,7 @@ class BayService {
                 kiosk_ip: kioskIp
             })
                 .eq('id', bayId)
-                .select('id, last_seen, kiosk_ip, location_id, bay_number, name, status')
+                .select('id, last_seen, kiosk_ip, location_id, bay_number, name, status, league_mode_active, league_mode_league_id')
                 .single();
             if (error) {
                 logger_1.logger.error({ err: error }, 'Error updating bay heartbeat');

@@ -1,2 +1,2 @@
-export { authenticateUser, authenticateEmployee, authenticateKiosk, authenticateKioskOrEmployee } from './auth.middleware';
+export { authenticateUser, authenticateEmployee, authenticateKiosk, authenticateKioskOrEmployee, validateLocationAccess } from './auth.middleware';
 export type { AuthenticatedRequest } from './auth.middleware';

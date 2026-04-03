@@ -1,5 +1,6 @@
 export interface Promotion {
   id: string;
+  location_id: string | null;
   code: string | null;
   name: string;
   description: string | null;
@@ -15,6 +16,53 @@ export interface Promotion {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export interface CreatePromotionRequest {
+  locationId: string;
+  name: string;
+  code?: string;
+  description?: string;
+  discountType: 'fixed' | 'percentage' | 'free_minutes';
+  discountValue: number;
+  maxDiscountAmount?: number;
+  minBookingMinutes?: number;
+  maxFreeMinutes?: number;
+  isAutoAssigned: boolean;
+  isSingleUse: boolean;
+  validFrom?: string;
+  validTo?: string;
+}
+
+export interface UpdatePromotionRequest {
+  name?: string;
+  code?: string;
+  description?: string;
+  discountType?: 'fixed' | 'percentage' | 'free_minutes';
+  discountValue?: number;
+  maxDiscountAmount?: number | null;
+  minBookingMinutes?: number | null;
+  maxFreeMinutes?: number | null;
+  isAutoAssigned?: boolean;
+  isSingleUse?: boolean;
+  validFrom?: string | null;
+  validTo?: string | null;
+  isActive?: boolean;
+}
+
+export interface PromotionUsageStats {
+  totalAssigned: number;
+  totalRedeemed: number;
+  totalDiscountGiven: number;
+  recentUsage: Array<{
+    userId: string;
+    fullName: string;
+    email: string;
+    redeemedAt: string;
+    discountApplied: number | null;
+    freeMinutesApplied: number | null;
+    bookingId: string | null;
+  }>;
 }
 
 export interface UserPromotion {

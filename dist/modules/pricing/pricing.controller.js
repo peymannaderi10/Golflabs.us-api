@@ -61,29 +61,45 @@ class PricingController {
             }
         });
         this.updatePricingRule = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            var _a;
             try {
                 const { ruleId } = req.params;
                 const updates = req.body;
-                const pricingRule = yield this.pricingService.updatePricingRule(ruleId, updates);
+                const employeeLocationId = (_a = req.employeeProfile) === null || _a === void 0 ? void 0 : _a.location_id;
+                if (!employeeLocationId) {
+                    return res.status(403).json({ error: 'Employee profile missing location' });
+                }
+                const pricingRule = yield this.pricingService.updatePricingRule(ruleId, updates, employeeLocationId);
                 res.json(pricingRule);
             }
             catch (error) {
                 logger_1.logger.error({ err: error }, 'Error in updatePricingRule endpoint');
-                if (error.message.includes('overlaps') || error.message === 'Pricing rule ID is required' || error.message === 'Failed to update pricing rule') {
+                if (error.message.includes('Access denied')) {
+                    return res.status(403).json({ error: error.message });
+                }
+                if (error.message.includes('overlaps') || error.message === 'Pricing rule ID is required' || error.message === 'Pricing rule not found' || error.message === 'Failed to update pricing rule') {
                     return res.status(400).json({ error: error.message });
                 }
                 res.status(500).json({ error: 'An unexpected error occurred' });
             }
         });
         this.deletePricingRule = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            var _a;
             try {
                 const { ruleId } = req.params;
-                yield this.pricingService.deletePricingRule(ruleId);
+                const employeeLocationId = (_a = req.employeeProfile) === null || _a === void 0 ? void 0 : _a.location_id;
+                if (!employeeLocationId) {
+                    return res.status(403).json({ error: 'Employee profile missing location' });
+                }
+                yield this.pricingService.deletePricingRule(ruleId, employeeLocationId);
                 res.json({ success: true });
             }
             catch (error) {
                 logger_1.logger.error({ err: error }, 'Error in deletePricingRule endpoint');
-                if (error.message === 'Pricing rule ID is required' || error.message === 'Failed to delete pricing rule') {
+                if (error.message.includes('Access denied')) {
+                    return res.status(403).json({ error: error.message });
+                }
+                if (error.message === 'Pricing rule ID is required' || error.message === 'Pricing rule not found' || error.message === 'Failed to delete pricing rule') {
                     return res.status(400).json({ error: error.message });
                 }
                 res.status(500).json({ error: 'An unexpected error occurred' });

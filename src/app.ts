@@ -1,4 +1,5 @@
 import express, { Request, Response, NextFunction } from 'express';
+import compression from 'compression';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
@@ -96,6 +97,9 @@ const webhookRateLimit = rateLimit({
 app.post('/stripe-webhook', webhookRateLimit, express.raw({ type: 'application/json' }), (req, res) => handleStripeWebhook(req, res, socketService));
 app.post('/resend-webhook', express.raw({ type: 'application/json' }), handleResendWebhook);
 
+// Compress responses for all other routes
+app.use(compression());
+
 // Use json parser for all other routes
 app.use(express.json());
 
@@ -158,7 +162,7 @@ app.post('/validate-phone', async (req, res) => {
     const phoneWithCountryCode = cleanedPhone.startsWith('1') ? cleanedPhone : `1${cleanedPhone}`;
 
     // Call NumVerify API
-    const numverifyUrl = `http://apilayer.net/api/validate?access_key=${numverifyApiKey}&number=${phoneWithCountryCode}`;
+    const numverifyUrl = `https://apilayer.net/api/validate?access_key=${numverifyApiKey}&number=${phoneWithCountryCode}`;
 
     const response = await fetch(numverifyUrl);
     const data = await response.json();

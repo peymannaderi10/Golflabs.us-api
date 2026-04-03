@@ -12,6 +12,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.UserService = void 0;
 const database_1 = require("../../config/database");
 const logger_1 = require("../../shared/utils/logger");
+const notification_service_1 = require("../email/notification.service");
 class UserService {
     deleteAccount(userId, socketService) {
         return __awaiter(this, void 0, void 0, function* () {
@@ -36,15 +37,46 @@ class UserService {
                     .in('status', ['confirmed', 'reserved']);
                 if (activeBookings && activeBookings.length > 0) {
                     const bookingIds = activeBookings.map(b => b.id);
+                    // Cancel all active bookings and expire them immediately
                     yield database_1.supabase
                         .from('bookings')
-                        .update({ status: 'cancelled' })
+                        .update({ status: 'cancelled', expires_at: new Date().toISOString() })
                         .in('id', bookingIds);
+                    // Create cancellation records for audit trail
+                    const cancellationRows = bookingIds.map(id => ({
+                        booking_id: id,
+                        cancelled_by: userId,
+                        cancellation_reason: 'Account deleted by customer',
+                        cancellation_fee: 0,
+                        refund_amount: 0,
+                        cancelled_at: new Date().toISOString(),
+                    }));
+                    const { error: cancellationError } = yield database_1.supabase
+                        .from('booking_cancellations')
+                        .insert(cancellationRows);
+                    if (cancellationError) {
+                        logger_1.logger.error({ err: cancellationError, userId }, 'Error creating cancellation records for deleted account');
+                    }
+                    // Delete pending reminder notifications so they don't fire after deletion
+                    for (const bookingId of bookingIds) {
+                        try {
+                            yield notification_service_1.NotificationService.deleteNotificationsByBookingAndType(bookingId, 'reminder');
+                        }
+                        catch (notifErr) {
+                            logger_1.logger.error({ err: notifErr, bookingId }, 'Error deleting reminder notification for cancelled booking');
+                        }
+                    }
                     logger_1.logger.info({ userId, cancelledCount: bookingIds.length }, 'Cancelled active bookings for deleted account');
+                    // Notify kiosks so bay screens update
                     if (socketService) {
                         for (const booking of activeBookings) {
                             if (booking.location_id && booking.bay_id) {
-                                socketService.triggerBookingUpdate(booking.location_id, booking.bay_id, booking.id);
+                                try {
+                                    socketService.triggerBookingUpdate(booking.location_id, booking.bay_id, booking.id);
+                                }
+                                catch (socketErr) {
+                                    logger_1.logger.error({ err: socketErr, bookingId: booking.id }, 'Error notifying kiosk of cancelled booking');
+                                }
                             }
                         }
                     }

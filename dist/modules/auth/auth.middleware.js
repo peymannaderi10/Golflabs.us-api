@@ -12,7 +12,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.authenticateKioskOrEmployee = exports.authenticateKiosk = exports.authenticateEmployee = exports.authenticateUser = void 0;
+exports.authenticateKioskOrEmployee = exports.validateLocationAccess = exports.authenticateKiosk = exports.authenticateEmployee = exports.authenticateUser = void 0;
 const crypto_1 = __importDefault(require("crypto"));
 const database_1 = require("../../config/database");
 const logger_1 = require("../../shared/utils/logger");
@@ -98,6 +98,32 @@ const authenticateKiosk = (req, res, next) => {
     next();
 };
 exports.authenticateKiosk = authenticateKiosk;
+/**
+ * Middleware factory that verifies the authenticated employee's location_id
+ * matches the locationId supplied in the request (params, query, or body).
+ * Must be used AFTER authenticateEmployee.
+ *
+ * @param source - Where to read locationId from: 'params', 'query', or 'body'
+ * @param field  - The field name to read (default: 'locationId')
+ */
+const validateLocationAccess = (source, field = 'locationId') => {
+    return (req, res, next) => {
+        var _a, _b;
+        const employeeLocationId = (_a = req.employeeProfile) === null || _a === void 0 ? void 0 : _a.location_id;
+        if (!employeeLocationId) {
+            return res.status(403).json({ error: 'Employee profile missing location' });
+        }
+        const requestedLocationId = (_b = req[source]) === null || _b === void 0 ? void 0 : _b[field];
+        if (!requestedLocationId) {
+            return res.status(400).json({ error: `${field} is required` });
+        }
+        if (requestedLocationId !== employeeLocationId) {
+            return res.status(403).json({ error: 'Access denied: you do not belong to this location' });
+        }
+        next();
+    };
+};
+exports.validateLocationAccess = validateLocationAccess;
 /**
  * Accepts either a valid kiosk API key (X-Kiosk-Key) or employee JWT.
  */

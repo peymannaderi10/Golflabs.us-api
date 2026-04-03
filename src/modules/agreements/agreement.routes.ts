@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { body, param, query } from 'express-validator';
+import { body, param } from 'express-validator';
 import { agreementController } from './agreement.controller';
 import { authenticateUser } from '../auth';
 import { handleValidationErrors } from '../../shared/middleware/validation';
@@ -7,7 +7,6 @@ import { handleValidationErrors } from '../../shared/middleware/validation';
 const router = Router();
 
 router.post('/accept',
-  body('userId').isUUID().withMessage('userId must be a valid UUID'),
   body('signerName').isString().notEmpty().withMessage('signerName is required'),
   body('signerEmail').isEmail().withMessage('signerEmail must be a valid email'),
   body('bookingId').isUUID().withMessage('bookingId must be a valid UUID'),
@@ -21,7 +20,6 @@ router.post('/accept',
 
 router.get('/check/:bookingId',
   param('bookingId').isUUID().withMessage('bookingId must be a valid UUID'),
-  query('userId').isUUID().withMessage('userId must be a valid UUID'),
   handleValidationErrors,
   authenticateUser,
   (req, res) => agreementController.checkAgreements(req, res),

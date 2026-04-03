@@ -128,6 +128,13 @@ export class MembershipController {
   updatePlan = async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { planId } = req.params;
+
+      const planLocationId = await this.service.getPlanLocationId(planId);
+      if (!planLocationId) return res.status(404).json({ error: 'Plan not found' });
+
+      const locationErr = this.validateEmployeeLocation(req, planLocationId);
+      if (locationErr) return res.status(403).json({ error: locationErr });
+
       const plan = await this.service.updatePlan(planId, req.body);
       res.json(plan);
     } catch (error: any) {
@@ -139,6 +146,13 @@ export class MembershipController {
   deactivatePlan = async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { planId } = req.params;
+
+      const planLocationId = await this.service.getPlanLocationId(planId);
+      if (!planLocationId) return res.status(404).json({ error: 'Plan not found' });
+
+      const locationErr = this.validateEmployeeLocation(req, planLocationId);
+      if (locationErr) return res.status(403).json({ error: locationErr });
+
       await this.service.deactivatePlan(planId);
       res.json({ success: true });
     } catch (error: any) {
@@ -151,6 +165,12 @@ export class MembershipController {
     try {
       const { membershipId } = req.params;
       const { immediate } = req.body || {};
+
+      const membershipLocationId = await this.service.getMembershipLocationId(membershipId);
+      if (!membershipLocationId) return res.status(404).json({ error: 'Membership not found' });
+
+      const locationErr = this.validateEmployeeLocation(req, membershipLocationId);
+      if (locationErr) return res.status(403).json({ error: locationErr });
 
       const result = await this.service.cancelMembership(membershipId, '', !!immediate, true);
 
@@ -176,6 +196,12 @@ export class MembershipController {
       const { newPlanId } = req.body;
       if (!newPlanId) return res.status(400).json({ error: 'newPlanId is required' });
 
+      const membershipLocationId = await this.service.getMembershipLocationId(membershipId);
+      if (!membershipLocationId) return res.status(404).json({ error: 'Membership not found' });
+
+      const locationErr = this.validateEmployeeLocation(req, membershipLocationId);
+      if (locationErr) return res.status(403).json({ error: locationErr });
+
       await this.service.changePlan(membershipId, '', newPlanId, true);
       res.json({ success: true, message: 'Plan changed successfully' });
     } catch (error: any) {
@@ -192,8 +218,10 @@ export class MembershipController {
       const locationErr = this.validateEmployeeLocation(req, locationId as string);
       if (locationErr) return res.status(403).json({ error: locationErr });
 
-      const subscribers = await this.service.getSubscribersForLocation(locationId as string);
-      res.json(subscribers);
+      const page = parseInt(req.query.page as string) || 1;
+      const pageSize = parseInt(req.query.pageSize as string) || 50;
+      const result = await this.service.getSubscribersForLocation(locationId as string, page, pageSize);
+      res.json(result);
     } catch (error: any) {
       logger.error({ err: error }, 'Error fetching subscribers');
       res.status(500).json({ error: sanitizeError(error) });

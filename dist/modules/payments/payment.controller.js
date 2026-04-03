@@ -11,6 +11,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.PaymentController = void 0;
 const payment_service_1 = require("./payment.service");
+const error_utils_1 = require("../../shared/utils/error.utils");
 const logger_1 = require("../../shared/utils/logger");
 class PaymentController {
     constructor() {
@@ -38,7 +39,7 @@ class PaymentController {
                 if (error.message === 'Booking reservation has expired.') {
                     return res.status(410).json({ error: error.message });
                 }
-                res.status(500).json({ error: error.message });
+                res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
         this.updatePaymentIntent = (req, res) => __awaiter(this, void 0, void 0, function* () {
@@ -48,10 +49,7 @@ class PaymentController {
             }
             catch (error) {
                 logger_1.logger.error({ err: error }, 'Error updating payment intent');
-                res.status(500).json({
-                    error: 'Failed to update payment intent',
-                    details: error.message
-                });
+                res.status(500).json({ error: 'Failed to update payment intent' });
             }
         });
         this.getPaymentIntentStatus = (req, res) => __awaiter(this, void 0, void 0, function* () {

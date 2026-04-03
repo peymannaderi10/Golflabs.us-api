@@ -2,6 +2,15 @@ import { supabase } from '../../config/database';
 import { logger } from '../../shared/utils/logger';
 
 export class BayService {
+  async getBayLocationId(bayId: string): Promise<string | null> {
+    const { data } = await supabase
+      .from('bays')
+      .select('location_id')
+      .eq('id', bayId)
+      .single();
+    return data?.location_id ?? null;
+  }
+
   async createBay(locationId: string, name: string, bayNumber: number, equipment?: string) {
     if (!locationId || !name || bayNumber === undefined) {
       throw new Error('Location ID, name, and bay number are required');
@@ -97,7 +106,7 @@ export class BayService {
         kiosk_ip: kioskIp 
       })
       .eq('id', bayId)
-      .select('id, last_seen, kiosk_ip, location_id, bay_number, name, status')
+      .select('id, last_seen, kiosk_ip, location_id, bay_number, name, status, league_mode_active, league_mode_league_id')
       .single();
 
     if (error) {

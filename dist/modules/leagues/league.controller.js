@@ -13,6 +13,7 @@ exports.LeagueController = void 0;
 const league_service_1 = require("./league.service");
 const attendance_service_1 = require("./attendance.service");
 const capacity_hold_service_1 = require("../bookings/capacity-hold.service");
+const schedule_generator_1 = require("./schedule-generator");
 const error_utils_1 = require("../../shared/utils/error.utils");
 const logger_1 = require("../../shared/utils/logger");
 class LeagueController {
@@ -30,6 +31,16 @@ class LeagueController {
                 res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
+        this.previewSchedule = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            try {
+                const config = req.body;
+                const sessions = (0, schedule_generator_1.generateSessionDates)(config);
+                res.json(sessions);
+            }
+            catch (error) {
+                res.status(400).json({ error: error.message });
+            }
+        });
         this.getLeaguesByLocation = (req, res) => __awaiter(this, void 0, void 0, function* () {
             try {
                 const { locationId } = req.query;
@@ -41,6 +52,26 @@ class LeagueController {
             }
             catch (error) {
                 logger_1.logger.error({ err: error }, 'Error fetching leagues');
+                res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
+            }
+        });
+        this.getCourseCatalog = (_req, res) => __awaiter(this, void 0, void 0, function* () {
+            try {
+                const courses = yield this.leagueService.getCourseCatalog();
+                res.json(courses);
+            }
+            catch (error) {
+                logger_1.logger.error({ err: error }, 'Error fetching course catalog');
+                res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
+            }
+        });
+        this.searchPlayers = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            try {
+                const players = yield this.leagueService.searchPlayers(req.params.leagueId, req.query.q);
+                res.json(players);
+            }
+            catch (error) {
+                logger_1.logger.error({ err: error }, 'Error searching players');
                 res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
@@ -83,6 +114,16 @@ class LeagueController {
             }
             catch (error) {
                 logger_1.logger.error({ err: error }, 'Error activating league');
+                res.status(400).json({ error: error.message });
+            }
+        });
+        this.completeLeague = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            try {
+                const league = yield this.leagueService.completeLeague(req.params.leagueId);
+                res.json(league);
+            }
+            catch (error) {
+                logger_1.logger.error({ err: error }, 'Error completing league');
                 res.status(400).json({ error: error.message });
             }
         });
@@ -147,8 +188,14 @@ class LeagueController {
         // PLAYER ENROLLMENT
         // =====================================================
         this.enrollPlayer = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            var _a;
             try {
-                const player = yield this.leagueService.enrollPlayer(req.params.leagueId, req.body);
+                const userId = (_a = req.user) === null || _a === void 0 ? void 0 : _a.id;
+                if (!userId) {
+                    return res.status(401).json({ error: 'Authentication required' });
+                }
+                const enrollData = Object.assign(Object.assign({}, req.body), { userId });
+                const player = yield this.leagueService.enrollPlayer(req.params.leagueId, enrollData);
                 res.status(201).json(player);
             }
             catch (error) {
@@ -183,6 +230,44 @@ class LeagueController {
             }
         });
         // =====================================================
+        // REFUNDS
+        // =====================================================
+        this.refundWeeklyBuyIn = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            var _a;
+            try {
+                const { reason } = req.body;
+                if (!reason || !reason.trim()) {
+                    return res.status(400).json({ error: 'Reason is required' });
+                }
+                const issuedBy = (_a = req.employeeProfile) === null || _a === void 0 ? void 0 : _a.id;
+                const result = yield this.leagueService.refundWeeklyBuyIn(req.params.leagueId, req.params.playerId, reason.trim(), issuedBy);
+                res.json(result);
+            }
+            catch (error) {
+                logger_1.logger.error({ err: error }, 'Error issuing weekly refund');
+                res.status(400).json({ error: error.message });
+            }
+        });
+        this.removeAndRefund = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            var _a;
+            try {
+                const { refundType, reason } = req.body;
+                if (!reason || !reason.trim()) {
+                    return res.status(400).json({ error: 'Reason is required' });
+                }
+                if (!['full', 'prorated', 'none'].includes(refundType)) {
+                    return res.status(400).json({ error: 'refundType must be full, prorated, or none' });
+                }
+                const issuedBy = (_a = req.employeeProfile) === null || _a === void 0 ? void 0 : _a.id;
+                const result = yield this.leagueService.removeAndRefund(req.params.leagueId, req.params.playerId, refundType, reason.trim(), issuedBy);
+                res.json(result);
+            }
+            catch (error) {
+                logger_1.logger.error({ err: error }, 'Error removing player with refund');
+                res.status(400).json({ error: error.message });
+            }
+        });
+        // =====================================================
         // COMMISSIONER POWERS — HANDICAP OVERRIDE
         // =====================================================
         this.overrideHandicap = (req, res) => __awaiter(this, void 0, void 0, function* () {
@@ -193,7 +278,7 @@ class LeagueController {
                     return res.status(400).json({ error: 'handicap and reason are required' });
                 }
                 // Use the authenticated employee's ID as overrider
-                const overriddenBy = ((_a = req.employee) === null || _a === void 0 ? void 0 : _a.id) || 'unknown';
+                const overriddenBy = ((_a = req.employeeProfile) === null || _a === void 0 ? void 0 : _a.id) || 'unknown';
                 yield this.leagueService.overrideHandicap(req.params.leagueId, req.params.playerId, handicap, overriddenBy, reason);
                 res.json({ success: true });
             }
@@ -248,43 +333,65 @@ class LeagueController {
         // =====================================================
         this.submitScore = (req, res) => __awaiter(this, void 0, void 0, function* () {
             try {
-                const { leagueWeekId, leaguePlayerId, holeNumber, strokes } = req.body;
-                if (!leagueWeekId || !leaguePlayerId || !holeNumber || strokes === undefined) {
-                    return res.status(400).json({ error: 'leagueWeekId, leaguePlayerId, holeNumber, and strokes are required' });
+                // Support both single score and batch: { entries: [{ leaguePlayerId, holeNumber, strokes }] }
+                const entries = (req.body.entries
+                    ? req.body.entries.map((e) => (Object.assign(Object.assign({}, e), { leagueWeekId: req.body.leagueWeekId || e.leagueWeekId, bayId: req.body.bayId || e.bayId, enteredVia: req.body.enteredVia || e.enteredVia || 'kiosk' })))
+                    : [req.body]);
+                // Validate all entries upfront
+                for (const entry of entries) {
+                    if (!entry.leagueWeekId || !entry.leaguePlayerId || !entry.holeNumber || entry.strokes === undefined) {
+                        return res.status(400).json({ error: `Missing required fields for player ${entry.leaguePlayerId || 'unknown'}` });
+                    }
                 }
-                if (!Number.isInteger(strokes) || strokes < 1 || strokes > 20) {
-                    return res.status(400).json({ error: 'Strokes must be an integer between 1 and 20' });
-                }
-                const result = yield this.leagueService.submitScore(req.body);
-                // Get player info for the broadcast payload
                 const league = yield this.leagueService.getLeague(req.params.leagueId);
                 const players = yield this.leagueService.getPlayers(req.params.leagueId);
-                const player = players.find(p => p.id === req.body.leaguePlayerId);
-                // Broadcast score update via Socket.io
-                if (player) {
-                    const payload = {
-                        type: 'league_score_update',
-                        leagueId: league.id,
-                        weekId: req.body.leagueWeekId,
-                        player: {
-                            id: player.id,
-                            displayName: player.display_name,
-                            handicap: player.current_handicap,
-                        },
-                        holeNumber: req.body.holeNumber,
-                        strokes: req.body.strokes,
-                        roundGross: result.round_gross,
-                        holesCompleted: result.holes_entered,
-                        totalHoles: result.total_holes,
-                        timestamp: new Date().toISOString(),
-                    };
-                    this.socketService.emitScoreUpdate(league.location_id, league.id, payload);
+                const results = [];
+                for (const entry of entries) {
+                    const result = yield this.leagueService.submitScore(entry);
+                    results.push(result);
+                    // Broadcast per-player score update via Socket.io
+                    const player = players.find(p => p.id === entry.leaguePlayerId);
+                    if (player) {
+                        const payload = {
+                            type: 'league_score_update',
+                            leagueId: league.id,
+                            weekId: entry.leagueWeekId,
+                            player: {
+                                id: player.id,
+                                displayName: player.display_name,
+                                handicap: player.current_handicap,
+                            },
+                            holeNumber: entry.holeNumber,
+                            strokes: entry.strokes,
+                            roundGross: result.round_gross,
+                            holesCompleted: result.holes_entered,
+                            totalHoles: result.total_holes,
+                            timestamp: new Date().toISOString(),
+                        };
+                        this.socketService.emitScoreUpdate(league.location_id, league.id, payload);
+                    }
                 }
-                res.json(result);
+                // Return single result for backward compat, or array for batch
+                res.json(entries.length === 1 ? results[0] : results);
             }
             catch (error) {
                 logger_1.logger.error({ err: error }, 'Error submitting score');
                 const status = error.message.includes('not found') || error.message.includes('Must be active') || error.message.includes('Cannot submit') || error.message.includes('exceeds') ? 400 : 500;
+                res.status(status).json({ error: error.message });
+            }
+        });
+        this.submitScoresBulk = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            try {
+                const { leagueWeekId, leaguePlayerId, scores } = req.body;
+                if (!leagueWeekId || !leaguePlayerId || !Array.isArray(scores) || scores.length === 0) {
+                    return res.status(400).json({ error: 'leagueWeekId, leaguePlayerId, and scores array are required' });
+                }
+                const result = yield this.leagueService.submitScoresBulk(req.params.leagueId, req.body);
+                res.json(result);
+            }
+            catch (error) {
+                logger_1.logger.error({ err: error }, 'Error submitting bulk scores');
+                const status = error.message.includes('not found') || error.message.includes('Must be active') || error.message.includes('Cannot submit') ? 400 : 500;
                 res.status(status).json({ error: error.message });
             }
         });
@@ -314,7 +421,7 @@ class LeagueController {
         this.confirmScore = (req, res) => __awaiter(this, void 0, void 0, function* () {
             var _a;
             try {
-                const confirmedBy = ((_a = req.employee) === null || _a === void 0 ? void 0 : _a.id) || 'unknown';
+                const confirmedBy = ((_a = req.employeeProfile) === null || _a === void 0 ? void 0 : _a.id) || 'unknown';
                 yield this.leagueService.confirmScore(req.params.scoreId, confirmedBy);
                 res.json({ success: true });
             }
@@ -326,7 +433,7 @@ class LeagueController {
         this.confirmWeekScores = (req, res) => __awaiter(this, void 0, void 0, function* () {
             var _a;
             try {
-                const confirmedBy = ((_a = req.employee) === null || _a === void 0 ? void 0 : _a.id) || 'unknown';
+                const confirmedBy = ((_a = req.employeeProfile) === null || _a === void 0 ? void 0 : _a.id) || 'unknown';
                 const count = yield this.leagueService.confirmWeekScores(req.params.weekId, confirmedBy);
                 res.json({ success: true, confirmed: count });
             }
@@ -342,7 +449,7 @@ class LeagueController {
                 if (strokes === undefined || !reason) {
                     return res.status(400).json({ error: 'strokes and reason are required' });
                 }
-                const overriddenBy = ((_a = req.employee) === null || _a === void 0 ? void 0 : _a.id) || 'unknown';
+                const overriddenBy = ((_a = req.employeeProfile) === null || _a === void 0 ? void 0 : _a.id) || 'unknown';
                 yield this.leagueService.overrideScore(req.params.scoreId, strokes, overriddenBy, reason);
                 res.json({ success: true });
             }
@@ -388,12 +495,14 @@ class LeagueController {
         // PAYMENT
         // =====================================================
         this.enrollAndPay = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            var _a;
             try {
-                const { userId, displayName } = req.body;
+                const userId = (_a = req.user) === null || _a === void 0 ? void 0 : _a.id;
+                const { displayName, initialHandicap } = req.body;
                 if (!userId || !displayName) {
-                    return res.status(400).json({ error: 'userId and displayName are required' });
+                    return res.status(400).json({ error: 'displayName is required' });
                 }
-                const result = yield this.leagueService.enrollAndPay(req.params.leagueId, userId, displayName);
+                const result = yield this.leagueService.enrollAndPay(req.params.leagueId, userId, displayName, typeof initialHandicap === 'number' ? initialHandicap : 0);
                 res.json(result);
             }
             catch (error) {
@@ -411,10 +520,15 @@ class LeagueController {
         // USER-FACING: My Leagues
         // =====================================================
         this.getUserLeagues = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            var _a;
             try {
                 const { userId } = req.params;
                 if (!userId) {
                     return res.status(400).json({ error: 'userId is required' });
+                }
+                const authenticatedUserId = (_a = req.user) === null || _a === void 0 ? void 0 : _a.id;
+                if (authenticatedUserId !== userId) {
+                    return res.status(403).json({ error: 'Access denied: can only view your own leagues' });
                 }
                 const leagues = yield this.leagueService.getLeaguesForUser(userId);
                 res.json(leagues);
@@ -471,7 +585,7 @@ class LeagueController {
         this.confirmWeekPayouts = (req, res) => __awaiter(this, void 0, void 0, function* () {
             var _a;
             try {
-                const confirmedBy = ((_a = req.employee) === null || _a === void 0 ? void 0 : _a.id) || 'unknown';
+                const confirmedBy = ((_a = req.employeeProfile) === null || _a === void 0 ? void 0 : _a.id) || 'unknown';
                 yield this.leagueService.confirmWeekPayouts(req.params.leagueId, req.params.weekId, confirmedBy);
                 res.json({ success: true });
             }
@@ -483,7 +597,7 @@ class LeagueController {
         this.confirmSinglePayout = (req, res) => __awaiter(this, void 0, void 0, function* () {
             var _a;
             try {
-                const confirmedBy = ((_a = req.employee) === null || _a === void 0 ? void 0 : _a.id) || 'unknown';
+                const confirmedBy = ((_a = req.employeeProfile) === null || _a === void 0 ? void 0 : _a.id) || 'unknown';
                 yield this.leagueService.confirmPayout(req.params.entryId, confirmedBy);
                 res.json({ success: true });
             }
@@ -496,10 +610,12 @@ class LeagueController {
         // TEAM MANAGEMENT
         // =====================================================
         this.createTeam = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            var _a;
             try {
-                const { captainUserId, teamName } = req.body;
+                const captainUserId = (_a = req.user) === null || _a === void 0 ? void 0 : _a.id;
+                const { teamName } = req.body;
                 if (!captainUserId || !teamName) {
-                    return res.status(400).json({ error: 'captainUserId and teamName are required' });
+                    return res.status(400).json({ error: 'teamName is required' });
                 }
                 const team = yield this.leagueService.createTeam(req.params.leagueId, captainUserId, teamName);
                 res.status(201).json(team);
@@ -536,13 +652,15 @@ class LeagueController {
             }
         });
         this.inviteTeammates = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            var _a;
             try {
-                const { emails, captainUserId } = req.body;
+                const captainUserId = (_a = req.user) === null || _a === void 0 ? void 0 : _a.id;
+                const { emails } = req.body;
                 if (!emails || !Array.isArray(emails) || emails.length === 0) {
                     return res.status(400).json({ error: 'emails array is required' });
                 }
                 if (!captainUserId) {
-                    return res.status(400).json({ error: 'captainUserId is required' });
+                    return res.status(401).json({ error: 'Authentication required' });
                 }
                 const result = yield this.leagueService.inviteTeammates(req.params.teamId, captainUserId, emails);
                 res.json(result);
@@ -566,10 +684,11 @@ class LeagueController {
             }
         });
         this.acceptInvite = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            var _a;
             try {
-                const { userId } = req.body;
+                const userId = (_a = req.user) === null || _a === void 0 ? void 0 : _a.id;
                 if (!userId) {
-                    return res.status(400).json({ error: 'userId is required' });
+                    return res.status(401).json({ error: 'Authentication required' });
                 }
                 const result = yield this.leagueService.acceptInvite(req.params.token, userId);
                 res.json(result);
@@ -583,10 +702,11 @@ class LeagueController {
             }
         });
         this.declineInvite = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            var _a;
             try {
-                const { userId } = req.body;
+                const userId = (_a = req.user) === null || _a === void 0 ? void 0 : _a.id;
                 if (!userId) {
-                    return res.status(400).json({ error: 'userId is required' });
+                    return res.status(401).json({ error: 'Authentication required' });
                 }
                 yield this.leagueService.declineInvite(req.params.token, userId);
                 res.json({ success: true });
@@ -597,12 +717,14 @@ class LeagueController {
             }
         });
         this.enrollTeamPlayer = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            var _a;
             try {
-                const { userId, displayName } = req.body;
+                const userId = (_a = req.user) === null || _a === void 0 ? void 0 : _a.id;
+                const { displayName, initialHandicap } = req.body;
                 if (!userId || !displayName) {
-                    return res.status(400).json({ error: 'userId and displayName are required' });
+                    return res.status(400).json({ error: 'displayName is required' });
                 }
-                const result = yield this.leagueService.enrollTeamPlayer(req.params.leagueId, req.params.teamId, userId, displayName);
+                const result = yield this.leagueService.enrollTeamPlayer(req.params.leagueId, req.params.teamId, userId, displayName, typeof initialHandicap === 'number' ? initialHandicap : 0);
                 res.json(result);
             }
             catch (error) {
@@ -628,10 +750,15 @@ class LeagueController {
             }
         });
         this.getUserTeams = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            var _a;
             try {
                 const { userId } = req.params;
                 if (!userId) {
                     return res.status(400).json({ error: 'userId is required' });
+                }
+                const authenticatedUserId = (_a = req.user) === null || _a === void 0 ? void 0 : _a.id;
+                if (authenticatedUserId !== userId) {
+                    return res.status(403).json({ error: 'Access denied: can only view your own teams' });
                 }
                 const teams = yield this.leagueService.getUserTeams(userId);
                 res.json(teams);
@@ -713,16 +840,23 @@ class LeagueController {
          * Update own attendance (auth-based, from user dashboard)
          */
         this.updateAttendance = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            var _a;
             try {
-                const { weekId } = req.params;
-                const { status, leaguePlayerId } = req.body;
-                if (!leaguePlayerId || !status) {
-                    return res.status(400).json({ error: 'leaguePlayerId and status are required' });
+                const { leagueId, weekId } = req.params;
+                const { status } = req.body;
+                const userId = (_a = req.user) === null || _a === void 0 ? void 0 : _a.id;
+                if (!status) {
+                    return res.status(400).json({ error: 'status is required' });
                 }
                 if (!['confirmed', 'declined'].includes(status)) {
                     return res.status(400).json({ error: 'Status must be "confirmed" or "declined"' });
                 }
-                const attendance = yield this.attendanceService.updateAttendance(leaguePlayerId, weekId, status);
+                // Look up the player record by authenticated userId + leagueId
+                const playerId = yield this.leagueService.getActivePlayerIdForUser(userId, leagueId);
+                if (!playerId) {
+                    return res.status(404).json({ error: 'You are not enrolled in this league' });
+                }
+                const attendance = yield this.attendanceService.updateAttendance(playerId, weekId, status);
                 res.json(attendance);
             }
             catch (error) {
@@ -736,12 +870,27 @@ class LeagueController {
         /**
          * Get all my attendance statuses across weeks for a league
          */
+        this.getPlayerAttendance = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            try {
+                const { leagueId, userId } = req.params;
+                if (!userId) {
+                    return res.status(400).json({ error: 'userId is required' });
+                }
+                const attendance = yield this.attendanceService.getPlayerAttendance(userId, leagueId);
+                res.json(attendance);
+            }
+            catch (error) {
+                logger_1.logger.error({ err: error }, 'Error fetching player attendance (employee)');
+                res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
+            }
+        });
         this.getMyAttendance = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            var _a;
             try {
                 const { leagueId } = req.params;
-                const userId = req.query.userId;
+                const userId = (_a = req.user) === null || _a === void 0 ? void 0 : _a.id;
                 if (!userId) {
-                    return res.status(400).json({ error: 'userId query param is required' });
+                    return res.status(401).json({ error: 'Authentication required' });
                 }
                 const attendance = yield this.attendanceService.getPlayerAttendance(userId, leagueId);
                 res.json(attendance);

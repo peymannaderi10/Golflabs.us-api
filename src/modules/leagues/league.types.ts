@@ -26,10 +26,13 @@ export interface League {
   scoring_type: 'net_stroke_play' | 'gross_stroke_play' | 'points_based';
   points_config: PointsConfig | null;
   payout_config: PayoutConfig | null;
+  schedule_config: ScheduleConfig | null;
+  prize_pool_config: PrizePoolConfig | null;
   players_per_team: number;
   team_scoring_format: TeamScoringFormat;
   capacity_hold_type: 'all_bays' | 'num_bays' | 'pct_capacity';
   capacity_hold_value: number;
+  league_bay_ids: string[];
   buffer_before_mins: number;
   buffer_after_mins: number;
   attendance_required: boolean;
@@ -38,6 +41,7 @@ export interface League {
   attendance_cutoff_hours: number;
   players_per_bay: number;
   team_min_attendance: number | null;
+  members_only: boolean;
   status: 'draft' | 'registration' | 'active' | 'completed' | 'cancelled';
   created_at: string;
   updated_at: string;
@@ -57,6 +61,36 @@ export interface PayoutConfig {
   second_pct: number;   // e.g. 30
   third_pct: number;    // e.g. 20
   payout_method: 'weekly' | 'end_of_season';
+}
+
+// =====================================================
+// Schedule & Prize Pool Config (v2)
+// =====================================================
+
+export type SchedulePattern = 'weekly' | 'biweekly' | 'multi_day_weekly' | 'daily_block' | 'custom';
+
+export interface ScheduleConfig {
+  pattern: SchedulePattern;
+  startDate: string;           // YYYY-MM-DD
+  daysOfWeek: number[];        // 0-6, supports multi-day
+  totalCalendarWeeks?: number; // for weekly/biweekly/multi_day_weekly
+  blockEndDate?: string;       // for daily_block (start is startDate)
+  customDates?: string[];      // for custom pattern
+  startTime: string;           // HH:MM
+  endTime: string;             // HH:MM
+}
+
+export interface PrizePoolConfig {
+  enabled: boolean;
+  buyInPerSession: number;
+  payoutMethod: 'weekly' | 'end_of_season';
+  payoutSplit: { place: number; pct: number }[];
+}
+
+export interface GeneratedSession {
+  date: string;          // YYYY-MM-DD
+  sessionNumber: number;
+  sessionLabel: string;  // "Week 3 (Thu)" or "Session 5"
 }
 
 export interface PrizeLedgerEntry {
@@ -244,26 +278,23 @@ export interface CreateLeagueRequest {
   format?: 'stroke_play' | 'team';
   numHoles?: number;
   parPerHole?: number;
-  totalWeeks: number;
-  dayOfWeek: number;
-  startTime: string;
-  endTime: string;
   seasonFee?: number;
-  weeklyPrizePot?: number;
+  membersOnly?: boolean;
   maxPlayers?: number;
   handicapEnabled?: boolean;
-  startDate: string; // YYYY-MM-DD of the first week
   courseRotation?: 'fixed' | 'rotating';
   scoringType?: 'net_stroke_play' | 'gross_stroke_play' | 'points_based';
   pointsConfig?: PointsConfig;
-  payoutConfig?: PayoutConfig;
   courses?: CreateCourseRequest[];
+  scheduleConfig: ScheduleConfig;
+  prizePoolConfig?: PrizePoolConfig;
   // Team league fields
   playersPerTeam?: number;
   teamScoringFormat?: TeamScoringFormat;
   // Capacity hold fields
   capacityHoldType?: 'all_bays' | 'num_bays' | 'pct_capacity';
   capacityHoldValue?: number;
+  leagueBayIds?: string[];
   bufferBeforeMins?: number;
   bufferAfterMins?: number;
   // Attendance confirmation fields
@@ -281,20 +312,19 @@ export interface UpdateLeagueRequest {
   numHoles?: number;
   parPerHole?: number;
   seasonFee?: number;
-  weeklyPrizePot?: number;
   maxPlayers?: number;
   handicapEnabled?: boolean;
-  startTime?: string;
-  endTime?: string;
   courseRotation?: 'fixed' | 'rotating';
   scoringType?: 'net_stroke_play' | 'gross_stroke_play' | 'points_based';
   pointsConfig?: PointsConfig;
-  payoutConfig?: PayoutConfig;
+  scheduleConfig?: ScheduleConfig;
+  prizePoolConfig?: PrizePoolConfig;
   playersPerTeam?: number;
   teamScoringFormat?: TeamScoringFormat;
   // Capacity hold fields
   capacityHoldType?: 'all_bays' | 'num_bays' | 'pct_capacity';
   capacityHoldValue?: number;
+  leagueBayIds?: string[];
   bufferBeforeMins?: number;
   bufferAfterMins?: number;
   // Attendance confirmation fields
@@ -322,6 +352,7 @@ export interface UpdateCourseRequest {
 export interface EnrollPlayerRequest {
   userId: string;
   displayName: string;
+  initialHandicap?: number;
 }
 
 export interface CreateTeamRequest {

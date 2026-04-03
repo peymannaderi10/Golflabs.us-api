@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { employeeService } from './employee.service';
 import { ReportResponse, ReportQueryParams } from './employee.types';
+import { sanitizeError } from '../../shared/utils/error.utils';
 import { logger } from '../../shared/utils/logger';
 
 /**
@@ -63,7 +64,7 @@ export class EmployeeController {
             return res.json(createResponse(data, validation.params!));
         } catch (error: any) {
             logger.error({ err: error }, 'Error in getOverview');
-            return res.status(500).json({ success: false, error: error.message || 'Internal server error' });
+            return res.status(500).json({ success: false, error: sanitizeError(error) });
         }
     }
 
@@ -84,7 +85,7 @@ export class EmployeeController {
             return res.json(createResponse(data, validation.params!));
         } catch (error: any) {
             logger.error({ err: error }, 'Error in getRevenueStats');
-            return res.status(500).json({ success: false, error: error.message || 'Internal server error' });
+            return res.status(500).json({ success: false, error: sanitizeError(error) });
         }
     }
 
@@ -105,7 +106,7 @@ export class EmployeeController {
             return res.json(createResponse(data, validation.params!));
         } catch (error: any) {
             logger.error({ err: error }, 'Error in getBookingStats');
-            return res.status(500).json({ success: false, error: error.message || 'Internal server error' });
+            return res.status(500).json({ success: false, error: sanitizeError(error) });
         }
     }
 
@@ -126,7 +127,7 @@ export class EmployeeController {
             return res.json(createResponse(data, validation.params!));
         } catch (error: any) {
             logger.error({ err: error }, 'Error in getBayStats');
-            return res.status(500).json({ success: false, error: error.message || 'Internal server error' });
+            return res.status(500).json({ success: false, error: sanitizeError(error) });
         }
     }
 
@@ -147,7 +148,7 @@ export class EmployeeController {
             return res.json(createResponse(data, validation.params!));
         } catch (error: any) {
             logger.error({ err: error }, 'Error in getAccessLogStats');
-            return res.status(500).json({ success: false, error: error.message || 'Internal server error' });
+            return res.status(500).json({ success: false, error: sanitizeError(error) });
         }
     }
 
@@ -176,7 +177,7 @@ export class EmployeeController {
             return res.send(csv);
         } catch (error: any) {
             logger.error({ err: error }, 'Error in exportReport');
-            return res.status(500).json({ success: false, error: error.message || 'Internal server error' });
+            return res.status(500).json({ success: false, error: sanitizeError(error) });
         }
     }
 
@@ -194,7 +195,7 @@ export class EmployeeController {
 
             const data = await employeeService.getCustomers(locationId, {
                 page: page ? parseInt(page as string) : 1,
-                pageSize: pageSize ? parseInt(pageSize as string) : 10,
+                pageSize: pageSize ? Math.min(parseInt(pageSize as string), 100) : 10,
                 search: search as string,
                 sortBy: sortBy as any,
                 sortOrder: sortOrder as any,
@@ -213,7 +214,7 @@ export class EmployeeController {
             });
         } catch (error: any) {
             logger.error({ err: error }, 'Error in getCustomers');
-            return res.status(500).json({ success: false, error: error.message || 'Internal server error' });
+            return res.status(500).json({ success: false, error: sanitizeError(error) });
         }
     }
 
@@ -233,7 +234,8 @@ export class EmployeeController {
             const data = await employeeService.getCustomerDetails(locationId, id);
             return res.json({ success: true, data });
         } catch (error: any) {
-            return res.status(500).json({ success: false, error: error.message || 'Internal server error' });
+            const status = error.message.includes('not found at this location') ? 403 : 500;
+            return res.status(status).json({ success: false, error: error.message || 'Internal server error' });
         }
     }
 
@@ -251,7 +253,8 @@ export class EmployeeController {
             return res.json({ success: true });
         } catch (error: any) {
             logger.error({ err: error }, 'Error in updateCustomer');
-            const status = error.message.includes('Invalid user type') ? 400 : 500;
+            const status = error.message.includes('Invalid user type') ? 400
+                : error.message.includes('not found at this location') ? 403 : 500;
             return res.status(status).json({ success: false, error: error.message || 'Internal server error' });
         }
     }

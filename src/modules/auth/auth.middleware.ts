@@ -5,7 +5,6 @@ import { logger } from '../../shared/utils/logger';
 
 export interface AuthenticatedRequest extends Request {
   user?: any;
-  employee?: any;
   employeeProfile?: any;
   isKiosk?: boolean;
 }
@@ -106,6 +105,38 @@ export const authenticateKiosk = (req: AuthenticatedRequest, res: Response, next
 
   req.isKiosk = true;
   next();
+};
+
+/**
+ * Middleware factory that verifies the authenticated employee's location_id
+ * matches the locationId supplied in the request (params, query, or body).
+ * Must be used AFTER authenticateEmployee.
+ *
+ * @param source - Where to read locationId from: 'params', 'query', or 'body'
+ * @param field  - The field name to read (default: 'locationId')
+ */
+export const validateLocationAccess = (
+  source: 'params' | 'query' | 'body',
+  field = 'locationId'
+) => {
+  return (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    const employeeLocationId = req.employeeProfile?.location_id;
+    if (!employeeLocationId) {
+      return res.status(403).json({ error: 'Employee profile missing location' });
+    }
+
+    const requestedLocationId = (req[source] as Record<string, any>)?.[field];
+
+    if (!requestedLocationId) {
+      return res.status(400).json({ error: `${field} is required` });
+    }
+
+    if (requestedLocationId !== employeeLocationId) {
+      return res.status(403).json({ error: 'Access denied: you do not belong to this location' });
+    }
+
+    next();
+  };
 };
 
 /**

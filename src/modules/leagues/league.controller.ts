@@ -1,9 +1,11 @@
 import { Request, Response } from 'express';
+import { AuthenticatedRequest } from '../auth/auth.middleware';
 import { LeagueService } from './league.service';
 import { AttendanceService } from './attendance.service';
 import { CapacityHoldService } from '../bookings/capacity-hold.service';
 import { SocketService } from '../sockets/socket.service';
-import { LeagueScorePayload } from './league.types';
+import { LeagueScorePayload, ScheduleConfig, SubmitScoreRequest, SubmitScoreResult } from './league.types';
+import { generateSessionDates } from './schedule-generator';
 import { sanitizeError } from '../../shared/utils/error.utils';
 import { logger } from '../../shared/utils/logger';
 
@@ -34,6 +36,16 @@ export class LeagueController {
     }
   };
 
+  previewSchedule = async (req: Request, res: Response) => {
+    try {
+      const config = req.body as ScheduleConfig;
+      const sessions = generateSessionDates(config);
+      res.json(sessions);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  };
+
   getLeaguesByLocation = async (req: Request, res: Response) => {
     try {
       const { locationId } = req.query;
@@ -44,6 +56,29 @@ export class LeagueController {
       res.json(leagues);
     } catch (error: any) {
       logger.error({ err: error }, 'Error fetching leagues');
+      res.status(500).json({ error: sanitizeError(error) });
+    }
+  };
+
+  getCourseCatalog = async (_req: Request, res: Response) => {
+    try {
+      const courses = await this.leagueService.getCourseCatalog();
+      res.json(courses);
+    } catch (error: any) {
+      logger.error({ err: error }, 'Error fetching course catalog');
+      res.status(500).json({ error: sanitizeError(error) });
+    }
+  };
+
+  searchPlayers = async (req: Request, res: Response) => {
+    try {
+      const players = await this.leagueService.searchPlayers(
+        req.params.leagueId,
+        req.query.q as string | undefined
+      );
+      res.json(players);
+    } catch (error: any) {
+      logger.error({ err: error }, 'Error searching players');
       res.status(500).json({ error: sanitizeError(error) });
     }
   };
@@ -85,6 +120,16 @@ export class LeagueController {
       res.json(league);
     } catch (error: any) {
       logger.error({ err: error }, 'Error activating league');
+      res.status(400).json({ error: error.message });
+    }
+  };
+
+  completeLeague = async (req: Request, res: Response) => {
+    try {
+      const league = await this.leagueService.completeLeague(req.params.leagueId);
+      res.json(league);
+    } catch (error: any) {
+      logger.error({ err: error }, 'Error completing league');
       res.status(400).json({ error: error.message });
     }
   };
@@ -151,9 +196,14 @@ export class LeagueController {
   // PLAYER ENROLLMENT
   // =====================================================
 
-  enrollPlayer = async (req: Request, res: Response) => {
+  enrollPlayer = async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const player = await this.leagueService.enrollPlayer(req.params.leagueId, req.body);
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ error: 'Authentication required' });
+      }
+      const enrollData = { ...req.body, userId };
+      const player = await this.leagueService.enrollPlayer(req.params.leagueId, enrollData);
       res.status(201).json(player);
     } catch (error: any) {
       logger.error({ err: error }, 'Error enrolling player');
@@ -188,6 +238,47 @@ export class LeagueController {
   };
 
   // =====================================================
+  // REFUNDS
+  // =====================================================
+
+  refundWeeklyBuyIn = async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { reason } = req.body;
+      if (!reason || !reason.trim()) {
+        return res.status(400).json({ error: 'Reason is required' });
+      }
+      const issuedBy = req.employeeProfile?.id;
+      const result = await this.leagueService.refundWeeklyBuyIn(
+        req.params.leagueId, req.params.playerId, reason.trim(), issuedBy
+      );
+      res.json(result);
+    } catch (error: any) {
+      logger.error({ err: error }, 'Error issuing weekly refund');
+      res.status(400).json({ error: error.message });
+    }
+  };
+
+  removeAndRefund = async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { refundType, reason } = req.body;
+      if (!reason || !reason.trim()) {
+        return res.status(400).json({ error: 'Reason is required' });
+      }
+      if (!['full', 'prorated', 'none'].includes(refundType)) {
+        return res.status(400).json({ error: 'refundType must be full, prorated, or none' });
+      }
+      const issuedBy = req.employeeProfile?.id;
+      const result = await this.leagueService.removeAndRefund(
+        req.params.leagueId, req.params.playerId, refundType, reason.trim(), issuedBy
+      );
+      res.json(result);
+    } catch (error: any) {
+      logger.error({ err: error }, 'Error removing player with refund');
+      res.status(400).json({ error: error.message });
+    }
+  };
+
+  // =====================================================
   // COMMISSIONER POWERS — HANDICAP OVERRIDE
   // =====================================================
 
@@ -199,7 +290,7 @@ export class LeagueController {
       }
 
       // Use the authenticated employee's ID as overrider
-      const overriddenBy = (req as any).employee?.id || 'unknown';
+      const overriddenBy = (req as AuthenticatedRequest).employeeProfile?.id || 'unknown';
 
       await this.leagueService.overrideHandicap(
         req.params.leagueId,
@@ -266,47 +357,70 @@ export class LeagueController {
 
   submitScore = async (req: Request, res: Response) => {
     try {
-      const { leagueWeekId, leaguePlayerId, holeNumber, strokes } = req.body;
-      if (!leagueWeekId || !leaguePlayerId || !holeNumber || strokes === undefined) {
-        return res.status(400).json({ error: 'leagueWeekId, leaguePlayerId, holeNumber, and strokes are required' });
-      }
-      if (!Number.isInteger(strokes) || strokes < 1 || strokes > 20) {
-        return res.status(400).json({ error: 'Strokes must be an integer between 1 and 20' });
+      // Support both single score and batch: { entries: [{ leaguePlayerId, holeNumber, strokes }] }
+      const entries = (req.body.entries
+        ? req.body.entries.map((e: any) => ({ ...e, leagueWeekId: req.body.leagueWeekId || e.leagueWeekId, bayId: req.body.bayId || e.bayId, enteredVia: req.body.enteredVia || e.enteredVia || 'kiosk' }))
+        : [req.body]) as SubmitScoreRequest[];
+
+      // Validate all entries upfront
+      for (const entry of entries) {
+        if (!entry.leagueWeekId || !entry.leaguePlayerId || !entry.holeNumber || entry.strokes === undefined) {
+          return res.status(400).json({ error: `Missing required fields for player ${entry.leaguePlayerId || 'unknown'}` });
+        }
       }
 
-      const result = await this.leagueService.submitScore(req.body);
-
-      // Get player info for the broadcast payload
       const league = await this.leagueService.getLeague(req.params.leagueId);
       const players = await this.leagueService.getPlayers(req.params.leagueId);
-      const player = players.find(p => p.id === req.body.leaguePlayerId);
+      const results: SubmitScoreResult[] = [];
 
-      // Broadcast score update via Socket.io
-      if (player) {
-        const payload: LeagueScorePayload = {
-          type: 'league_score_update',
-          leagueId: league.id,
-          weekId: req.body.leagueWeekId,
-          player: {
-            id: player.id,
-            displayName: player.display_name,
-            handicap: player.current_handicap,
-          },
-          holeNumber: req.body.holeNumber,
-          strokes: req.body.strokes,
-          roundGross: result.round_gross,
-          holesCompleted: result.holes_entered,
-          totalHoles: result.total_holes,
-          timestamp: new Date().toISOString(),
-        };
+      for (const entry of entries) {
+        const result = await this.leagueService.submitScore(entry);
+        results.push(result);
 
-        this.socketService.emitScoreUpdate(league.location_id, league.id, payload);
+        // Broadcast per-player score update via Socket.io
+        const player = players.find(p => p.id === entry.leaguePlayerId);
+        if (player) {
+          const payload: LeagueScorePayload = {
+            type: 'league_score_update',
+            leagueId: league.id,
+            weekId: entry.leagueWeekId,
+            player: {
+              id: player.id,
+              displayName: player.display_name,
+              handicap: player.current_handicap,
+            },
+            holeNumber: entry.holeNumber,
+            strokes: entry.strokes,
+            roundGross: result.round_gross,
+            holesCompleted: result.holes_entered,
+            totalHoles: result.total_holes,
+            timestamp: new Date().toISOString(),
+          };
+          this.socketService.emitScoreUpdate(league.location_id, league.id, payload);
+        }
       }
 
-      res.json(result);
+      // Return single result for backward compat, or array for batch
+      res.json(entries.length === 1 ? results[0] : results);
     } catch (error: any) {
       logger.error({ err: error }, 'Error submitting score');
       const status = error.message.includes('not found') || error.message.includes('Must be active') || error.message.includes('Cannot submit') || error.message.includes('exceeds') ? 400 : 500;
+      res.status(status).json({ error: error.message });
+    }
+  };
+
+  submitScoresBulk = async (req: Request, res: Response) => {
+    try {
+      const { leagueWeekId, leaguePlayerId, scores } = req.body;
+      if (!leagueWeekId || !leaguePlayerId || !Array.isArray(scores) || scores.length === 0) {
+        return res.status(400).json({ error: 'leagueWeekId, leaguePlayerId, and scores array are required' });
+      }
+
+      const result = await this.leagueService.submitScoresBulk(req.params.leagueId, req.body);
+      res.json(result);
+    } catch (error: any) {
+      logger.error({ err: error }, 'Error submitting bulk scores');
+      const status = error.message.includes('not found') || error.message.includes('Must be active') || error.message.includes('Cannot submit') ? 400 : 500;
       res.status(status).json({ error: error.message });
     }
   };
@@ -341,7 +455,7 @@ export class LeagueController {
 
   confirmScore = async (req: Request, res: Response) => {
     try {
-      const confirmedBy = (req as any).employee?.id || 'unknown';
+      const confirmedBy = (req as AuthenticatedRequest).employeeProfile?.id || 'unknown';
       await this.leagueService.confirmScore(req.params.scoreId, confirmedBy);
       res.json({ success: true });
     } catch (error: any) {
@@ -352,7 +466,7 @@ export class LeagueController {
 
   confirmWeekScores = async (req: Request, res: Response) => {
     try {
-      const confirmedBy = (req as any).employee?.id || 'unknown';
+      const confirmedBy = (req as AuthenticatedRequest).employeeProfile?.id || 'unknown';
       const count = await this.leagueService.confirmWeekScores(req.params.weekId, confirmedBy);
       res.json({ success: true, confirmed: count });
     } catch (error: any) {
@@ -368,7 +482,7 @@ export class LeagueController {
         return res.status(400).json({ error: 'strokes and reason are required' });
       }
 
-      const overriddenBy = (req as any).employee?.id || 'unknown';
+      const overriddenBy = (req as AuthenticatedRequest).employeeProfile?.id || 'unknown';
       await this.leagueService.overrideScore(req.params.scoreId, strokes, overriddenBy, reason);
       res.json({ success: true });
     } catch (error: any) {
@@ -415,17 +529,19 @@ export class LeagueController {
   // PAYMENT
   // =====================================================
 
-  enrollAndPay = async (req: Request, res: Response) => {
+  enrollAndPay = async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const { userId, displayName } = req.body;
+      const userId = req.user?.id;
+      const { displayName, initialHandicap } = req.body;
       if (!userId || !displayName) {
-        return res.status(400).json({ error: 'userId and displayName are required' });
+        return res.status(400).json({ error: 'displayName is required' });
       }
 
       const result = await this.leagueService.enrollAndPay(
         req.params.leagueId,
         userId,
-        displayName
+        displayName,
+        typeof initialHandicap === 'number' ? initialHandicap : 0
       );
 
       res.json(result);
@@ -445,12 +561,18 @@ export class LeagueController {
   // USER-FACING: My Leagues
   // =====================================================
 
-  getUserLeagues = async (req: Request, res: Response) => {
+  getUserLeagues = async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { userId } = req.params;
       if (!userId) {
         return res.status(400).json({ error: 'userId is required' });
       }
+
+      const authenticatedUserId = req.user?.id;
+      if (authenticatedUserId !== userId) {
+        return res.status(403).json({ error: 'Access denied: can only view your own leagues' });
+      }
+
       const leagues = await this.leagueService.getLeaguesForUser(userId);
       res.json(leagues);
     } catch (error: any) {
@@ -512,7 +634,7 @@ export class LeagueController {
 
   confirmWeekPayouts = async (req: Request, res: Response) => {
     try {
-      const confirmedBy = (req as any).employee?.id || 'unknown';
+      const confirmedBy = (req as AuthenticatedRequest).employeeProfile?.id || 'unknown';
       await this.leagueService.confirmWeekPayouts(
         req.params.leagueId,
         req.params.weekId,
@@ -527,7 +649,7 @@ export class LeagueController {
 
   confirmSinglePayout = async (req: Request, res: Response) => {
     try {
-      const confirmedBy = (req as any).employee?.id || 'unknown';
+      const confirmedBy = (req as AuthenticatedRequest).employeeProfile?.id || 'unknown';
       await this.leagueService.confirmPayout(req.params.entryId, confirmedBy);
       res.json({ success: true });
     } catch (error: any) {
@@ -540,11 +662,12 @@ export class LeagueController {
   // TEAM MANAGEMENT
   // =====================================================
 
-  createTeam = async (req: Request, res: Response) => {
+  createTeam = async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const { captainUserId, teamName } = req.body;
+      const captainUserId = req.user?.id;
+      const { teamName } = req.body;
       if (!captainUserId || !teamName) {
-        return res.status(400).json({ error: 'captainUserId and teamName are required' });
+        return res.status(400).json({ error: 'teamName is required' });
       }
       const team = await this.leagueService.createTeam(req.params.leagueId, captainUserId, teamName);
       res.status(201).json(team);
@@ -580,14 +703,15 @@ export class LeagueController {
     }
   };
 
-  inviteTeammates = async (req: Request, res: Response) => {
+  inviteTeammates = async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const { emails, captainUserId } = req.body;
+      const captainUserId = req.user?.id;
+      const { emails } = req.body;
       if (!emails || !Array.isArray(emails) || emails.length === 0) {
         return res.status(400).json({ error: 'emails array is required' });
       }
       if (!captainUserId) {
-        return res.status(400).json({ error: 'captainUserId is required' });
+        return res.status(401).json({ error: 'Authentication required' });
       }
       const result = await this.leagueService.inviteTeammates(req.params.teamId, captainUserId, emails);
       res.json(result);
@@ -610,11 +734,11 @@ export class LeagueController {
     }
   };
 
-  acceptInvite = async (req: Request, res: Response) => {
+  acceptInvite = async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const { userId } = req.body;
+      const userId = req.user?.id;
       if (!userId) {
-        return res.status(400).json({ error: 'userId is required' });
+        return res.status(401).json({ error: 'Authentication required' });
       }
       const result = await this.leagueService.acceptInvite(req.params.token, userId);
       res.json(result);
@@ -627,11 +751,11 @@ export class LeagueController {
     }
   };
 
-  declineInvite = async (req: Request, res: Response) => {
+  declineInvite = async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const { userId } = req.body;
+      const userId = req.user?.id;
       if (!userId) {
-        return res.status(400).json({ error: 'userId is required' });
+        return res.status(401).json({ error: 'Authentication required' });
       }
       await this.leagueService.declineInvite(req.params.token, userId);
       res.json({ success: true });
@@ -641,17 +765,19 @@ export class LeagueController {
     }
   };
 
-  enrollTeamPlayer = async (req: Request, res: Response) => {
+  enrollTeamPlayer = async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const { userId, displayName } = req.body;
+      const userId = req.user?.id;
+      const { displayName, initialHandicap } = req.body;
       if (!userId || !displayName) {
-        return res.status(400).json({ error: 'userId and displayName are required' });
+        return res.status(400).json({ error: 'displayName is required' });
       }
       const result = await this.leagueService.enrollTeamPlayer(
         req.params.leagueId,
         req.params.teamId,
         userId,
-        displayName
+        displayName,
+        typeof initialHandicap === 'number' ? initialHandicap : 0
       );
       res.json(result);
     } catch (error: any) {
@@ -680,12 +806,18 @@ export class LeagueController {
     }
   };
 
-  getUserTeams = async (req: Request, res: Response) => {
+  getUserTeams = async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { userId } = req.params;
       if (!userId) {
         return res.status(400).json({ error: 'userId is required' });
       }
+
+      const authenticatedUserId = req.user?.id;
+      if (authenticatedUserId !== userId) {
+        return res.status(403).json({ error: 'Access denied: can only view your own teams' });
+      }
+
       const teams = await this.leagueService.getUserTeams(userId);
       res.json(teams);
     } catch (error: any) {
@@ -768,20 +900,27 @@ export class LeagueController {
   /**
    * Update own attendance (auth-based, from user dashboard)
    */
-  updateAttendance = async (req: Request, res: Response) => {
+  updateAttendance = async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const { weekId } = req.params;
-      const { status, leaguePlayerId } = req.body;
+      const { leagueId, weekId } = req.params;
+      const { status } = req.body;
+      const userId = req.user?.id;
 
-      if (!leaguePlayerId || !status) {
-        return res.status(400).json({ error: 'leaguePlayerId and status are required' });
+      if (!status) {
+        return res.status(400).json({ error: 'status is required' });
       }
 
       if (!['confirmed', 'declined'].includes(status)) {
         return res.status(400).json({ error: 'Status must be "confirmed" or "declined"' });
       }
 
-      const attendance = await this.attendanceService.updateAttendance(leaguePlayerId, weekId, status);
+      // Look up the player record by authenticated userId + leagueId
+      const playerId = await this.leagueService.getActivePlayerIdForUser(userId, leagueId);
+      if (!playerId) {
+        return res.status(404).json({ error: 'You are not enrolled in this league' });
+      }
+
+      const attendance = await this.attendanceService.updateAttendance(playerId, weekId, status);
       res.json(attendance);
     } catch (error: any) {
       logger.error({ err: error }, 'Error updating attendance');
@@ -795,13 +934,27 @@ export class LeagueController {
   /**
    * Get all my attendance statuses across weeks for a league
    */
-  getMyAttendance = async (req: Request, res: Response) => {
+  getPlayerAttendance = async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { leagueId, userId } = req.params;
+      if (!userId) {
+        return res.status(400).json({ error: 'userId is required' });
+      }
+      const attendance = await this.attendanceService.getPlayerAttendance(userId, leagueId);
+      res.json(attendance);
+    } catch (error: any) {
+      logger.error({ err: error }, 'Error fetching player attendance (employee)');
+      res.status(500).json({ error: sanitizeError(error) });
+    }
+  };
+
+  getMyAttendance = async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { leagueId } = req.params;
-      const userId = req.query.userId as string;
+      const userId = req.user?.id;
 
       if (!userId) {
-        return res.status(400).json({ error: 'userId query param is required' });
+        return res.status(401).json({ error: 'Authentication required' });
       }
 
       const attendance = await this.attendanceService.getPlayerAttendance(userId, leagueId);

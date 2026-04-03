@@ -11,6 +11,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.BayController = void 0;
 const bay_service_1 = require("./bay.service");
+const error_utils_1 = require("../../shared/utils/error.utils");
 class BayController {
     constructor(socketService) {
         this.getBays = (req, res) => __awaiter(this, void 0, void 0, function* () {
@@ -20,7 +21,7 @@ class BayController {
                 res.status(200).json(bays);
             }
             catch (error) {
-                res.status(500).json({ message: error.message });
+                res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
         this.createBay = (req, res) => __awaiter(this, void 0, void 0, function* () {
@@ -37,14 +38,21 @@ class BayController {
                 res.status(201).json(bay);
             }
             catch (error) {
-                res.status(500).json({ message: error.message });
+                res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
         this.deleteBay = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            var _a;
             try {
                 const { bayId } = req.params;
                 if (!bayId) {
                     return res.status(400).json({ message: 'bayId is required' });
+                }
+                const bayLocationId = yield this.bayService.getBayLocationId(bayId);
+                if (!bayLocationId)
+                    return res.status(404).json({ message: 'Bay not found' });
+                if (bayLocationId !== ((_a = req.employeeProfile) === null || _a === void 0 ? void 0 : _a.location_id)) {
+                    return res.status(403).json({ message: 'Access denied: bay belongs to a different location' });
                 }
                 const result = yield this.bayService.deleteBay(bayId);
                 // Broadcast to dashboards
@@ -54,7 +62,7 @@ class BayController {
                 res.status(200).json({ success: true });
             }
             catch (error) {
-                res.status(500).json({ message: error.message });
+                res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
         this.updateHeartbeat = (req, res) => __awaiter(this, void 0, void 0, function* () {
@@ -69,16 +77,23 @@ class BayController {
                 res.status(200).json(updatedBay);
             }
             catch (error) {
-                res.status(500).json({ message: error.message });
+                res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
         // Add: Update bay status
         this.updateBayStatus = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            var _a;
             try {
                 const { bayId } = req.params;
                 const { status } = req.body;
                 if (!status) {
                     return res.status(400).json({ message: 'Status is required' });
+                }
+                const bayLocationId = yield this.bayService.getBayLocationId(bayId);
+                if (!bayLocationId)
+                    return res.status(404).json({ message: 'Bay not found' });
+                if (bayLocationId !== ((_a = req.employeeProfile) === null || _a === void 0 ? void 0 : _a.location_id)) {
+                    return res.status(403).json({ message: 'Access denied: bay belongs to a different location' });
                 }
                 const updatedBay = yield this.bayService.updateBayStatus(bayId, status);
                 // Broadcast to dashboards
@@ -88,7 +103,7 @@ class BayController {
                 res.status(200).json(updatedBay);
             }
             catch (error) {
-                res.status(500).json({ message: error.message });
+                res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
         // =====================================================
@@ -112,7 +127,7 @@ class BayController {
                 res.status(200).json({ message: 'League mode activated', bays: updatedBays });
             }
             catch (error) {
-                res.status(500).json({ message: error.message });
+                res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
         this.deactivateLeagueMode = (req, res) => __awaiter(this, void 0, void 0, function* () {
@@ -133,15 +148,22 @@ class BayController {
                 res.status(200).json({ message: 'League mode deactivated', bays: updatedBays });
             }
             catch (error) {
-                res.status(500).json({ message: error.message });
+                res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
         this.toggleBayLeagueMode = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            var _a;
             try {
                 const { bayId } = req.params;
                 const { active, leagueId } = req.body;
                 if (active === undefined) {
                     return res.status(400).json({ message: 'active is required' });
+                }
+                const bayLocationId = yield this.bayService.getBayLocationId(bayId);
+                if (!bayLocationId)
+                    return res.status(404).json({ message: 'Bay not found' });
+                if (bayLocationId !== ((_a = req.employeeProfile) === null || _a === void 0 ? void 0 : _a.location_id)) {
+                    return res.status(403).json({ message: 'Access denied: bay belongs to a different location' });
                 }
                 const updatedBay = yield this.bayService.toggleBayLeagueMode(bayId, active, leagueId || null);
                 // Broadcast to the specific kiosk
@@ -156,7 +178,7 @@ class BayController {
                 res.status(200).json(updatedBay);
             }
             catch (error) {
-                res.status(500).json({ message: error.message });
+                res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
         this.bayService = new bay_service_1.BayService();

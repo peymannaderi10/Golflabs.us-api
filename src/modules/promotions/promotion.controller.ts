@@ -221,16 +221,127 @@ export class PromotionController {
 
   /**
    * GET /promotions
-   * Get all promotions (admin)
+   * Get all promotions (admin), optionally filtered by locationId query param
    */
   async getAllPromotions(req: Request, res: Response) {
     try {
-      const promotions = await promotionService.getAllPromotions();
+      const locationId = req.query.locationId as string | undefined;
+      const promotions = await promotionService.getAllPromotions(locationId);
       return res.json({ promotions });
     } catch (error) {
       logger.error({ err: error }, 'Error getting all promotions');
-      return res.status(500).json({ 
-        error: error instanceof Error ? error.message : 'Failed to get promotions' 
+      return res.status(500).json({
+        error: error instanceof Error ? error.message : 'Failed to get promotions'
+      });
+    }
+  }
+
+  /**
+   * Verify that the promotion belongs to the employee's location.
+   * Returns the promotion if authorized, or sends a 403/404 and returns null.
+   */
+  private async verifyPromotionOwnership(req: Request, res: Response, promotionId: string): Promise<any | null> {
+    const employeeLocationId = (req as AuthenticatedRequest).employeeProfile?.location_id;
+    const promo = await promotionService.getPromotionById(promotionId);
+    if (!promo) {
+      res.status(404).json({ error: 'Promotion not found' });
+      return null;
+    }
+    if (promo.location_id !== employeeLocationId) {
+      res.status(403).json({ error: 'Access denied: you do not belong to this location' });
+      return null;
+    }
+    return promo;
+  }
+
+  /**
+   * POST /promotions
+   * Create a new promotion (employee)
+   */
+  async createPromotion(req: Request, res: Response) {
+    try {
+      const { locationId, name, code, description, discountType, discountValue,
+        maxDiscountAmount, minBookingMinutes, maxFreeMinutes,
+        isAutoAssigned, isSingleUse, validFrom, validTo } = req.body;
+
+      const promotion = await promotionService.createPromotion({
+        locationId, name, code, description, discountType, discountValue,
+        maxDiscountAmount, minBookingMinutes, maxFreeMinutes,
+        isAutoAssigned, isSingleUse, validFrom, validTo,
+      });
+      return res.status(201).json({ success: true, promotion });
+    } catch (error) {
+      logger.error({ err: error }, 'Error creating promotion');
+      const message = error instanceof Error ? error.message : 'Failed to create promotion';
+      const status = message.includes('already exists') ? 409 : 500;
+      return res.status(status).json({ error: message });
+    }
+  }
+
+  /**
+   * PUT /promotions/:id
+   * Update a promotion (employee)
+   */
+  async updatePromotion(req: Request, res: Response) {
+    try {
+      const { id } = req.params;
+      const existing = await this.verifyPromotionOwnership(req, res, id);
+      if (!existing) return;
+
+      const { name, code, description, discountType, discountValue,
+        maxDiscountAmount, minBookingMinutes, maxFreeMinutes,
+        isAutoAssigned, isSingleUse, isActive, validFrom, validTo } = req.body;
+
+      const promotion = await promotionService.updatePromotion(id, {
+        name, code, description, discountType, discountValue,
+        maxDiscountAmount, minBookingMinutes, maxFreeMinutes,
+        isAutoAssigned, isSingleUse, isActive, validFrom, validTo,
+      });
+      return res.json({ success: true, promotion });
+    } catch (error) {
+      logger.error({ err: error }, 'Error updating promotion');
+      const message = error instanceof Error ? error.message : 'Failed to update promotion';
+      const status = message.includes('already exists') ? 409 : 500;
+      return res.status(status).json({ error: message });
+    }
+  }
+
+  /**
+   * DELETE /promotions/:id
+   * Soft-delete (deactivate) a promotion (employee)
+   */
+  async deletePromotion(req: Request, res: Response) {
+    try {
+      const { id } = req.params;
+      const existing = await this.verifyPromotionOwnership(req, res, id);
+      if (!existing) return;
+
+      await promotionService.deactivatePromotion(id);
+      return res.json({ success: true });
+    } catch (error) {
+      logger.error({ err: error }, 'Error deactivating promotion');
+      return res.status(500).json({
+        error: error instanceof Error ? error.message : 'Failed to deactivate promotion'
+      });
+    }
+  }
+
+  /**
+   * GET /promotions/:id/usage
+   * Get usage stats for a promotion (employee)
+   */
+  async getUsageStats(req: Request, res: Response) {
+    try {
+      const { id } = req.params;
+      const existing = await this.verifyPromotionOwnership(req, res, id);
+      if (!existing) return;
+
+      const stats = await promotionService.getPromotionUsageStats(id);
+      return res.json(stats);
+    } catch (error) {
+      logger.error({ err: error }, 'Error getting promotion usage stats');
+      return res.status(500).json({
+        error: error instanceof Error ? error.message : 'Failed to get usage stats'
       });
     }
   }

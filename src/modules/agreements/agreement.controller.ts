@@ -1,12 +1,14 @@
 import { Request, Response } from 'express';
+import { AuthenticatedRequest } from '../auth/auth.middleware';
 import { agreementService } from './agreement.service';
+import { sanitizeError } from '../../shared/utils/error.utils';
 import { logger } from '../../shared/utils/logger';
 
 export class AgreementController {
-  acceptAgreements = async (req: Request, res: Response) => {
+  acceptAgreements = async (req: AuthenticatedRequest, res: Response) => {
     try {
+      const userId = req.user?.id;
       const {
-        userId,
         signerName,
         signerEmail,
         bookingId,
@@ -17,7 +19,7 @@ export class AgreementController {
 
       if (!userId || !bookingId || !locationId || !agreements) {
         return res.status(400).json({
-          error: 'userId, bookingId, locationId, and agreements are required',
+          error: 'bookingId, locationId, and agreements are required',
         });
       }
 
@@ -67,30 +69,30 @@ export class AgreementController {
       if (error.message.includes('Missing required')) {
         return res.status(400).json({ error: error.message });
       }
-      res.status(500).json({ error: error.message || 'Failed to record agreements' });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 
-  checkAgreements = async (req: Request, res: Response) => {
+  checkAgreements = async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { bookingId } = req.params;
-      const { userId } = req.query;
+      const userId = req.user?.id;
 
       if (!bookingId || !userId) {
         return res.status(400).json({
-          error: 'bookingId (param) and userId (query) are required',
+          error: 'bookingId (param) is required and user must be authenticated',
         });
       }
 
       const result = await agreementService.checkAgreements(
-        userId as string,
+        userId,
         bookingId
       );
 
       res.json(result);
     } catch (error: any) {
       logger.error({ err: error }, 'Error checking agreements');
-      res.status(500).json({ error: error.message || 'Failed to check agreements' });
+      res.status(500).json({ error: sanitizeError(error) });
     }
   };
 }

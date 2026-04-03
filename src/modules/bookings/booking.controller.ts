@@ -119,8 +119,10 @@ export class BookingController {
       if (authenticatedUserId !== userId) {
         return res.status(403).json({ error: 'Access denied' });
       }
-      const bookings = await this.bookingService.getUserPastBookings(userId);
-      res.json(bookings);
+      const page = parseInt(req.query.page as string) || 1;
+      const pageSize = parseInt(req.query.pageSize as string) || 20;
+      const result = await this.bookingService.getUserPastBookings(userId, page, pageSize);
+      res.json(result);
     } catch (error: any) {
       logger.error({ err: error, userId: req.params.userId }, 'Error in user past bookings endpoint');
       res.status(500).json({ error: 'An unexpected error occurred' });
@@ -135,8 +137,12 @@ export class BookingController {
       res.json(result);
 
       // After successfully cancelling, trigger a real-time update
-      if (result.locationId && result.bayId) {
-        this.socketService.triggerBookingUpdate(result.locationId, result.bayId, bookingId);
+      try {
+        if (result.locationId && result.bayId) {
+          this.socketService.triggerBookingUpdate(result.locationId, result.bayId, bookingId);
+        }
+      } catch (socketErr) {
+        logger.error({ err: socketErr, bookingId }, 'Socket update failed (non-fatal)');
       }
     } catch (error: any) {
       logger.error({ err: error, bookingId: req.params.bookingId }, 'Error cancelling booking');
@@ -147,17 +153,21 @@ export class BookingController {
   // Employee-specific endpoints
   getEmployeeBookings = async (req: Request, res: Response) => {
     try {
-      const { locationId, startDate, endDate, bayId, customerEmail } = req.query;
+      const { locationId, startDate, endDate, date, bayId, customerEmail } = req.query;
 
       if (!locationId) {
         return res.status(400).json({ error: 'locationId is required' });
       }
 
+      // Accept `date` as shorthand for startDate=date & endDate=date
+      const resolvedStart = (startDate || date) as string;
+      const resolvedEnd = (endDate || date) as string;
+
       const bookings = await this.bookingService.getAllBookingsForEmployee(
-        locationId as string, 
-        startDate as string,
-        endDate as string,
-        bayId as string, 
+        locationId as string,
+        resolvedStart,
+        resolvedEnd,
+        bayId as string,
         customerEmail as string
       );
       res.json(bookings);
@@ -167,7 +177,7 @@ export class BookingController {
     }
   };
 
-  searchCustomers = async (req: Request, res: Response) => {
+  searchCustomers = async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { email } = req.query;
 
@@ -183,22 +193,32 @@ export class BookingController {
     }
   };
 
-  employeeCancelBooking = async (req: Request, res: Response) => {
+  employeeCancelBooking = async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { bookingId } = req.params;
-      const { reason } = req.body;
-      const employeeProfile = (req as any).employeeProfile;
+      const { reason, skipRefund } = req.body;
+      const employeeProfile = req.employeeProfile;
 
       if (!employeeProfile) {
         return res.status(403).json({ error: 'Employee authentication required' });
       }
 
-      const result = await this.bookingService.employeeCancelBooking(bookingId, employeeProfile.id, reason);
+      const bookingLocationId = await this.bookingService.getBookingLocationId(bookingId);
+      if (!bookingLocationId) return res.status(404).json({ error: 'Booking not found' });
+      if (bookingLocationId !== employeeProfile.location_id) {
+        return res.status(403).json({ error: 'Access denied: booking belongs to a different location' });
+      }
+
+      const result = await this.bookingService.employeeCancelBooking(bookingId, employeeProfile.id, reason, !!skipRefund);
       res.json(result);
 
       // Trigger socket update for real-time booking changes
-      if (result.locationId && result.bayId) {
-        this.socketService.triggerBookingUpdate(result.locationId, result.bayId, bookingId);
+      try {
+        if (result.locationId && result.bayId) {
+          this.socketService.triggerBookingUpdate(result.locationId, result.bayId, bookingId);
+        }
+      } catch (socketErr) {
+        logger.error({ err: socketErr, bookingId }, 'Socket update failed (non-fatal)');
       }
     } catch (error: any) {
       logger.error({ err: error, bookingId: req.params.bookingId }, 'Error in employee cancel booking');
@@ -214,8 +234,12 @@ export class BookingController {
       res.json(result);
 
       // After successfully cancelling, trigger a real-time update
-      if (result.locationId && result.bayId) {
-        this.socketService.triggerBookingUpdate(result.locationId, result.bayId, bookingId);
+      try {
+        if (result.locationId && result.bayId) {
+          this.socketService.triggerBookingUpdate(result.locationId, result.bayId, bookingId);
+        }
+      } catch (socketErr) {
+        logger.error({ err: socketErr, bookingId }, 'Socket update failed (non-fatal)');
       }
     } catch (error: any) {
       logger.error({ err: error, bookingId: req.params.bookingId }, 'Error cancelling reserved booking');
@@ -254,8 +278,12 @@ export class BookingController {
       res.json(result);
 
       // Trigger real-time update to the kiosk so countdown resets
-      if (result.locationId && result.bayId) {
-        this.socketService.triggerBookingUpdate(result.locationId, result.bayId, bookingId);
+      try {
+        if (result.locationId && result.bayId) {
+          this.socketService.triggerBookingUpdate(result.locationId, result.bayId, bookingId);
+        }
+      } catch (socketErr) {
+        logger.error({ err: socketErr, bookingId }, 'Socket update failed (non-fatal)');
       }
     } catch (error: any) {
       logger.error({ err: error, bookingId: req.params.bookingId }, 'Error extending booking');
@@ -272,14 +300,20 @@ export class BookingController {
     }
   };
 
-  employeeExtendBooking = async (req: Request, res: Response) => {
+  employeeExtendBooking = async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { bookingId } = req.params;
       const { extensionMinutes, locationId, bayId, skipPayment } = req.body;
-      const employeeProfile = (req as any).employeeProfile;
+      const employeeProfile = req.employeeProfile;
 
       if (!employeeProfile) {
         return res.status(403).json({ error: 'Employee authentication required' });
+      }
+
+      const bookingLocationId = await this.bookingService.getBookingLocationId(bookingId);
+      if (!bookingLocationId) return res.status(404).json({ error: 'Booking not found' });
+      if (bookingLocationId !== employeeProfile.location_id) {
+        return res.status(403).json({ error: 'Access denied: booking belongs to a different location' });
       }
 
       if (!extensionMinutes || !locationId || !bayId) {
@@ -296,8 +330,12 @@ export class BookingController {
       );
       res.json(result);
 
-      if (result.locationId && result.bayId) {
-        this.socketService.triggerBookingUpdate(result.locationId, result.bayId, bookingId);
+      try {
+        if (result.locationId && result.bayId) {
+          this.socketService.triggerBookingUpdate(result.locationId, result.bayId, bookingId);
+        }
+      } catch (socketErr) {
+        logger.error({ err: socketErr, bookingId }, 'Socket update failed (non-fatal)');
       }
     } catch (error: any) {
       logger.error({ err: error, bookingId: req.params.bookingId }, 'Error in employee extend booking');
@@ -314,14 +352,20 @@ export class BookingController {
     }
   };
 
-  employeeRescheduleBooking = async (req: Request, res: Response) => {
+  employeeRescheduleBooking = async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { bookingId } = req.params;
       const { startTime, endTime, locationId, bayId, adjustPrice } = req.body;
-      const employeeProfile = (req as any).employeeProfile;
+      const employeeProfile = req.employeeProfile;
 
       if (!employeeProfile) {
         return res.status(403).json({ error: 'Employee authentication required' });
+      }
+
+      const bookingLocationId = await this.bookingService.getBookingLocationId(bookingId);
+      if (!bookingLocationId) return res.status(404).json({ error: 'Booking not found' });
+      if (bookingLocationId !== employeeProfile.location_id) {
+        return res.status(403).json({ error: 'Access denied: booking belongs to a different location' });
       }
 
       if (!startTime || !endTime || !locationId || !bayId) {
@@ -339,8 +383,12 @@ export class BookingController {
       );
       res.json(result);
 
-      if (result.locationId && result.bayId) {
-        this.socketService.triggerBookingUpdate(result.locationId, result.bayId, bookingId);
+      try {
+        if (result.locationId && result.bayId) {
+          this.socketService.triggerBookingUpdate(result.locationId, result.bayId, bookingId);
+        }
+      } catch (socketErr) {
+        logger.error({ err: socketErr, bookingId }, 'Socket update failed (non-fatal)');
       }
     } catch (error: any) {
       logger.error({ err: error, bookingId: req.params.bookingId }, 'Error in employee reschedule booking');
@@ -358,9 +406,9 @@ export class BookingController {
   };
 
   // Employee create booking - bypasses Stripe payment
-  employeeCreateBooking = async (req: Request, res: Response) => {
+  employeeCreateBooking = async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const employeeProfile = (req as any).employeeProfile;
+      const employeeProfile = req.employeeProfile;
 
       if (!employeeProfile) {
         return res.status(403).json({ error: 'Employee authentication required' });
@@ -370,12 +418,16 @@ export class BookingController {
       res.status(201).json(result);
 
       // Trigger socket update for real-time booking changes
-      if (result.locationId && result.bayId) {
-        this.socketService.triggerBookingUpdate(result.locationId, result.bayId, result.bookingId);
+      try {
+        if (result.locationId && result.bayId) {
+          this.socketService.triggerBookingUpdate(result.locationId, result.bayId, result.bookingId);
+        }
+      } catch (socketErr) {
+        logger.error({ err: socketErr, bookingId: result.bookingId }, 'Socket update failed (non-fatal)');
       }
     } catch (error: any) {
       logger.error({ err: error }, 'Error in employee create booking');
-      res.status(400).json({ error: error.message || 'Failed to create booking' });
+      res.status(400).json({ error: sanitizeError(error) });
     }
   };
 } 

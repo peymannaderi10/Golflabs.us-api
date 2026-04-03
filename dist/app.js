@@ -15,6 +15,7 @@ var _a;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.httpServer = exports.app = void 0;
 const express_1 = __importDefault(require("express"));
+const compression_1 = __importDefault(require("compression"));
 const cors_1 = __importDefault(require("cors"));
 const helmet_1 = __importDefault(require("helmet"));
 const express_rate_limit_1 = __importDefault(require("express-rate-limit"));
@@ -101,6 +102,8 @@ const webhookRateLimit = (0, express_rate_limit_1.default)({
 // Webhook endpoints need raw body - must be before express.json()
 exports.app.post('/stripe-webhook', webhookRateLimit, express_1.default.raw({ type: 'application/json' }), (req, res) => (0, stripe_webhooks_1.handleStripeWebhook)(req, res, socketService));
 exports.app.post('/resend-webhook', express_1.default.raw({ type: 'application/json' }), email_webhooks_1.handleResendWebhook);
+// Compress responses for all other routes
+exports.app.use((0, compression_1.default)());
 // Use json parser for all other routes
 exports.app.use(express_1.default.json());
 const globalRateLimit = (0, express_rate_limit_1.default)({
@@ -152,7 +155,7 @@ exports.app.post('/validate-phone', (req, res) => __awaiter(void 0, void 0, void
         // Add US country code (1) if not already present
         const phoneWithCountryCode = cleanedPhone.startsWith('1') ? cleanedPhone : `1${cleanedPhone}`;
         // Call NumVerify API
-        const numverifyUrl = `http://apilayer.net/api/validate?access_key=${numverifyApiKey}&number=${phoneWithCountryCode}`;
+        const numverifyUrl = `https://apilayer.net/api/validate?access_key=${numverifyApiKey}&number=${phoneWithCountryCode}`;
         const response = yield fetch(numverifyUrl);
         const data = yield response.json();
         logger_1.logger.info({
