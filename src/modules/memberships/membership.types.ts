@@ -1,3 +1,5 @@
+import type { DoorLockType } from '../locations/location.service';
+
 export interface MembershipBenefits {
   discountType?: 'fixed' | 'percentage' | null;
   discountValue?: number;
@@ -69,7 +71,13 @@ export interface SubscribeBody {
 
 export interface LocationMembershipSettings {
   membershipsEnabled: boolean;
+  leaguesEnabled: boolean;
+  marketingEnabled: boolean;
+  promotionsEnabled: boolean;
+  doorLockType: DoorLockType;
   defaultBookingWindowDays: number;
   defaultBookingHours: { start: string; end: string } | null;
   bookingBufferMinutes: number;
+  bookingGracePeriodBeforeMinutes: number;
+  bookingGracePeriodAfterMinutes: number;
 }

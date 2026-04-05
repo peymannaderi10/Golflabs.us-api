@@ -112,9 +112,9 @@ export class EmployeeController {
 
     /**
      * GET /employee/reports/bays
-     * Bay performance statistics
+     * Space performance statistics
      */
-    async getBayStats(req: Request, res: Response) {
+    async getSpaceStats(req: Request, res: Response) {
         try {
             const validation = validateQueryParams(req.query);
             if (!validation.valid) {
@@ -122,11 +122,11 @@ export class EmployeeController {
             }
 
             const { locationId, startDate, endDate } = validation.params!;
-            const data = await employeeService.getBayStats(locationId, startDate, endDate);
+            const data = await employeeService.getSpaceStats(locationId, startDate, endDate);
 
             return res.json(createResponse(data, validation.params!));
         } catch (error: any) {
-            logger.error({ err: error }, 'Error in getBayStats');
+            logger.error({ err: error }, 'Error in getSpaceStats');
             return res.status(500).json({ success: false, error: sanitizeError(error) });
         }
     }
@@ -164,10 +164,10 @@ export class EmployeeController {
             }
 
             const { locationId, startDate, endDate } = validation.params!;
-            const type = req.query.type as 'revenue' | 'bays';
+            const type = req.query.type as 'revenue' | 'spaces';
 
-            if (!type || !['revenue', 'bays'].includes(type)) {
-                return res.status(400).json({ success: false, error: 'Invalid export type. Must be "revenue" or "bays"' });
+            if (!type || !['revenue', 'spaces'].includes(type)) {
+                return res.status(400).json({ success: false, error: 'Invalid export type. Must be "revenue" or "spaces"' });
             }
 
             const csv = await employeeService.exportCSV(locationId, startDate, endDate, type);

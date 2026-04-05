@@ -28,7 +28,7 @@ export const createLeagueRoutes = (socketService: SocketService): Router => {
     body('numHoles').optional().isInt({ min: 1, max: 18 }).withMessage('numHoles must be 1-18'),
     body('maxPlayers').optional().isInt({ min: 2, max: 200 }).withMessage('maxPlayers must be 2-200'),
     body('seasonFee').optional().isFloat({ min: 0, max: 10000 }).withMessage('seasonFee must be 0-10000'),
-    body('playersPerBay').optional().isInt({ min: 1, max: 8 }).withMessage('playersPerBay must be 1-8'),
+    body('playersPerSpace').optional().isInt({ min: 1, max: 8 }).withMessage('playersPerSpace must be 1-8'),
     handleValidationErrors,
   ], controller.createLeague);
   router.get('/', controller.getLeaguesByLocation);                                 // ?locationId=
@@ -48,6 +48,10 @@ export const createLeagueRoutes = (socketService: SocketService): Router => {
     param('leagueId').isUUID().withMessage('leagueId must be a valid UUID'),
     handleValidationErrors,
   ], controller.deleteLeague);
+  router.get('/:leagueId/check-conflicts', authenticateEmployee, validateLeagueAccess, [
+    param('leagueId').isUUID().withMessage('leagueId must be a valid UUID'),
+    handleValidationErrors,
+  ], controller.checkConflicts);
   router.post('/:leagueId/activate', authenticateEmployee, validateLeagueAccess, [
     param('leagueId').isUUID().withMessage('leagueId must be a valid UUID'),
     handleValidationErrors,

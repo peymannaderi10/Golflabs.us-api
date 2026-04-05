@@ -1,6 +1,14 @@
 import crypto from 'crypto';
 
-const UNLOCK_TOKEN_SECRET = process.env.STRIPE_WEBHOOK_SECRET || 'unlock-token-fallback-secret';
+function getUnlockTokenSecret(): string {
+  const secret = process.env.UNLOCK_TOKEN_SECRET;
+  if (!secret) {
+    throw new Error('UNLOCK_TOKEN_SECRET environment variable is required');
+  }
+  return secret;
+}
+
+const UNLOCK_TOKEN_SECRET: string = getUnlockTokenSecret();
 
 interface UnlockTokenPayload {
   bookingId: string;

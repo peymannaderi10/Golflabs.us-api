@@ -25,7 +25,7 @@ export class UserService {
       //    and the kiosk gets notified
       const { data: activeBookings } = await supabase
         .from('bookings')
-        .select('id, location_id, bay_id, status')
+        .select('id, location_id, space_id, status')
         .eq('user_id', userId)
         .in('status', ['confirmed', 'reserved']);
 
@@ -65,12 +65,12 @@ export class UserService {
 
         logger.info({ userId, cancelledCount: bookingIds.length }, 'Cancelled active bookings for deleted account');
 
-        // Notify kiosks so bay screens update
+        // Notify kiosks so space screens update
         if (socketService) {
           for (const booking of activeBookings) {
-            if (booking.location_id && booking.bay_id) {
+            if (booking.location_id && booking.space_id) {
               try {
-                socketService.triggerBookingUpdate(booking.location_id, booking.bay_id, booking.id);
+                socketService.triggerBookingUpdate(booking.location_id, booking.space_id, booking.id);
               } catch (socketErr) {
                 logger.error({ err: socketErr, bookingId: booking.id }, 'Error notifying kiosk of cancelled booking');
               }
@@ -138,7 +138,7 @@ export class UserService {
 
     const [profile, bookings, payments, agreements, marketingPrefs, accessLogs] = await Promise.all([
       supabase.from('user_profiles').select('id, email, full_name, phone, created_at').eq('id', userId).single(),
-      supabase.from('bookings').select('id, location_id, bay_id, start_time, end_time, total_amount, status, party_size, created_at').eq('user_id', userId),
+      supabase.from('bookings').select('id, location_id, space_id, start_time, end_time, total_amount, status, party_size, created_at').eq('user_id', userId),
       supabase.from('payments').select('id, amount, status, created_at').eq('user_id', userId),
       supabase.from('user_agreements').select('agreement_type, accepted_at').eq('user_id', userId),
       supabase.from('marketing_preferences').select('email_opted_in, email_opted_out, email_opted_in_at, email_opted_out_at').eq('user_id', userId),

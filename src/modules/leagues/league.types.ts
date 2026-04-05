@@ -30,16 +30,16 @@ export interface League {
   prize_pool_config: PrizePoolConfig | null;
   players_per_team: number;
   team_scoring_format: TeamScoringFormat;
-  capacity_hold_type: 'all_bays' | 'num_bays' | 'pct_capacity';
+  capacity_hold_type: 'all_spaces' | 'num_spaces' | 'pct_capacity';
   capacity_hold_value: number;
-  league_bay_ids: string[];
+  league_space_ids: string[];
   buffer_before_mins: number;
   buffer_after_mins: number;
   attendance_required: boolean;
   attendance_auto_adjust: boolean;
   attendance_reminder_hours: number;
   attendance_cutoff_hours: number;
-  players_per_bay: number;
+  players_per_space: number;
   team_min_attendance: number | null;
   members_only: boolean;
   status: 'draft' | 'registration' | 'active' | 'completed' | 'cancelled';
@@ -150,7 +150,7 @@ export interface LeaguePlayer {
   user_id: string;
   display_name: string;
   current_handicap: number;
-  bay_assignment: string | null;
+  space_assignment: string | null;
   enrollment_status: 'pending' | 'active' | 'withdrawn';
   season_paid: boolean;
   prize_pot_paid: boolean;
@@ -179,7 +179,7 @@ export interface LeagueScore {
   hole_number: number;
   strokes: number;
   entered_via: 'kiosk' | 'employee' | 'player_app';
-  bay_id: string | null;
+  space_id: string | null;
   score_status: 'submitted' | 'confirmed' | 'overridden';
   confirmed_at: string | null;
   confirmed_by: string | null;
@@ -292,9 +292,9 @@ export interface CreateLeagueRequest {
   playersPerTeam?: number;
   teamScoringFormat?: TeamScoringFormat;
   // Capacity hold fields
-  capacityHoldType?: 'all_bays' | 'num_bays' | 'pct_capacity';
+  capacityHoldType?: 'all_spaces' | 'num_spaces' | 'pct_capacity';
   capacityHoldValue?: number;
-  leagueBayIds?: string[];
+  leagueSpaceIds?: string[];
   bufferBeforeMins?: number;
   bufferAfterMins?: number;
   // Attendance confirmation fields
@@ -302,7 +302,7 @@ export interface CreateLeagueRequest {
   attendanceAutoAdjust?: boolean;
   attendanceReminderHours?: number;
   attendanceCutoffHours?: number;
-  playersPerBay?: number;
+  playersPerSpace?: number;
   teamMinAttendance?: number | null;
 }
 
@@ -322,9 +322,9 @@ export interface UpdateLeagueRequest {
   playersPerTeam?: number;
   teamScoringFormat?: TeamScoringFormat;
   // Capacity hold fields
-  capacityHoldType?: 'all_bays' | 'num_bays' | 'pct_capacity';
+  capacityHoldType?: 'all_spaces' | 'num_spaces' | 'pct_capacity';
   capacityHoldValue?: number;
-  leagueBayIds?: string[];
+  leagueSpaceIds?: string[];
   bufferBeforeMins?: number;
   bufferAfterMins?: number;
   // Attendance confirmation fields
@@ -332,7 +332,7 @@ export interface UpdateLeagueRequest {
   attendanceAutoAdjust?: boolean;
   attendanceReminderHours?: number;
   attendanceCutoffHours?: number;
-  playersPerBay?: number;
+  playersPerSpace?: number;
   teamMinAttendance?: number | null;
 }
 
@@ -375,7 +375,7 @@ export interface SubmitScoreRequest {
   leaguePlayerId: string;
   holeNumber: number;
   strokes: number;
-  bayId?: string;
+  spaceId?: string;
   enteredVia?: 'kiosk' | 'employee' | 'player_app';
 }
 
@@ -509,6 +509,6 @@ export interface AttendanceSummary {
   confirmed: number;
   declined: number;
   noResponse: number;
-  baysNeeded: number;
+  spacesNeeded: number;
   locked: boolean;
 }

@@ -34,7 +34,7 @@ export class BookingService {
     const {
       locationId,
       userId,
-      bayId,
+      spaceId,
       date,
       startTime,
       endTime,
@@ -43,7 +43,7 @@ export class BookingService {
     } = bookingData;
 
     // Basic validation
-    if (!locationId || !userId || !bayId || !date || !startTime || !endTime || !partySize || totalAmount == null) {
+    if (!locationId || !userId || !spaceId || !date || !startTime || !endTime || !partySize || totalAmount == null) {
       throw new Error('Missing required booking details');
     }
 
@@ -129,16 +129,25 @@ export class BookingService {
     const start24 = `${String(startTimeParsed.hours).padStart(2, '0')}:${String(startTimeParsed.minutes).padStart(2, '0')}`;
     const end24 = `${String(endTimeParsed.hours).padStart(2, '0')}:${String(endTimeParsed.minutes).padStart(2, '0')}`;
 
-    // Get total bays at this location for capacity calculations
-    const { data: baysData } = await supabase
-      .from('bays')
+    // Get total spaces at this location for capacity calculations
+    const { data: spacesData } = await supabase
+      .from('spaces')
       .select('id')
       .eq('location_id', locationId)
       .neq('status', 'closed');
-    const totalBays = baysData?.length || 0;
+    const totalSpaces = spacesData?.length || 0;
+
+    // Count existing non-league bookings in this window for capacity hold enforcement
+    const { count: existingBookingsInWindow } = await supabase
+      .from('bookings')
+      .select('id', { count: 'exact', head: true })
+      .eq('location_id', locationId)
+      .in('status', ['confirmed', 'reserved'])
+      .lt('start_time', p_end_time)
+      .gt('end_time', p_start_time);
 
     const holdConflict = await this.capacityHoldService.checkHoldConflict(
-      locationId, date, start24, end24, totalBays
+      locationId, date, start24, end24, totalSpaces, existingBookingsInWindow ?? 0
     );
     if (holdConflict) {
       const leagueName = holdConflict.league_name || 'League Night';
@@ -155,33 +164,30 @@ export class BookingService {
     const { data, error } = await supabase.rpc('create_booking_and_payment_record', {
       p_location_id: locationId,
       p_user_id: userId,
-      p_bay_id: bayId,
+      p_space_id: spaceId,
       p_start_time: p_start_time,
       p_end_time: p_end_time,
       p_party_size: partySize,
       p_total_amount: totalAmount,
       p_payment_intent_id: tempPaymentIntentId,
       p_user_agent: 'API',
-      p_ip_address: '0.0.0.0'
+      p_ip_address: '0.0.0.0',
     });
 
     if (error) {
       logger.error({ err: error }, 'Error calling create_booking_and_payment_record function');
-      // Handle common database errors
-      if (error.message?.includes('duplicate key') || error.message?.includes('already exists')) {
-        throw new Error('This time slot is no longer available.');
-      }
-      if (error.message?.includes('Time slot is already booked')) {
+      if (error.message?.includes('duplicate key') || error.message?.includes('already exists') || error.message?.includes('Time slot is already booked')) {
         throw new Error('This time slot is no longer available.');
       }
       throw error;
     }
 
+    // Function returns JSONB with { booking_id }
     if (!data?.booking_id) {
       throw new Error('Failed to create booking - no booking ID returned');
     }
 
-    logger.info({ bookingId: data.booking_id, bayId, p_start_time, p_end_time }, 'Created new booking');
+    logger.info({ bookingId: data.booking_id, spaceId, p_start_time, p_end_time }, 'Created new booking');
 
     // Update the booking to have reserved status and set expiration
     const { error: updateError } = await supabase
@@ -243,7 +249,7 @@ export class BookingService {
     // end_time falls on this date (cross-midnight bookings from extensions)
     let query = supabase
       .from('bookings')
-      .select('id, bay_id, user_id, start_time, end_time, status, expires_at')
+      .select('id, space_id, user_id, start_time, end_time, status, expires_at')
       .eq('location_id', locationId)
       .lt('start_time', endOfDayPlusOneMinute)
       .gt('end_time', startOfDayUTC)
@@ -319,7 +325,7 @@ export class BookingService {
         // Booking extends to or past midnight — use "11:59 PM" (grid end marker)
         return {
           id: booking.id,
-          bayId: booking.bay_id,
+          spaceId: booking.space_id,
           userId: booking.user_id,
           startTime: minutesToTimeStr(startMin),
           endTime: '11:59 PM',
@@ -336,7 +342,7 @@ export class BookingService {
 
       return {
         id: booking.id,
-        bayId: booking.bay_id,
+        spaceId: booking.space_id,
         userId: booking.user_id,
         startTime: minutesToTimeStr(startMin),
         endTime: endMin >= 1440 ? '11:59 PM' : minutesToTimeStr(endMin),
@@ -357,7 +363,7 @@ export class BookingService {
 
     const { data, error } = await supabase
       .from('bookings')
-      .select('id, start_time, end_time, total_amount, status, expires_at, bay_id, location_id, bays (name, bay_number)')
+      .select('id, start_time, end_time, total_amount, status, expires_at, space_id, location_id, spaces (name, space_number)')
       .eq('user_id', userId)
       .eq('status', 'reserved')
       .gt('expires_at', now)
@@ -381,10 +387,10 @@ export class BookingService {
       totalAmount: reservation.total_amount,
       status: reservation.status,
       expiresAt: reservation.expires_at,
-      bayId: reservation.bay_id,
+      spaceId: reservation.space_id,
       locationId: reservation.location_id,
-      bayName: (reservation.bays as any)?.name || 'N/A',
-      bayNumber: (reservation.bays as any)?.bay_number || 'N/A'
+      spaceName: (reservation.spaces as any)?.name || 'N/A',
+      spaceNumber: (reservation.spaces as any)?.space_number || 'N/A'
     };
 
     return { reservation: formattedReservation };
@@ -399,7 +405,7 @@ export class BookingService {
 
     const { data, error } = await supabase
       .from('bookings')
-      .select('id, start_time, end_time, total_amount, status, bays (name, bay_number)')
+      .select('id, start_time, end_time, total_amount, status, spaces (name, space_number)')
       .eq('user_id', userId)
       .gte('end_time', now)
       .not('status', 'in', '("reserved","expired","abandoned","cancelled")')
@@ -416,8 +422,8 @@ export class BookingService {
       endTime: booking.end_time,
       totalAmount: booking.total_amount,
       status: booking.status,
-      bayName: booking.bays?.name || 'N/A',
-      bayNumber: booking.bays?.bay_number || 'N/A'
+      spaceName: booking.spaces?.name || 'N/A',
+      spaceNumber: booking.spaces?.space_number || 'N/A'
     }));
 
     return formattedBookings;
@@ -437,7 +443,7 @@ export class BookingService {
     // Include bookings that have ended OR that were cancelled (even if their end_time is in the future)
     const { data, error, count } = await supabase
       .from('bookings')
-      .select('id, start_time, end_time, total_amount, status, bays (name, bay_number)', { count: 'exact' })
+      .select('id, start_time, end_time, total_amount, status, spaces (name, space_number)', { count: 'exact' })
       .eq('user_id', userId)
       .not('status', 'in', '("abandoned","reserved","expired")')
       .or(`end_time.lt.${now},status.eq.cancelled`)
@@ -455,8 +461,8 @@ export class BookingService {
       endTime: booking.end_time,
       totalAmount: booking.total_amount,
       status: booking.status,
-      bayName: booking.bays?.name || 'N/A',
-      bayNumber: booking.bays?.bay_number || 'N/A'
+      spaceName: booking.spaces?.name || 'N/A',
+      spaceNumber: booking.spaces?.space_number || 'N/A'
     }));
 
     return { data: formattedBookings, total: count || 0, page, pageSize: cappedPageSize };
@@ -527,8 +533,8 @@ export class BookingService {
   // DELEGATED METHODS — Employee Operations
   // =====================================================
 
-  async getAllBookingsForEmployee(locationId: string, startDate?: string, endDate?: string, bayId?: string, customerEmail?: string) {
-    return this.employeeService.getAllBookingsForEmployee(locationId, startDate, endDate, bayId, customerEmail);
+  async getAllBookingsForEmployee(locationId: string, startDate?: string, endDate?: string, spaceId?: string, customerEmail?: string) {
+    return this.employeeService.getAllBookingsForEmployee(locationId, startDate, endDate, spaceId, customerEmail);
   }
 
   async searchCustomersByEmail(email: string) {
@@ -544,11 +550,11 @@ export class BookingService {
     newStartTime: string,
     newEndTime: string,
     locationId: string,
-    bayId: string,
+    spaceId: string,
     employeeId: string,
     adjustPrice: boolean = false
   ) {
-    return this.employeeService.employeeRescheduleBooking(bookingId, newStartTime, newEndTime, locationId, bayId, employeeId, adjustPrice);
+    return this.employeeService.employeeRescheduleBooking(bookingId, newStartTime, newEndTime, locationId, spaceId, employeeId, adjustPrice);
   }
 
   // =====================================================
@@ -559,18 +565,18 @@ export class BookingService {
     return this.extensionService.getExtensionOptions(bookingId, requestedOptions);
   }
 
-  async extendBooking(bookingId: string, extensionMinutes: number, locationId: string, bayId: string, useFreeMinutes = false) {
-    return this.extensionService.extendBooking(bookingId, extensionMinutes, locationId, bayId, useFreeMinutes);
+  async extendBooking(bookingId: string, extensionMinutes: number, locationId: string, spaceId: string, useFreeMinutes = false) {
+    return this.extensionService.extendBooking(bookingId, extensionMinutes, locationId, spaceId, useFreeMinutes);
   }
 
   async employeeExtendBooking(
     bookingId: string,
     extensionMinutes: number,
     locationId: string,
-    bayId: string,
+    spaceId: string,
     employeeId: string,
     skipPayment: boolean = false
   ) {
-    return this.extensionService.employeeExtendBooking(bookingId, extensionMinutes, locationId, bayId, employeeId, skipPayment);
+    return this.extensionService.employeeExtendBooking(bookingId, extensionMinutes, locationId, spaceId, employeeId, skipPayment);
   }
 }

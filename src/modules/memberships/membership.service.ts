@@ -4,6 +4,7 @@ import Stripe from 'stripe';
 import { EmailService } from '../email/email.service';
 import { MembershipEmailData } from '../email/email.types';
 import { logger } from '../../shared/utils/logger';
+import { LocationService, type DoorLockType } from '../locations/location.service';
 import {
   CreatePlanBody,
   UpdatePlanBody,
@@ -691,26 +692,30 @@ export class MembershipService {
   // LOCATION SETTINGS HELPERS
   // =====================================================
 
-  async getLocationMembershipSettings(locationId: string): Promise<LocationMembershipSettings & { leaguesEnabled: boolean; marketingEnabled: boolean }> {
+  async getLocationMembershipSettings(locationId: string): Promise<LocationMembershipSettings> {
     const { data, error } = await supabase
       .from('location_settings')
-      .select('memberships_enabled, leagues_enabled, marketing_enabled, default_booking_window_days, default_booking_hours_start, default_booking_hours_end, booking_buffer_minutes')
+      .select('memberships_enabled, leagues_enabled, marketing_enabled, promotions_enabled, door_lock_type, default_booking_window_days, default_booking_hours_start, default_booking_hours_end, booking_buffer_minutes, booking_grace_period_before_minutes, booking_grace_period_after_minutes')
       .eq('location_id', locationId)
       .single();
 
     if (error || !data) {
-      return { membershipsEnabled: false, leaguesEnabled: true, marketingEnabled: false, defaultBookingWindowDays: 7, defaultBookingHours: null, bookingBufferMinutes: 0 };
+      return { membershipsEnabled: false, leaguesEnabled: true, marketingEnabled: false, promotionsEnabled: false, doorLockType: 'shelly', defaultBookingWindowDays: 7, defaultBookingHours: null, bookingBufferMinutes: 0, bookingGracePeriodBeforeMinutes: 0, bookingGracePeriodAfterMinutes: 0 };
     }
 
     return {
       membershipsEnabled: data.memberships_enabled,
       leaguesEnabled: data.leagues_enabled,
       marketingEnabled: data.marketing_enabled ?? false,
+      promotionsEnabled: data.promotions_enabled ?? false,
+      doorLockType: data.door_lock_type ?? 'shelly',
       defaultBookingWindowDays: data.default_booking_window_days,
       defaultBookingHours: data.default_booking_hours_start && data.default_booking_hours_end
         ? { start: data.default_booking_hours_start, end: data.default_booking_hours_end }
         : null,
       bookingBufferMinutes: data.booking_buffer_minutes ?? 0,
+      bookingGracePeriodBeforeMinutes: data.booking_grace_period_before_minutes ?? 0,
+      bookingGracePeriodAfterMinutes: data.booking_grace_period_after_minutes ?? 0,
     };
   }
 
@@ -718,14 +723,25 @@ export class MembershipService {
     membershipsEnabled?: boolean;
     leaguesEnabled?: boolean;
     marketingEnabled?: boolean;
+    promotionsEnabled?: boolean;
+    doorLockType?: DoorLockType;
     defaultBookingWindowDays?: number;
     defaultBookingHours?: { start: string; end: string } | null;
     bookingBufferMinutes?: number;
+    bookingGracePeriodBeforeMinutes?: number;
+    bookingGracePeriodAfterMinutes?: number;
   }): Promise<void> {
     const updateFields: any = {};
     if (updates.membershipsEnabled !== undefined) updateFields.memberships_enabled = updates.membershipsEnabled;
     if (updates.leaguesEnabled !== undefined) updateFields.leagues_enabled = updates.leaguesEnabled;
     if (updates.marketingEnabled !== undefined) updateFields.marketing_enabled = updates.marketingEnabled;
+    if (updates.promotionsEnabled !== undefined) updateFields.promotions_enabled = updates.promotionsEnabled;
+    if (updates.doorLockType !== undefined) {
+      if (!LocationService.isValidDoorLockType(updates.doorLockType)) {
+        throw new Error('Invalid door lock type');
+      }
+      updateFields.door_lock_type = updates.doorLockType;
+    }
     if (updates.defaultBookingWindowDays !== undefined) updateFields.default_booking_window_days = updates.defaultBookingWindowDays;
     if (updates.defaultBookingHours !== undefined) {
       updateFields.default_booking_hours_start = updates.defaultBookingHours?.start ?? null;
@@ -736,6 +752,30 @@ export class MembershipService {
         throw new Error('Buffer must be 0, 15, 30, 45, or 60 minutes');
       }
       updateFields.booking_buffer_minutes = updates.bookingBufferMinutes;
+    }
+    if (updates.bookingGracePeriodBeforeMinutes !== undefined || updates.bookingGracePeriodAfterMinutes !== undefined) {
+      // Fetch current settings for any fields not in this update payload
+      let bufferMins = updates.bookingBufferMinutes ?? updateFields.booking_buffer_minutes;
+      let currentBefore = 0;
+      let currentAfter = 0;
+      if (bufferMins === undefined || updates.bookingGracePeriodBeforeMinutes === undefined || updates.bookingGracePeriodAfterMinutes === undefined) {
+        const { data: current } = await supabase
+          .from('location_settings')
+          .select('booking_buffer_minutes, booking_grace_period_before_minutes, booking_grace_period_after_minutes')
+          .eq('location_id', locationId)
+          .single();
+        if (bufferMins === undefined) bufferMins = current?.booking_buffer_minutes ?? 0;
+        currentBefore = current?.booking_grace_period_before_minutes ?? 0;
+        currentAfter = current?.booking_grace_period_after_minutes ?? 0;
+      }
+      const before = updates.bookingGracePeriodBeforeMinutes ?? currentBefore;
+      const after = updates.bookingGracePeriodAfterMinutes ?? currentAfter;
+      if (before < 0 || after < 0) throw new Error('Grace period cannot be negative');
+      if (before + after > bufferMins) {
+        throw new Error(`Total grace period (${before} + ${after} = ${before + after}) cannot exceed the buffer (${bufferMins} min)`);
+      }
+      if (updates.bookingGracePeriodBeforeMinutes !== undefined) updateFields.booking_grace_period_before_minutes = before;
+      if (updates.bookingGracePeriodAfterMinutes !== undefined) updateFields.booking_grace_period_after_minutes = after;
     }
 
     const { error } = await supabase

@@ -4,6 +4,7 @@ import { supabase } from '../../config/database';
 import { verifyUnlockToken } from '../../shared/utils/token.utils';
 import { sanitizeError } from '../../shared/utils/error.utils';
 import { logger } from '../../shared/utils/logger';
+import { LocationService } from '../locations/location.service';
 
 export class UnlockController {
   private socketService: SocketService;
@@ -13,7 +14,7 @@ export class UnlockController {
   }
 
   /**
-   * Employee unlock - tries each bay at a location until one responds successfully
+   * Employee unlock - tries each space at a location until one responds successfully
    */
   employeeUnlock = async (req: Request, res: Response) => {
     try {
@@ -23,21 +24,26 @@ export class UnlockController {
         return res.status(400).json({ error: 'locationId is required' });
       }
 
-      // Get all available bays for the location
-      const { data: bays, error: baysError } = await supabase
-        .from('bays')
-        .select('id, name, bay_number, status')
-        .eq('location_id', locationId)
-        .eq('status', 'available')
-        .order('bay_number', { ascending: true });
-
-      if (baysError) {
-        logger.error({ err: baysError }, 'Error fetching bays');
-        return res.status(500).json({ error: 'Failed to fetch bays' });
+      const doorLockType = await LocationService.getDoorLockType(locationId);
+      if (doorLockType === 'none') {
+        return res.status(400).json({ error: 'This location does not have an automated door lock.' });
       }
 
-      if (!bays || bays.length === 0) {
-        return res.status(404).json({ error: 'No available bays found for this location' });
+      // Get all available spaces for the location
+      const { data: spaces, error: spacesError } = await supabase
+        .from('spaces')
+        .select('id, name, space_number, status')
+        .eq('location_id', locationId)
+        .eq('status', 'available')
+        .order('space_number', { ascending: true });
+
+      if (spacesError) {
+        logger.error({ err: spacesError }, 'Error fetching spaces');
+        return res.status(500).json({ error: 'Failed to fetch spaces' });
+      }
+
+      if (!spaces || spaces.length === 0) {
+        return res.status(404).json({ error: 'No available spaces found for this location' });
       }
 
       // Extract IP address and user agent for logging
@@ -45,13 +51,13 @@ export class UnlockController {
       const userAgent = req.get('User-Agent') || 'Unknown';
       const employeeId = (req as any).user?.id || 'unknown';
 
-      // Try each bay until one successfully responds
-      for (const bay of bays) {
-        logger.info({ bayName: bay.name, bayId: bay.id }, 'Attempting employee unlock on bay');
-        
+      // Try each space until one successfully responds
+      for (const space of spaces) {
+        logger.info({ spaceName: space.name, spaceId: space.id }, 'Attempting employee unlock on space');
+
         const unlockSuccessful = await this.socketService.sendUnlockCommand(
           locationId,
-          bay.id,
+          space.id,
           5, // 5 seconds unlock duration
           `employee-unlock` // Not a real booking -- access log is created separately with booking_id: null
         );
@@ -60,7 +66,7 @@ export class UnlockController {
           // Log the successful unlock
           await supabase.from('access_logs').insert({
             location_id: locationId,
-            bay_id: bay.id,
+            space_id: space.id,
             booking_id: null,
             user_id: employeeId,
             action: 'employee_door_unlock',
@@ -69,22 +75,22 @@ export class UnlockController {
             user_agent: userAgent,
             unlock_method: 'employee_dashboard',
             metadata: {
-              bay_name: bay.name,
-              bay_number: bay.bay_number
+              space_name: space.name,
+              space_number: space.space_number
             }
           });
 
-          logger.info({ bayName: bay.name }, 'Employee unlock successful on bay');
+          logger.info({ spaceName: space.name }, 'Employee unlock successful on space');
           return res.json({
             success: true,
-            message: `Door unlocked successfully via ${bay.name}`,
-            bayId: bay.id,
-            bayName: bay.name
+            message: `Door unlocked successfully via ${space.name}`,
+            spaceId: space.id,
+            spaceName: space.name
           });
         }
       }
 
-      // If no bay responded successfully
+      // If no space responded successfully
       logger.error({ locationId }, 'Employee unlock failed - no kiosk responded');
       return res.status(503).json({
         success: false,
@@ -119,7 +125,7 @@ export class UnlockController {
       // Verify booking exists and is confirmed
       const { data: booking, error: bookingError } = await supabase
         .from('bookings')
-        .select('id, status, bay_id, location_id, user_id, start_time, end_time')
+        .select('id, status, space_id, location_id, user_id, start_time, end_time')
         .eq('id', bookingId)
         .single();
 
@@ -131,6 +137,11 @@ export class UnlockController {
       if (booking.status !== 'confirmed') {
         logger.info({ bookingId, status: booking.status }, 'Booking has invalid status for unlock');
         return res.status(403).json({ error: 'Booking is not confirmed' });
+      }
+
+      const doorLockType = await LocationService.getDoorLockType(booking.location_id);
+      if (doorLockType === 'none') {
+        return res.status(400).json({ error: 'This location does not have an automated door lock.' });
       }
 
       // Check if booking is currently active (within the time window)
@@ -164,7 +175,7 @@ export class UnlockController {
         .from('access_logs')
         .insert({
           location_id: booking.location_id,
-          bay_id: booking.bay_id,
+          space_id: booking.space_id,
           booking_id: bookingId,
           user_id: booking.user_id,
           action: 'door_unlock_button_pressed',
@@ -188,7 +199,7 @@ export class UnlockController {
       // Send unlock command to kiosk via websocket
       const unlockSuccessful = await this.socketService.sendUnlockCommand(
         booking.location_id,
-        booking.bay_id,
+        booking.space_id,
         5, // 5 seconds unlock duration
         bookingId
       );
@@ -199,7 +210,7 @@ export class UnlockController {
         // Log the failure
         await supabase.from('access_logs').insert({
           location_id: booking.location_id,
-          bay_id: booking.bay_id,
+          space_id: booking.space_id,
           booking_id: bookingId,
           user_id: booking.user_id,
           action: 'door_unlock_failure',

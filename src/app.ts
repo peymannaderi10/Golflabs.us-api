@@ -11,7 +11,7 @@ import { createBookingRoutes } from './modules/bookings/booking.routes';
 import { paymentRoutes } from './modules/payments/payment.routes';
 import { pricingRoutes } from './modules/pricing/pricing.routes';
 import { locationRoutes } from './modules/locations/location.routes';
-import { createBayRoutes } from './modules/bays/bay.routes';
+import { createSpaceRoutes } from './modules/spaces/space.routes';
 import { logRoutes } from './modules/logs/log.routes';
 import { unlockRoutes } from './modules/unlock/unlock.routes';
 import { createUserRoutes } from './modules/user/user.routes';
@@ -19,6 +19,7 @@ import promotionRoutes from './modules/promotions/promotion.routes';
 import { employeeRoutes } from './modules/employee';
 import { createLeagueRoutes, createTeamInviteRoutes, createAttendanceRoutes } from './modules/leagues/league.routes';
 import agreementRoutes from './modules/agreements/agreement.routes';
+import documentRoutes from './modules/documents/document.routes';
 import { membershipRoutes } from './modules/memberships/membership.routes';
 import { marketingRoutes } from './modules/marketing/marketing.routes';
 import { marketingController } from './modules/marketing/marketing.controller';
@@ -95,7 +96,7 @@ const webhookRateLimit = rateLimit({
 
 // Webhook endpoints need raw body - must be before express.json()
 app.post('/stripe-webhook', webhookRateLimit, express.raw({ type: 'application/json' }), (req, res) => handleStripeWebhook(req, res, socketService));
-app.post('/resend-webhook', express.raw({ type: 'application/json' }), handleResendWebhook);
+app.post('/resend-webhook', webhookRateLimit, express.raw({ type: 'application/json' }), handleResendWebhook);
 
 // Compress responses for all other routes
 app.use(compression());
@@ -105,7 +106,7 @@ app.use(express.json());
 
 const globalRateLimit = rateLimit({
   windowMs: 1 * 60 * 1000,
-  max: 100,
+  max: process.env.NODE_ENV === 'production' ? 100 : 500,
   message: { error: 'Too many requests, please try again later' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -230,7 +231,7 @@ app.use('/bookings', createBookingRoutes(socketService));
 app.use('/', paymentRoutes); // Payment routes are at root level for backwards compatibility
 app.use('/', pricingRoutes); // Pricing routes are at root level for backwards compatibility
 app.use('/locations', locationRoutes);
-app.use('/bays', createBayRoutes(socketService));
+app.use('/spaces', createSpaceRoutes(socketService));
 app.use('/logs', logRoutes);
 app.use('/', unlockRoutes(socketService)); // Unlock routes at root level
 app.use('/', createUserRoutes(socketService)); // User routes at root level
@@ -240,6 +241,7 @@ app.use('/leagues', createLeagueRoutes(socketService)); // League ecosystem rout
 app.use('/team-invites', createTeamInviteRoutes(socketService)); // Team invite routes (token-based)
 app.use('/attendance', createAttendanceRoutes(socketService)); // Attendance confirmation routes (token-based)
 app.use('/agreements', agreementRoutes); // Legal agreement tracking routes
+app.use('/documents', documentRoutes); // Per-location legal document management
 app.use('/memberships', membershipRoutes); // Membership subscription routes
 app.use('/employee/marketing', marketingRoutes); // Marketing campaigns (employee-auth)
 app.get('/marketing/unsubscribe', (req, res) => marketingController.unsubscribe(req, res)); // Public unsubscribe

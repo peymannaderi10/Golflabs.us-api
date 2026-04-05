@@ -1,0 +1,207 @@
+import { Request, Response } from 'express';
+import { AuthenticatedRequest } from '../auth/auth.middleware';
+import { SpaceService } from './space.service';
+import { SocketService } from '../sockets/socket.service';
+import { sanitizeError } from '../../shared/utils/error.utils';
+
+export class SpaceController {
+  private spaceService: SpaceService;
+  private socketService: SocketService | null;
+
+  constructor(socketService?: SocketService) {
+    this.spaceService = new SpaceService();
+    this.socketService = socketService || null;
+  }
+
+  getSpaces = async (req: Request, res: Response) => {
+    try {
+      const locationId = req.query.locationId as string;
+      const spaces = await this.spaceService.getSpacesByLocationId(locationId);
+      res.status(200).json(spaces);
+    } catch (error: any) {
+      res.status(500).json({ error: sanitizeError(error) });
+    }
+  };
+
+  createSpace = async (req: Request, res: Response) => {
+    try {
+      const { locationId, name, spaceNumber, equipment } = req.body;
+
+      if (!locationId || !name || spaceNumber === undefined) {
+        return res.status(400).json({ message: 'locationId, name, and spaceNumber are required' });
+      }
+
+      const space = await this.spaceService.createSpace(locationId, name, spaceNumber, equipment);
+
+      // Broadcast to dashboards
+      if (this.socketService) {
+        this.socketService.broadcastSpaceCreated(locationId, space);
+      }
+
+      res.status(201).json(space);
+    } catch (error: any) {
+      res.status(500).json({ error: sanitizeError(error) });
+    }
+  };
+
+  deleteSpace = async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { spaceId } = req.params;
+
+      if (!spaceId) {
+        return res.status(400).json({ message: 'spaceId is required' });
+      }
+
+      const spaceLocationId = await this.spaceService.getSpaceLocationId(spaceId);
+      if (!spaceLocationId) return res.status(404).json({ message: 'Space not found' });
+      if (spaceLocationId !== req.employeeProfile?.location_id) {
+        return res.status(403).json({ message: 'Access denied: space belongs to a different location' });
+      }
+
+      const result = await this.spaceService.deleteSpace(spaceId);
+
+      // Broadcast to dashboards
+      if (this.socketService && result.locationId) {
+        this.socketService.broadcastSpaceDeleted(result.locationId, spaceId);
+      }
+
+      res.status(200).json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: sanitizeError(error) });
+    }
+  };
+
+  updateHeartbeat = async (req: Request, res: Response) => {
+    try {
+      const { spaceId } = req.params;
+      const kioskIp = req.ip;
+
+      const updatedSpace = await this.spaceService.updateSpaceHeartbeat(spaceId, kioskIp);
+
+      // Broadcast heartbeat to dashboards so they can update online status
+      if (this.socketService && updatedSpace.location_id) {
+        this.socketService.broadcastSpaceUpdate(updatedSpace.location_id, updatedSpace);
+      }
+
+      res.status(200).json(updatedSpace);
+    } catch (error: any) {
+      res.status(500).json({ error: sanitizeError(error) });
+    }
+  };
+
+  // Add: Update space status
+  updateSpaceStatus = async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { spaceId } = req.params;
+      const { status } = req.body as { status: 'available' | 'closed' };
+
+      if (!status) {
+        return res.status(400).json({ message: 'Status is required' });
+      }
+
+      const spaceLocationId = await this.spaceService.getSpaceLocationId(spaceId);
+      if (!spaceLocationId) return res.status(404).json({ message: 'Space not found' });
+      if (spaceLocationId !== req.employeeProfile?.location_id) {
+        return res.status(403).json({ message: 'Access denied: space belongs to a different location' });
+      }
+
+      const updatedSpace = await this.spaceService.updateSpaceStatus(spaceId, status);
+
+      // Broadcast to dashboards
+      if (this.socketService && updatedSpace.location_id) {
+        this.socketService.broadcastSpaceUpdate(updatedSpace.location_id, updatedSpace);
+      }
+
+      res.status(200).json(updatedSpace);
+    } catch (error: any) {
+      res.status(500).json({ error: sanitizeError(error) });
+    }
+  };
+
+  // =====================================================
+  // LEAGUE MODE
+  // =====================================================
+
+  activateLeagueMode = async (req: Request, res: Response) => {
+    try {
+      const { locationId, leagueId } = req.body;
+
+      if (!locationId || !leagueId) {
+        return res.status(400).json({ message: 'locationId and leagueId are required' });
+      }
+
+      const updatedSpaces = await this.spaceService.activateLeagueMode(locationId, leagueId);
+
+      // Broadcast to kiosks
+      if (this.socketService) {
+        this.socketService.broadcastToLocation(locationId, 'league_mode_changed', {
+          active: true,
+          leagueId,
+          locationId,
+        });
+      }
+
+      res.status(200).json({ message: 'League mode activated', spaces: updatedSpaces });
+    } catch (error: any) {
+      res.status(500).json({ error: sanitizeError(error) });
+    }
+  };
+
+  deactivateLeagueMode = async (req: Request, res: Response) => {
+    try {
+      const { locationId } = req.body;
+
+      if (!locationId) {
+        return res.status(400).json({ message: 'locationId is required' });
+      }
+
+      const updatedSpaces = await this.spaceService.deactivateLeagueMode(locationId);
+
+      // Broadcast to kiosks
+      if (this.socketService) {
+        this.socketService.broadcastToLocation(locationId, 'league_mode_changed', {
+          active: false,
+          leagueId: null,
+          locationId,
+        });
+      }
+
+      res.status(200).json({ message: 'League mode deactivated', spaces: updatedSpaces });
+    } catch (error: any) {
+      res.status(500).json({ error: sanitizeError(error) });
+    }
+  };
+
+  toggleSpaceLeagueMode = async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { spaceId } = req.params;
+      const { active, leagueId } = req.body;
+
+      if (active === undefined) {
+        return res.status(400).json({ message: 'active is required' });
+      }
+
+      const spaceLocationId = await this.spaceService.getSpaceLocationId(spaceId);
+      if (!spaceLocationId) return res.status(404).json({ message: 'Space not found' });
+      if (spaceLocationId !== req.employeeProfile?.location_id) {
+        return res.status(403).json({ message: 'Access denied: space belongs to a different location' });
+      }
+
+      const updatedSpace = await this.spaceService.toggleSpaceLeagueMode(spaceId, active, leagueId || null);
+
+      // Broadcast to the specific kiosk
+      if (this.socketService) {
+        this.socketService.broadcastToLocation(updatedSpace.location_id, 'league_mode_changed', {
+          active,
+          leagueId: active ? leagueId : null,
+          spaceId,
+          locationId: updatedSpace.location_id,
+        });
+      }
+
+      res.status(200).json(updatedSpace);
+    } catch (error: any) {
+      res.status(500).json({ error: sanitizeError(error) });
+    }
+  };
+}

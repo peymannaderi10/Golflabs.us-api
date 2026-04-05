@@ -116,10 +116,28 @@ export class LeagueController {
 
   activateLeague = async (req: Request, res: Response) => {
     try {
-      const league = await this.leagueService.activateLeague(req.params.leagueId);
-      res.json(league);
+      const result = await this.leagueService.activateLeague(req.params.leagueId);
+
+      if ('conflicts' in result) {
+        return res.status(409).json({
+          error: 'Cannot activate league — booking conflicts exist',
+          conflicts: result.conflicts,
+        });
+      }
+
+      res.json(result);
     } catch (error: any) {
       logger.error({ err: error }, 'Error activating league');
+      res.status(400).json({ error: error.message });
+    }
+  };
+
+  checkConflicts = async (req: Request, res: Response) => {
+    try {
+      const result = await this.leagueService.checkLeagueBookingConflicts(req.params.leagueId);
+      res.json(result);
+    } catch (error: any) {
+      logger.error({ err: error }, 'Error checking league booking conflicts');
       res.status(400).json({ error: error.message });
     }
   };
@@ -359,7 +377,7 @@ export class LeagueController {
     try {
       // Support both single score and batch: { entries: [{ leaguePlayerId, holeNumber, strokes }] }
       const entries = (req.body.entries
-        ? req.body.entries.map((e: any) => ({ ...e, leagueWeekId: req.body.leagueWeekId || e.leagueWeekId, bayId: req.body.bayId || e.bayId, enteredVia: req.body.enteredVia || e.enteredVia || 'kiosk' }))
+        ? req.body.entries.map((e: any) => ({ ...e, leagueWeekId: req.body.leagueWeekId || e.leagueWeekId, spaceId: req.body.spaceId || e.spaceId, enteredVia: req.body.enteredVia || e.enteredVia || 'kiosk' }))
         : [req.body]) as SubmitScoreRequest[];
 
       // Validate all entries upfront
@@ -885,11 +903,11 @@ export class LeagueController {
     try {
       const { leagueId, weekId } = req.params;
 
-      // Get players_per_bay from league
+      // Get players_per_space from league
       const league = await this.leagueService.getLeague(leagueId);
-      const playersPerBay = (league as any)?.players_per_bay || 2;
+      const playersPerSpace = (league as any)?.players_per_space || 2;
 
-      const summary = await this.attendanceService.getAttendanceSummary(weekId, playersPerBay);
+      const summary = await this.attendanceService.getAttendanceSummary(weekId, playersPerSpace);
       res.json(summary);
     } catch (error: any) {
       logger.error({ err: error }, 'Error fetching attendance summary');
@@ -1009,7 +1027,7 @@ export class LeagueController {
       }
 
       await this.capacityHoldService.suspendHold(weekHold.id);
-      res.json({ success: true, message: 'Week skipped — hold suspended and bays released.' });
+      res.json({ success: true, message: 'Week skipped — hold suspended and spaces released.' });
     } catch (error: any) {
       logger.error({ err: error }, 'Error skipping week');
       res.status(500).json({ error: sanitizeError(error) });

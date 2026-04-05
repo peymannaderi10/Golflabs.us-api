@@ -4,6 +4,7 @@ import { EmailService } from '../modules/email/email.service';
 import { NotificationService } from '../modules/email/notification.service';
 import { createUnlockToken } from '../shared/utils/token.utils';
 import { logger } from '../shared/utils/logger';
+import { LocationService } from '../modules/locations/location.service';
 
 /**
  * Process booking reminders for sessions starting in the next 16 minutes.
@@ -67,29 +68,47 @@ export async function enqueueReminders(): Promise<void> {
 
     logger.info({ count: bookingsNeedingReminders.length }, 'Processing bookings without reminders');
 
+    // Batch-fetch door_lock_type for all unique locations in parallel
+    const uniqueLocationIds = [...new Set(bookingsNeedingReminders.map(b => b.location_id))];
+    const doorLockTypes = await Promise.all(
+      uniqueLocationIds.map(locId => LocationService.getDoorLockType(locId))
+    );
+    const doorLockTypeMap = new Map<string, string>();
+    uniqueLocationIds.forEach((locId, i) => doorLockTypeMap.set(locId, doorLockTypes[i]));
+
     for (const booking of bookingsNeedingReminders) {
       try {
-        const token = createUnlockToken(booking.id, booking.start_time, booking.end_time);
-        const unlockLink = `${resendConfig.frontendUrl}/unlock?token=${token}`;
-
-        // Update booking with unlock token (partial update - only these columns)
-        const { error: updateError } = await supabase
-          .from('bookings')
-          .update({
-            unlock_token: token,
-            unlock_token_expires_at: booking.end_time
-          })
-          .eq('id', booking.id);
-
-        if (updateError) {
-          logger.error({ err: updateError, bookingId: booking.id }, 'Error updating unlock token');
+        const doorLockType = doorLockTypeMap.get(booking.location_id);
+        if (!doorLockType) {
+          logger.error({ bookingId: booking.id, locationId: booking.location_id }, 'Door lock type not found for location, skipping reminder');
           continue;
         }
+        let token = '';
+        let unlockLink = '';
 
-        // Queue the reminder email
+        // Only generate unlock token for locations with automated door locks
+        if (doorLockType !== 'none') {
+          token = createUnlockToken(booking.id, booking.start_time, booking.end_time);
+          unlockLink = `${resendConfig.frontendUrl}/unlock?token=${token}`;
+
+          const { error: updateError } = await supabase
+            .from('bookings')
+            .update({
+              unlock_token: token,
+              unlock_token_expires_at: booking.end_time
+            })
+            .eq('id', booking.id);
+
+          if (updateError) {
+            logger.error({ err: updateError, bookingId: booking.id }, 'Error updating unlock token');
+            continue;
+          }
+        }
+
+        // Always send the reminder email — unlock section is conditionally rendered via template
         await EmailService.sendReminderEmail(booking.id, token, unlockLink);
 
-        logger.info({ bookingId: booking.id }, 'Queued reminder for booking');
+        logger.info({ bookingId: booking.id, doorLockType }, 'Queued reminder for booking');
       } catch (error) {
         logger.error({ err: error, bookingId: booking.id }, 'Error processing reminder for booking');
       }

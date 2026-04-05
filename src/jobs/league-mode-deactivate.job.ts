@@ -2,27 +2,27 @@ import { supabase } from '../config/database';
 import { logger } from '../shared/utils/logger';
 
 /**
- * Auto-deactivate league mode on bays after the league's end time + buffer.
+ * Auto-deactivate league mode on spaces after the league's end time + buffer.
  * 
- * Checks all bays where league_mode_active = true, looks up the associated
+ * Checks all spaces where league_mode_active = true, looks up the associated
  * league's end_time and buffer_after_mins, and deactivates if the current
  * time has passed the league end time + buffer.
  */
 export async function autoDeactivateLeagueMode() {
   try {
-    // Find all bays that are currently in league mode
-    const { data: activeBays, error: baysError } = await supabase
-      .from('bays')
+    // Find all spaces that are currently in league mode
+    const { data: activeSpaces, error: spacesError } = await supabase
+      .from('spaces')
       .select('id, location_id, league_mode_league_id')
       .eq('league_mode_active', true)
       .not('league_mode_league_id', 'is', null);
 
-    if (baysError || !activeBays || activeBays.length === 0) {
-      return; // No active league mode bays
+    if (spacesError || !activeSpaces || activeSpaces.length === 0) {
+      return; // No active league mode spaces
     }
 
     // Get unique league IDs
-    const leagueIds = [...new Set(activeBays.map(b => b.league_mode_league_id).filter(Boolean))];
+    const leagueIds = [...new Set(activeSpaces.map(b => b.league_mode_league_id).filter(Boolean))];
 
     if (leagueIds.length === 0) return;
 
@@ -53,7 +53,7 @@ export async function autoDeactivateLeagueMode() {
         logger.info({ leagueId: league.id, locationId: league.location_id, endTime: league.end_time, bufferMins }, 'Auto-deactivating league mode');
 
         const { error: updateError } = await supabase
-          .from('bays')
+          .from('spaces')
           .update({
             league_mode_active: false,
             league_mode_league_id: null,
@@ -62,7 +62,7 @@ export async function autoDeactivateLeagueMode() {
           .eq('league_mode_league_id', league.id);
 
         if (updateError) {
-          logger.error({ err: updateError, leagueId: league.id }, 'Auto-deactivate: Failed to update bays');
+          logger.error({ err: updateError, leagueId: league.id }, 'Auto-deactivate: Failed to update spaces');
         }
       }
     }

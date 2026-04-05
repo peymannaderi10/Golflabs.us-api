@@ -36,7 +36,7 @@ export class SocketService {
       logger.info({ socketId: socket.id }, 'A client connected');
 
       // Validate kiosk API key from handshake auth, then join rooms
-      socket.on('register_kiosk', (payload: { locationId: string; bayId: string }) => {
+      socket.on('register_kiosk', (payload: { locationId: string; spaceId: string }) => {
         const kioskKey = socket.handshake.auth?.kioskKey as string | undefined;
         if (!this.isValidKioskKey(kioskKey)) {
           logger.warn({ socketId: socket.id }, 'Socket failed kiosk auth for register_kiosk');
@@ -44,25 +44,25 @@ export class SocketService {
           return;
         }
 
-        if (payload.locationId && payload.bayId) {
-          const bayRoom = `location-${payload.locationId}-bay-${payload.bayId}`;
+        if (payload.locationId && payload.spaceId) {
+          const spaceRoom = `location-${payload.locationId}-space-${payload.spaceId}`;
           const locationRoom = `location-${payload.locationId}`;
-          socket.join(bayRoom);
+          socket.join(spaceRoom);
           socket.join(locationRoom);
           socket.data.isKiosk = true;
-          logger.info({ socketId: socket.id, bayId: payload.bayId, bayRoom, locationRoom }, 'Socket joined rooms');
+          logger.info({ socketId: socket.id, spaceId: payload.spaceId, spaceRoom, locationRoom }, 'Socket joined rooms');
         }
       });
 
       // Only allow booking requests from authenticated kiosk sockets
-      socket.on('request_initial_bookings', (payload: { locationId: string; bayId: string }) => {
+      socket.on('request_initial_bookings', (payload: { locationId: string; spaceId: string }) => {
         if (!socket.data.isKiosk) {
           socket.emit('auth_error', { message: 'Not authenticated as kiosk' });
           return;
         }
-        if (payload.locationId && payload.bayId) {
-          logger.info({ socketId: socket.id, bayId: payload.bayId }, 'Kiosk requested initial bookings');
-          this.sendAllBookingsUpdate(payload.locationId, payload.bayId);
+        if (payload.locationId && payload.spaceId) {
+          logger.info({ socketId: socket.id, spaceId: payload.spaceId }, 'Kiosk requested initial bookings');
+          this.sendAllBookingsUpdate(payload.locationId, payload.spaceId);
         }
       });
 
@@ -131,39 +131,39 @@ export class SocketService {
   }
 
   /**
-   * Fetches the specific booking and broadcasts it to the bay kiosk.
+   * Fetches the specific booking and broadcasts it to the space kiosk.
    * @param locationId The ID of the location to update.
-   * @param bayId The ID of the specific bay to update.
+   * @param spaceId The ID of the specific space to update.
    * @param bookingId The specific booking that changed (optional, if not provided will send all bookings)
    */
-  public async triggerBookingUpdate(locationId: string, bayId: string, bookingId?: string) {
-    if (!locationId || !bayId) return;
+  public async triggerBookingUpdate(locationId: string, spaceId: string, bookingId?: string) {
+    if (!locationId || !spaceId) return;
 
-    logger.info({ locationId, bayId, bookingId }, 'Triggering booking update');
+    logger.info({ locationId, spaceId, bookingId }, 'Triggering booking update');
     try {
       if (bookingId) {
         // Send only the specific booking that changed
-        await this.sendSpecificBookingUpdate(locationId, bayId, bookingId);
+        await this.sendSpecificBookingUpdate(locationId, spaceId, bookingId);
       } else {
         // Fallback: send all bookings (for initial load or polling)
-        await this.sendAllBookingsUpdate(locationId, bayId);
+        await this.sendAllBookingsUpdate(locationId, spaceId);
       }
     } catch (error: any) {
-      logger.error({ err: error, locationId, bayId }, 'Failed to trigger booking update');
+      logger.error({ err: error, locationId, spaceId }, 'Failed to trigger booking update');
     }
   }
 
   /**
    * Send update for a specific booking
    */
-  private async sendSpecificBookingUpdate(locationId: string, bayId: string, bookingId: string) {
+  private async sendSpecificBookingUpdate(locationId: string, spaceId: string, bookingId: string) {
     // Get the specific booking details
     const { data: booking, error } = await supabase
       .from('bookings')
-      .select('id, bay_id, user_id, start_time, end_time, status')
+      .select('id, space_id, user_id, start_time, end_time, status')
       .eq('id', bookingId)
       .eq('location_id', locationId)
-      .eq('bay_id', bayId)
+      .eq('space_id', spaceId)
       .single();
 
     if (error || !booking) {
@@ -182,21 +182,22 @@ export class SocketService {
     const startTimeUTC = new Date(booking.start_time);
     const endTimeUTC = new Date(booking.end_time);
     
-    const { data: location } = await supabase
-      .from('locations')
-      .select('timezone')
-      .eq('id', locationId)
-      .single();
-    
+    const [{ data: location }, { data: settings }] = await Promise.all([
+      supabase.from('locations').select('timezone').eq('id', locationId).single(),
+      supabase.from('location_settings').select('booking_grace_period_before_minutes, booking_grace_period_after_minutes').eq('location_id', locationId).single(),
+    ]);
+
     const timezone = location?.timezone || 'America/New_York';
-    
+    const graceBefore = (settings?.booking_grace_period_before_minutes || 0) * 60_000;
+    const graceAfter = (settings?.booking_grace_period_after_minutes || 0) * 60_000;
+
     const startTimeLocal = startTimeUTC.toLocaleString('en-US', {
       hour: 'numeric',
       minute: '2-digit',
       hour12: true,
       timeZone: timezone
     });
-    
+
     const endTimeLocal = endTimeUTC.toLocaleString('en-US', {
       hour: 'numeric',
       minute: '2-digit',
@@ -208,30 +209,32 @@ export class SocketService {
       type: 'booking_update',
       action: booking.status === 'cancelled' ? 'remove' : 'add',
       locationId,
-      bayId,
+      spaceId,
       date: dateForLocation,
       booking: {
         id: booking.id,
-        bayId: booking.bay_id,
+        spaceId: booking.space_id,
         userId: booking.user_id,
         startTime: startTimeLocal,
         endTime: endTimeLocal,
-        startTimeISO: booking.start_time,
-        endTimeISO: booking.end_time,
+        startTimeISO: new Date(startTimeUTC.getTime() - graceBefore).toISOString(),
+        endTimeISO: new Date(endTimeUTC.getTime() + graceAfter).toISOString(),
+        startTimeOriginalISO: startTimeUTC.toISOString(),
+        endTimeOriginalISO: endTimeUTC.toISOString(),
         status: booking.status
       },
       timestamp: new Date().toISOString()
     };
 
-    const room = `location-${locationId}-bay-${bayId}`;
+    const room = `location-${locationId}-space-${spaceId}`;
     this.io.to(room).emit('booking_update', payload);
     logger.info({ action: payload.action, room, bookingId }, 'Broadcasted booking update');
   }
 
   /**
-   * Send all bookings for a bay (fallback method)
+   * Send all bookings for a space (fallback method)
    */
-  private async sendAllBookingsUpdate(locationId: string, bayId: string) {
+  private async sendAllBookingsUpdate(locationId: string, spaceId: string) {
     // We need to get the current date in the location's specific timezone
     const dateForLocation = await this.getTodayForLocation(locationId);
     if (!dateForLocation) {
@@ -239,33 +242,41 @@ export class SocketService {
       return;
     }
 
-    const bookings = await this.bookingService.getBookings(locationId, dateForLocation);
-    
-    // Filter bookings for this specific bay
-    const bayBookings = bookings.filter(booking => booking.bayId === bayId);
-    
-    // Enhanced payload with location and bay information for precise kiosk targeting
+    const [bookings, { data: graceSettings }] = await Promise.all([
+      this.bookingService.getBookings(locationId, dateForLocation),
+      supabase.from('location_settings').select('booking_grace_period_before_minutes, booking_grace_period_after_minutes').eq('location_id', locationId).single(),
+    ]);
+
+    const graceBefore = (graceSettings?.booking_grace_period_before_minutes || 0) * 60_000;
+    const graceAfter = (graceSettings?.booking_grace_period_after_minutes || 0) * 60_000;
+
+    // Filter bookings for this specific space
+    const spaceBookings = bookings.filter(booking => booking.spaceId === spaceId);
+
+    // Enhanced payload with location and space information for precise kiosk targeting
     const payload = {
       type: 'bookings_refresh',
       locationId,
-      bayId,
+      spaceId,
       date: dateForLocation,
-      bookings: bayBookings.map(booking => ({
+      bookings: spaceBookings.map(booking => ({
         id: booking.id,
-        bayId: booking.bayId,
+        spaceId: booking.spaceId,
         userId: booking.userId,
         startTime: booking.startTime,
         endTime: booking.endTime,
-        startTimeISO: booking.startTimeISO,
-        endTimeISO: booking.endTimeISO,
-        status: 'confirmed' // All bookings from getBookings are confirmed
+        startTimeISO: new Date(new Date(booking.startTimeISO).getTime() - graceBefore).toISOString(),
+        endTimeISO: new Date(new Date(booking.endTimeISO).getTime() + graceAfter).toISOString(),
+        startTimeOriginalISO: booking.startTimeISO,
+        endTimeOriginalISO: booking.endTimeISO,
+        status: 'confirmed'
       })),
       timestamp: new Date().toISOString()
     };
 
-    const room = `location-${locationId}-bay-${bayId}`;
+    const room = `location-${locationId}-space-${spaceId}`;
     this.io.to(room).emit('bookings_updated', payload);
-    logger.info({ room, bookingCount: bayBookings.length, bayId, date: dateForLocation }, 'Broadcasted bookings_updated');
+    logger.info({ room, bookingCount: spaceBookings.length, spaceId, date: dateForLocation }, 'Broadcasted bookings_updated');
   }
 
   /**
@@ -317,50 +328,45 @@ export class SocketService {
   /**
    * Sends an unlock command to the specified kiosk and waits for a response.
    * @param locationId The ID of the location.
-   * @param bayId The ID of the bay.
+   * @param spaceId The ID of the space.
    * @param duration The duration in seconds for the door to remain unlocked.
    * @param bookingId The ID of the booking triggering the unlock.
    * @returns A promise that resolves to true if the unlock was successful, otherwise false.
    */
-  public sendUnlockCommand(locationId: string, bayId: string, duration: number, bookingId: string): Promise<boolean> {
-    return new Promise(async (resolve) => {
-    const room = `location-${locationId}-bay-${bayId}`;
-      const payload = {
+  public async sendUnlockCommand(locationId: string, spaceId: string, duration: number, bookingId: string): Promise<boolean> {
+    const room = `location-${locationId}-space-${spaceId}`;
+    const payload = {
       type: 'door_unlock',
       duration,
       bookingId,
       locationId,
-      bayId,
+      spaceId,
       timestamp: new Date().toISOString()
     };
 
-      try {
-        // Find sockets for the target kiosk
-        const sockets = await this.io.in(room).fetchSockets();
-        if (sockets.length === 0) {
-          logger.error({ room }, 'No kiosk connected in room');
-          return resolve(false);
-        }
-
-        const kioskSocket = sockets[0]; // Assuming one kiosk per room
-        logger.info({ kioskSocketId: kioskSocket.id, room }, 'Sending unlock command to kiosk');
-        
-        // Emit with a timeout and acknowledgment callback
-        const response = await kioskSocket.timeout(10000).emitWithAck('unlock', payload);
-
-        if (response.success) {
-          logger.info({ kioskSocketId: kioskSocket.id }, 'Kiosk confirmed unlock success');
-          resolve(true);
-        } else {
-          logger.error({ kioskSocketId: kioskSocket.id, error: response.error }, 'Kiosk reported unlock failure');
-          resolve(false);
-        }
-      } catch (e: any) {
-        // This catch block handles timeout errors or other socket errors
-        logger.error({ err: e, room }, 'Did not receive unlock confirmation from room');
-        resolve(false);
+    try {
+      const sockets = await this.io.in(room).fetchSockets();
+      if (sockets.length === 0) {
+        logger.error({ room }, 'No kiosk connected in room');
+        return false;
       }
-    });
+
+      const kioskSocket = sockets[0];
+      logger.info({ kioskSocketId: kioskSocket.id, room }, 'Sending unlock command to kiosk');
+
+      const response = await kioskSocket.timeout(10000).emitWithAck('unlock', payload);
+
+      if (response.success) {
+        logger.info({ kioskSocketId: kioskSocket.id }, 'Kiosk confirmed unlock success');
+        return true;
+      } else {
+        logger.error({ kioskSocketId: kioskSocket.id, error: response.error }, 'Kiosk reported unlock failure');
+        return false;
+      }
+    } catch (e: unknown) {
+      logger.error({ err: e, room }, 'Did not receive unlock confirmation from room');
+      return false;
+    }
   }
 
   /**
@@ -374,44 +380,44 @@ export class SocketService {
   }
 
   /**
-   * Broadcasts a bay status change to all dashboards and kiosks at a location.
+   * Broadcasts a space status change to all dashboards and kiosks at a location.
    */
-  public broadcastBayUpdate(locationId: string, bay: any) {
+  public broadcastSpaceUpdate(locationId: string, space: any) {
     const payload = {
-      type: 'bay_update',
+      type: 'space_update',
       locationId,
-      bay,
+      space,
       timestamp: new Date().toISOString()
     };
-    this.broadcastToLocation(locationId, 'bay_update', payload);
-    logger.info({ locationId, bayId: bay.id, status: bay.status }, 'Broadcasted bay_update');
+    this.broadcastToLocation(locationId, 'space_update', payload);
+    logger.info({ locationId, spaceId: space.id, status: space.status }, 'Broadcasted space_update');
   }
 
   /**
-   * Broadcasts when a new bay is created.
+   * Broadcasts when a new space is created.
    */
-  public broadcastBayCreated(locationId: string, bay: any) {
+  public broadcastSpaceCreated(locationId: string, space: any) {
     const payload = {
-      type: 'bay_created',
+      type: 'space_created',
       locationId,
-      bay,
+      space,
       timestamp: new Date().toISOString()
     };
-    this.broadcastToLocation(locationId, 'bay_created', payload);
-    logger.info({ locationId, bayId: bay.id }, 'Broadcasted bay_created');
+    this.broadcastToLocation(locationId, 'space_created', payload);
+    logger.info({ locationId, spaceId: space.id }, 'Broadcasted space_created');
   }
 
   /**
-   * Broadcasts when a bay is deleted.
+   * Broadcasts when a space is deleted.
    */
-  public broadcastBayDeleted(locationId: string, bayId: string) {
+  public broadcastSpaceDeleted(locationId: string, spaceId: string) {
     const payload = {
-      type: 'bay_deleted',
+      type: 'space_deleted',
       locationId,
-      bayId,
+      spaceId,
       timestamp: new Date().toISOString()
     };
-    this.broadcastToLocation(locationId, 'bay_deleted', payload);
-    logger.info({ locationId, bayId }, 'Broadcasted bay_deleted');
+    this.broadcastToLocation(locationId, 'space_deleted', payload);
+    logger.info({ locationId, spaceId }, 'Broadcasted space_deleted');
   }
 } 

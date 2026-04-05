@@ -18,7 +18,7 @@ import {
 const DEFAULT_BRAND = {
   brandName: 'GOLF LABS US',
   brandColor: '#2c5530',
-  brandTagline: 'Ready to improve your game? 🏌️‍♂️',
+  brandTagline: 'Ready to improve your game?',
 };
 
 export class EmailTemplateService {
@@ -307,11 +307,12 @@ export class EmailTemplateService {
       ...DEFAULT_BRAND,
       userFullName: data.userFullName,
       locationName: data.locationName,
-      bayName: data.bayName,
+      spaceName: data.spaceName,
       startDate: format(localStart, 'EEEE, MMMM d, yyyy', { timeZone: timezone }),
       startTime: format(localStart, 'h:mm a', { timeZone: timezone }),
       endTime: format(localEnd, 'h:mm a', { timeZone: timezone }),
       unlockLink: data.unlockLink || '',
+      hasDoorLock: data.hasDoorLock ?? false,
       formattedAmount: (data.totalAmount / 100).toFixed(2),
       refundAmount: data.refundAmount != null ? data.refundAmount.toFixed(2) : (data.totalAmount / 100).toFixed(2),
       isCancelledByEmployee: data.cancelledBy === 'employee',

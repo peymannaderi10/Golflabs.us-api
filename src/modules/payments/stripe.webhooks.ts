@@ -9,6 +9,7 @@ import { LeagueService } from '../leagues/league.service';
 import { MembershipService } from '../memberships/membership.service';
 import { createUnlockToken } from '../../shared/utils/token.utils';
 import { logger } from '../../shared/utils/logger';
+import { LocationService } from '../locations/location.service';
 
 export async function handleStripeWebhook(req: Request, res: Response, socketService: SocketService) {
   const sig = req.headers['stripe-signature'] as string;
@@ -254,7 +255,7 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
           return res.status(500).json({ error: 'Database update failed — Stripe will retry' });
         } else {
           logger.info({ bookingId }, 'Successfully updated booking to confirmed');
-          
+
           // Apply promotion if one was used
           const promotionId = paymentIntent.metadata.promotion_id;
           const discountAmount = parseFloat(paymentIntent.metadata.discount_amount || '0');
@@ -319,18 +320,18 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
 
           // Trigger a real-time update for the kiosks at the location
           try {
-            // We need the location_id and bay_id from the booking to know which specific kiosk to notify.
+            // We need the location_id and space_id from the booking to know which specific kiosk to notify.
             const { data: booking, error: fetchError } = await supabase
               .from('bookings')
-              .select('location_id, bay_id')
+              .select('location_id, space_id')
               .eq('id', bookingId)
               .single();
 
-            if (fetchError || !booking?.location_id || !booking?.bay_id) {
-              logger.error({ err: fetchError, bookingId }, 'Could not fetch location_id and bay_id for kiosk update');
+            if (fetchError || !booking?.location_id || !booking?.space_id) {
+              logger.error({ err: fetchError, bookingId }, 'Could not fetch location_id and space_id for kiosk update');
             } else {
-              logger.info({ locationId: booking.location_id, bayId: booking.bay_id }, 'Payment confirmed, triggering kiosk update');
-              await socketService.triggerBookingUpdate(booking.location_id, booking.bay_id, bookingId);
+              logger.info({ locationId: booking.location_id, spaceId: booking.space_id }, 'Payment confirmed, triggering kiosk update');
+              await socketService.triggerBookingUpdate(booking.location_id, booking.space_id, bookingId);
             }
           } catch (kioskError) {
             logger.error({ err: kioskError, bookingId }, 'Error triggering kiosk update');
@@ -338,10 +339,9 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
 
           // Check if booking starts within 15 minutes - if so, send reminder immediately
           try {
-            // Get booking details to check start time
             const { data: bookingDetails, error: bookingFetchError } = await supabase
               .from('bookings')
-              .select('start_time, end_time')
+              .select('start_time, end_time, location_id')
               .eq('id', bookingId)
               .single();
 
@@ -352,31 +352,37 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
 
               logger.info({ bookingId, minutesUntilStart: minutesUntilStart.toFixed(1) }, 'Checked booking start time');
 
-              // If booking starts within 15 minutes, send reminder email immediately
               if (minutesUntilStart <= 15) {
                 logger.info({ bookingId, minutesUntilStart: minutesUntilStart.toFixed(1) }, 'Booking starts soon, sending immediate reminder');
-                
-                // Generate unlock token and link (same as reminder job)
-                const unlockToken = createUnlockToken(bookingId, bookingDetails.start_time, bookingDetails.end_time);
-                const unlockLink = `${process.env.FRONTEND_URL || 'https://app.golflabs.us'}/unlock?token=${unlockToken}`;
 
-                // Update booking with unlock token
-                await supabase
-                  .from('bookings')
-                  .update({
-                    unlock_token: unlockToken,
-                    unlock_token_expires_at: bookingDetails.end_time
-                  })
-                  .eq('id', bookingId);
+                const doorLockType = await LocationService.getDoorLockType(bookingDetails.location_id);
+                let unlockToken = '';
+                let unlockLink = '';
 
-                // Send reminder email immediately
+                if (doorLockType !== 'none') {
+                  unlockToken = createUnlockToken(bookingId, bookingDetails.start_time, bookingDetails.end_time);
+                  unlockLink = `${process.env.FRONTEND_URL || 'https://app.golflabs.us'}/unlock?token=${unlockToken}`;
+
+                  const { error: tokenUpdateError } = await supabase
+                    .from('bookings')
+                    .update({
+                      unlock_token: unlockToken,
+                      unlock_token_expires_at: bookingDetails.end_time
+                    })
+                    .eq('id', bookingId);
+
+                  if (tokenUpdateError) {
+                    logger.error({ err: tokenUpdateError, bookingId }, 'Error updating unlock token, skipping reminder');
+                    return;
+                  }
+                }
+
                 await EmailService.sendReminderEmail(bookingId, unlockToken, unlockLink);
-                logger.info({ bookingId }, 'Sent immediate reminder email');
+                logger.info({ bookingId, doorLockType }, 'Sent immediate reminder email');
               }
             }
           } catch (reminderError) {
             logger.error({ err: reminderError, bookingId }, 'Error handling immediate reminder');
-            // Don't fail the webhook if reminder fails
           }
         }
       } else if (event.type === 'payment_intent.canceled') {
@@ -528,13 +534,13 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
         try {
           const { data: setupBooking, error: setupFetchError } = await supabase
             .from('bookings')
-            .select('location_id, bay_id')
+            .select('location_id, space_id')
             .eq('id', setupBookingId)
             .single();
 
-          if (!setupFetchError && setupBooking?.location_id && setupBooking?.bay_id) {
-            logger.info({ locationId: setupBooking.location_id, bayId: setupBooking.bay_id }, 'Free booking confirmed, triggering kiosk update');
-            await socketService.triggerBookingUpdate(setupBooking.location_id, setupBooking.bay_id, setupBookingId);
+          if (!setupFetchError && setupBooking?.location_id && setupBooking?.space_id) {
+            logger.info({ locationId: setupBooking.location_id, spaceId: setupBooking.space_id }, 'Free booking confirmed, triggering kiosk update');
+            await socketService.triggerBookingUpdate(setupBooking.location_id, setupBooking.space_id, setupBookingId);
           }
         } catch (kioskError) {
           logger.error({ err: kioskError, bookingId: setupBookingId }, 'Error triggering kiosk update for free booking');
@@ -544,7 +550,7 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
         try {
           const { data: setupBookingDetails, error: setupBookingFetchError } = await supabase
             .from('bookings')
-            .select('start_time, end_time')
+            .select('start_time, end_time, location_id')
             .eq('id', setupBookingId)
             .single();
 
@@ -556,19 +562,25 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
             if (minutesUntilStart <= 15) {
               logger.info({ bookingId: setupBookingId, minutesUntilStart: minutesUntilStart.toFixed(1) }, 'Free booking starts soon, sending immediate reminder');
 
-              const unlockToken = createUnlockToken(setupBookingId, setupBookingDetails.start_time, setupBookingDetails.end_time);
-              const unlockLink = `${process.env.FRONTEND_URL || 'https://app.golflabs.us'}/unlock?token=${unlockToken}`;
+              const doorLockType = await LocationService.getDoorLockType(setupBookingDetails.location_id);
+              let unlockToken = '';
+              let unlockLink = '';
 
-              await supabase
-                .from('bookings')
-                .update({
-                  unlock_token: unlockToken,
-                  unlock_token_expires_at: setupBookingDetails.end_time
-                })
-                .eq('id', setupBookingId);
+              if (doorLockType !== 'none') {
+                unlockToken = createUnlockToken(setupBookingId, setupBookingDetails.start_time, setupBookingDetails.end_time);
+                unlockLink = `${process.env.FRONTEND_URL || 'https://app.golflabs.us'}/unlock?token=${unlockToken}`;
+
+                await supabase
+                  .from('bookings')
+                  .update({
+                    unlock_token: unlockToken,
+                    unlock_token_expires_at: setupBookingDetails.end_time
+                  })
+                  .eq('id', setupBookingId);
+              }
 
               await EmailService.sendReminderEmail(setupBookingId, unlockToken, unlockLink);
-              logger.info({ bookingId: setupBookingId }, 'Sent immediate reminder email for free booking');
+              logger.info({ bookingId: setupBookingId, doorLockType }, 'Sent immediate reminder email for free booking');
             }
           }
         } catch (reminderError) {
@@ -871,7 +883,7 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
             .eq('booking_id', refundBookingId);
 
           const { error: cancellationUpdateError } = await supabase
-            .from('bookings_cancellations')
+            .from('booking_cancellations')
             .update({ 
               cancellation_reason: `Refund failed: ${refund.failure_reason || 'Unknown reason'}. Manual processing required.`
             })

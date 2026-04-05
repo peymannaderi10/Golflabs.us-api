@@ -33,10 +33,10 @@ router.get('/reports/revenue', authenticateEmployee, validateLocationAccess('que
 router.get('/reports/bookings', authenticateEmployee, validateLocationAccess('query'), (req, res) => employeeController.getBookingStats(req, res));
 
 /**
- * GET /employee/reports/bays
- * Bay performance and utilization statistics
+ * GET /employee/reports/spaces
+ * Space performance and utilization statistics
  */
-router.get('/reports/bays', authenticateEmployee, validateLocationAccess('query'), (req, res) => employeeController.getBayStats(req, res));
+router.get('/reports/spaces', authenticateEmployee, validateLocationAccess('query'), (req, res) => employeeController.getSpaceStats(req, res));
 
 /**
  * GET /employee/reports/access-logs

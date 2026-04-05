@@ -14,7 +14,9 @@ import { logger } from '../shared/utils/logger';
 const intervals: NodeJS.Timeout[] = [];
 
 export function startScheduler() {
+  // Run immediately on startup to catch anything missed while offline
   enqueueReminders();
+  processAttendanceCutoffs();
 
   intervals.push(
     setInterval(handleExpiredReservations, 2 * 60 * 1000),

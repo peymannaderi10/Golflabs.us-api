@@ -52,22 +52,22 @@ export interface BookingStats {
     hourlyDistribution: HourlyBookingCount[];
 }
 
-// Bay performance statistics
-export interface BayPerformance {
-    bayId: string;
-    bayNumber: number;
-    bayName: string;
+// Space performance statistics
+export interface SpacePerformance {
+    spaceId: string;
+    spaceNumber: number;
+    spaceName: string;
     totalHoursBooked: number;
     totalBookings: number;
     utilizationRate: number; // percentage based on available hours
     revenue: number;
 }
 
-export interface BayStats {
-    bays: BayPerformance[];
-    totalBays: number;
+export interface SpaceStats {
+    spaces: SpacePerformance[];
+    totalSpaces: number;
     averageUtilization: number;
-    topPerformingBay: BayPerformance | null;
+    topPerformingSpace: SpacePerformance | null;
 }
 
 // Access log statistics
@@ -153,7 +153,7 @@ export interface CustomerDetails extends Customer {
     recentBookings: {
         id: string;
         date: string;
-        bayName: string;
+        spaceName: string;
         status: string;
         amount: number;
     }[];

@@ -20,7 +20,7 @@ export class BookingExtensionService {
     // 1. Fetch the booking and validate it's currently active
     const { data: booking, error: bookingError } = await supabase
       .from('bookings')
-      .select('id, location_id, bay_id, user_id, start_time, end_time, status')
+      .select('id, location_id, space_id, user_id, start_time, end_time, status')
       .eq('id', bookingId)
       .single();
 
@@ -53,12 +53,12 @@ export class BookingExtensionService {
     const timezone = location.timezone || 'America/New_York';
     const taxRate = parseFloat(location.sales_tax_rate) || 0;
 
-    // 3. Find the next booking on this bay to determine max extension
+    // 3. Find the next booking on this space to determine max extension
     // Use gte to catch back-to-back bookings (next starts exactly when current ends)
     const { data: nextBookings, error: nextError } = await supabase
       .from('bookings')
       .select('start_time')
-      .eq('bay_id', booking.bay_id)
+      .eq('space_id', booking.space_id)
       .neq('id', bookingId)
       .not('status', 'in', '("cancelled","expired","abandoned")')
       .gte('start_time', booking.end_time)
@@ -216,11 +216,11 @@ export class BookingExtensionService {
     bookingId: string,
     extensionMinutes: number,
     locationId: string,
-    bayId: string,
+    spaceId: string,
     useFreeMinutes = false
   ) {
-    if (!bookingId || !extensionMinutes || !locationId || !bayId) {
-      throw new Error('bookingId, extensionMinutes, locationId, and bayId are required');
+    if (!bookingId || !extensionMinutes || !locationId || !spaceId) {
+      throw new Error('bookingId, extensionMinutes, locationId, and spaceId are required');
     }
 
     if (![15, 30, 45, 60].includes(extensionMinutes)) {
@@ -230,7 +230,7 @@ export class BookingExtensionService {
     // 1. Fetch and validate the booking
     const { data: booking, error: bookingError } = await supabase
       .from('bookings')
-      .select('id, location_id, bay_id, user_id, start_time, end_time, status, total_amount')
+      .select('id, location_id, space_id, user_id, start_time, end_time, status, total_amount')
       .eq('id', bookingId)
       .single();
 
@@ -242,8 +242,8 @@ export class BookingExtensionService {
       throw new Error('Booking is not confirmed');
     }
 
-    if (booking.bay_id !== bayId || booking.location_id !== locationId) {
-      throw new Error('Booking does not match the specified bay/location');
+    if (booking.space_id !== spaceId || booking.location_id !== locationId) {
+      throw new Error('Booking does not match the specified space/location');
     }
 
     const now = new Date();
@@ -267,7 +267,7 @@ export class BookingExtensionService {
     const { data: conflicts, error: conflictError } = await supabase
       .from('bookings')
       .select('id')
-      .eq('bay_id', bayId)
+      .eq('space_id', spaceId)
       .neq('id', bookingId)
       .not('status', 'in', '("cancelled","expired","abandoned")')
       .lt('start_time', newEndWithBuffer.toISOString())
@@ -377,7 +377,7 @@ export class BookingExtensionService {
     const paymentMetadata: Record<string, string> = {
       booking_id: bookingId,
       user_id: booking.user_id,
-      bay_id: bayId,
+      space_id: spaceId,
       location_id: locationId,
       extension: 'true',
       extension_minutes: extensionMinutes.toString(),
@@ -411,7 +411,7 @@ export class BookingExtensionService {
 
         await supabase.from('access_logs').insert({
           location_id: locationId,
-          bay_id: bayId,
+          space_id: spaceId,
           booking_id: bookingId,
           user_id: booking.user_id,
           action: 'extension_payment_failed',
@@ -475,7 +475,7 @@ export class BookingExtensionService {
     // 10. Log the successful extension
     await supabase.from('access_logs').insert({
       location_id: locationId,
-      bay_id: bayId,
+      space_id: spaceId,
       booking_id: bookingId,
       user_id: booking.user_id,
       action: 'extension_accepted',
@@ -500,7 +500,7 @@ export class BookingExtensionService {
       success: true,
       bookingId,
       locationId,
-      bayId,
+      spaceId,
       newEndTime: newEndTime.toISOString(),
       amountCharged: finalCents / 100,
       amountChargedFormatted: `$${(finalCents / 100).toFixed(2)}`,
@@ -517,12 +517,12 @@ export class BookingExtensionService {
     bookingId: string,
     extensionMinutes: number,
     locationId: string,
-    bayId: string,
+    spaceId: string,
     employeeId: string,
     skipPayment: boolean = false
   ) {
-    if (!bookingId || !extensionMinutes || !locationId || !bayId) {
-      throw new Error('bookingId, extensionMinutes, locationId, and bayId are required');
+    if (!bookingId || !extensionMinutes || !locationId || !spaceId) {
+      throw new Error('bookingId, extensionMinutes, locationId, and spaceId are required');
     }
 
     if (![15, 30, 45, 60].includes(extensionMinutes)) {
@@ -532,7 +532,7 @@ export class BookingExtensionService {
     // 1. Fetch and validate the booking
     const { data: booking, error: bookingError } = await supabase
       .from('bookings')
-      .select('id, location_id, bay_id, user_id, start_time, end_time, status, total_amount')
+      .select('id, location_id, space_id, user_id, start_time, end_time, status, total_amount')
       .eq('id', bookingId)
       .single();
 
@@ -544,8 +544,8 @@ export class BookingExtensionService {
       throw new Error('Booking is not confirmed');
     }
 
-    if (booking.bay_id !== bayId || booking.location_id !== locationId) {
-      throw new Error('Booking does not match the specified bay/location');
+    if (booking.space_id !== spaceId || booking.location_id !== locationId) {
+      throw new Error('Booking does not match the specified space/location');
     }
 
     const now = new Date();
@@ -569,7 +569,7 @@ export class BookingExtensionService {
     const { data: conflicts, error: conflictError } = await supabase
       .from('bookings')
       .select('id')
-      .eq('bay_id', bayId)
+      .eq('space_id', spaceId)
       .neq('id', bookingId)
       .not('status', 'in', '("cancelled","expired","abandoned")')
       .lt('start_time', empNewEndWithBuffer.toISOString())
@@ -629,7 +629,7 @@ export class BookingExtensionService {
           metadata: {
             booking_id: bookingId,
             user_id: booking.user_id,
-            bay_id: bayId,
+            space_id: spaceId,
             location_id: locationId,
             extension: 'true',
             extension_minutes: extensionMinutes.toString(),
@@ -643,7 +643,7 @@ export class BookingExtensionService {
 
         await supabase.from('access_logs').insert({
           location_id: locationId,
-          bay_id: bayId,
+          space_id: spaceId,
           booking_id: bookingId,
           user_id: booking.user_id,
           action: 'extension_payment_failed',
@@ -694,7 +694,7 @@ export class BookingExtensionService {
     // 6. Log the successful extension
     await supabase.from('access_logs').insert({
       location_id: locationId,
-      bay_id: bayId,
+      space_id: spaceId,
       booking_id: bookingId,
       user_id: booking.user_id,
       action: 'extension_accepted',
@@ -716,7 +716,7 @@ export class BookingExtensionService {
       success: true,
       bookingId,
       locationId,
-      bayId,
+      spaceId,
       newEndTime: newEndTime.toISOString(),
       amountCharged: skipPayment ? 0 : totalCents / 100,
       amountChargedFormatted: skipPayment ? '$0.00' : `$${(totalCents / 100).toFixed(2)}`,

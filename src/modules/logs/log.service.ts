@@ -2,7 +2,7 @@ import { supabase } from '../../config/database';
 import { logger } from '../../shared/utils/logger';
 
 export interface AccessLogData {
-  bay_id: string;
+  space_id: string;
   booking_id?: string;
   user_id?: string;
   action: 'session_started' | 'session_ended' | 'door_unlock_button_pressed' | 'door_unlock_success' | 'door_unlock_failure' | 'booking_reserved';
@@ -19,8 +19,8 @@ export interface AccessLogData {
 
 export class LogService {
   async createAccessLog(logData: AccessLogData) {
-    if (!logData.bay_id || !logData.action) {
-      throw new Error('Bay ID and action are required for access logs');
+    if (!logData.space_id || !logData.action) {
+      throw new Error('Space ID and action are required for access logs');
     }
 
     // If booking_id is provided but user_id is not, look up the user_id from the booking
@@ -86,7 +86,7 @@ export class LogService {
         id,
         location_id,
         booking_id,
-        bay_id,
+        space_id,
         user_id,
         action,
         success,
@@ -107,9 +107,9 @@ export class LogService {
             full_name
           )
         ),
-        bays:bay_id (
+        spaces:space_id (
           id,
-          bay_number,
+          space_number,
           name
         ),
         user_profiles:user_id (

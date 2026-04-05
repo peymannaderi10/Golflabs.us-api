@@ -9,7 +9,7 @@ export const logRoutes = Router();
 const controller = new LogController();
 
 logRoutes.post('/access', authenticateKioskOrEmployee, [
-  body('bay_id').isUUID().withMessage('bay_id must be a valid UUID'),
+  body('space_id').isUUID().withMessage('space_id must be a valid UUID'),
   body('action').isIn([
     'session_started',
     'session_ended',

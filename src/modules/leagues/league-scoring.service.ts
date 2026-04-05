@@ -70,10 +70,21 @@ export class LeagueScoringService {
   }
 
   async finalizeWeek(leagueId: string, weekId: string): Promise<{ standings: StandingWithPlayer[]; payouts?: any[] }> {
-    // Recalculate standings first (before marking as finalized)
-    await this.standingsService.recalculateStandings(leagueId);
-
     const league = await this.getLeague(leagueId);
+
+    // Mark week as finalized FIRST so recalculateStandings includes this week's scores
+    const { error: weekError } = await supabase
+      .from('league_weeks')
+      .update({ status: 'finalized' })
+      .eq('id', weekId)
+      .eq('league_id', leagueId);
+
+    if (weekError) {
+      throw new Error(`Failed to finalize week: ${weekError.message}`);
+    }
+
+    // Recalculate standings (now includes the newly finalized week)
+    await this.standingsService.recalculateStandings(leagueId);
 
     // Recalculate handicaps
     if (league.handicap_enabled) {
@@ -98,17 +109,6 @@ export class LeagueScoringService {
       } catch (payoutError: any) {
         logger.error({ err: payoutError, weekId }, 'Error generating payouts for week');
       }
-    }
-
-    // Mark week as finalized LAST — after all dependent operations succeed
-    const { error: weekError } = await supabase
-      .from('league_weeks')
-      .update({ status: 'finalized' })
-      .eq('id', weekId)
-      .eq('league_id', leagueId);
-
-    if (weekError) {
-      throw new Error(`Failed to finalize week: ${weekError.message}`);
     }
 
     const standings = await this.standingsService.getStandings(leagueId);
@@ -165,7 +165,7 @@ export class LeagueScoringService {
   }
 
   async submitScore(data: SubmitScoreRequest): Promise<SubmitScoreResult> {
-    const { leagueWeekId, leaguePlayerId, holeNumber, strokes, bayId, enteredVia = 'kiosk' } = data;
+    const { leagueWeekId, leaguePlayerId, holeNumber, strokes, spaceId, enteredVia = 'kiosk' } = data;
 
     await this.validateScoreSubmission(data);
 
@@ -174,7 +174,7 @@ export class LeagueScoringService {
       p_league_player_id: leaguePlayerId,
       p_hole_number: holeNumber,
       p_strokes: strokes,
-      p_bay_id: bayId || null,
+      p_space_id: spaceId || null,
       p_entered_via: enteredVia,
     });
 
@@ -209,7 +209,7 @@ export class LeagueScoringService {
         p_league_player_id: leaguePlayerId,
         p_hole_number: holeNumber,
         p_strokes: strokes,
-        p_bay_id: null,
+        p_space_id: null,
         p_entered_via: enteredVia,
       });
       if (error) {

@@ -14,7 +14,7 @@ export class BookingCancelService {
     // 1. Get the booking details
     const { data: booking, error: fetchError } = await supabase
       .from('bookings')
-      .select('id, user_id, start_time, status, total_amount, location_id, bay_id')
+      .select('id, user_id, start_time, status, total_amount, location_id, space_id')
       .eq('id', bookingId)
       .eq('user_id', userId)
       .single();
@@ -178,7 +178,7 @@ export class BookingCancelService {
       bookingId,
       refundIds,
       locationId: booking.location_id,
-      bayId: booking.bay_id,
+      spaceId: booking.space_id,
       message: refundIds.length > 0 ? 'Booking cancelled and refund processed' : 'Booking cancelled'
     };
   }
@@ -265,7 +265,7 @@ export class BookingCancelService {
     // 5. Get booking details needed for the socket update
     const { data: bookingDetails } = await supabase
       .from('bookings')
-      .select('location_id, bay_id')
+      .select('location_id, space_id')
       .eq('id', bookingId)
       .single();
 
@@ -294,7 +294,7 @@ export class BookingCancelService {
       refundIds,
       refunded: refundIds.length > 0,
       locationId: bookingDetails?.location_id,
-      bayId: bookingDetails?.bay_id,
+      spaceId: bookingDetails?.space_id,
       message: skipRefund
         ? 'Session ended by staff (no refund)'
         : refundIds.length > 0
@@ -311,7 +311,7 @@ export class BookingCancelService {
     // 1. Get the booking details
     const { data: booking, error: fetchError } = await supabase
       .from('bookings')
-      .select('id, user_id, start_time, status, location_id, bay_id')
+      .select('id, user_id, start_time, status, location_id, space_id')
       .eq('id', bookingId)
       .eq('user_id', userId)
       .single();
@@ -362,7 +362,7 @@ export class BookingCancelService {
       success: true,
       bookingId,
       locationId: booking.location_id,
-      bayId: booking.bay_id,
+      spaceId: booking.space_id,
       message: 'Reservation abandoned successfully'
     };
   }

@@ -10,7 +10,7 @@ export const createBookingRoutes = (socketService: SocketService): Router => {
   const controller = new BookingController(socketService);
 
   bookingRoutes.post('/reserve', authenticateUser,
-    validateUUID('locationId', 'body'), validateUUID('bayId', 'body'),
+    validateUUID('locationId', 'body'), validateUUID('spaceId', 'body'),
     body('startTime').notEmpty().withMessage('startTime is required'),
     body('endTime').notEmpty().withMessage('endTime is required'),
     body('date').notEmpty().withMessage('date is required'),
@@ -40,7 +40,7 @@ export const createBookingRoutes = (socketService: SocketService): Router => {
   bookingRoutes.get('/employee', authenticateEmployee, validateLocationAccess('query'), controller.getEmployeeBookings);
   bookingRoutes.get('/employee/customers/search', authenticateEmployee, controller.searchCustomers);
   bookingRoutes.post('/employee/create', authenticateEmployee, validateLocationAccess('body'),
-    validateUUID('locationId', 'body'), validateUUID('bayId', 'body'),
+    validateUUID('locationId', 'body'), validateUUID('spaceId', 'body'),
     body('startTime').notEmpty().withMessage('startTime is required'),
     body('endTime').notEmpty().withMessage('endTime is required'),
     body('date').notEmpty().withMessage('date is required'),
@@ -63,7 +63,7 @@ export const createBookingRoutes = (socketService: SocketService): Router => {
     body('startTime').notEmpty().withMessage('startTime is required'),
     body('endTime').notEmpty().withMessage('endTime is required'),
     body('locationId').notEmpty().withMessage('locationId is required'),
-    body('bayId').notEmpty().withMessage('bayId is required'),
+    body('spaceId').notEmpty().withMessage('spaceId is required'),
     handleValidationErrors,
     controller.employeeRescheduleBooking
   );

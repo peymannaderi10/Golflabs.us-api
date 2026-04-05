@@ -1,15 +1,23 @@
 import { supabase } from '../../config/database';
 import { logger } from '../../shared/utils/logger';
 
+export type DoorLockType = 'none' | 'shelly';
+
+const VALID_DOOR_LOCK_TYPES: DoorLockType[] = ['none', 'shelly'];
+
 interface LocationSettingsRow {
   memberships_enabled: boolean;
   leagues_enabled: boolean;
   marketing_enabled: boolean;
+  promotions_enabled: boolean;
+  door_lock_type: DoorLockType;
   default_booking_window_days: number;
   default_booking_hours_start: string | null;
   default_booking_hours_end: string | null;
   cancellation_policy_hours: number;
   booking_buffer_minutes: number;
+  booking_grace_period_before_minutes: number;
+  booking_grace_period_after_minutes: number;
   brand_primary_color: string;
   brand_logo_url: string | null;
   custom_domain: string | null;
@@ -20,11 +28,15 @@ function formatSettings(ls: Partial<LocationSettingsRow>) {
     membershipsEnabled: ls.memberships_enabled ?? false,
     leaguesEnabled: ls.leagues_enabled ?? true,
     marketingEnabled: ls.marketing_enabled ?? false,
+    promotionsEnabled: ls.promotions_enabled ?? false,
+    doorLockType: ls.door_lock_type ?? 'shelly',
     defaultBookingWindowDays: ls.default_booking_window_days ?? 7,
     defaultBookingHoursStart: ls.default_booking_hours_start ?? null,
     defaultBookingHoursEnd: ls.default_booking_hours_end ?? null,
     cancellationPolicyHours: ls.cancellation_policy_hours ?? 24,
     bookingBufferMinutes: ls.booking_buffer_minutes ?? 0,
+    bookingGracePeriodBeforeMinutes: ls.booking_grace_period_before_minutes ?? 0,
+    bookingGracePeriodAfterMinutes: ls.booking_grace_period_after_minutes ?? 0,
     brandPrimaryColor: ls.brand_primary_color ?? '#00A36C',
     brandLogoUrl: ls.brand_logo_url ?? null,
     customDomain: ls.custom_domain ?? null,
@@ -153,5 +165,30 @@ export class LocationService {
       .single();
 
     return formatLocation(data, settingsRow || {});
+  }
+
+  /**
+   * Lightweight lookup for door_lock_type by location.
+   * Used by unlock endpoints, reminder jobs, and webhook handlers
+   * to decide whether to generate tokens / allow unlock commands.
+   */
+  static async getDoorLockType(locationId: string): Promise<DoorLockType> {
+    const { data, error } = await supabase
+      .from('location_settings')
+      .select('door_lock_type')
+      .eq('location_id', locationId)
+      .single();
+
+    if (error || !data) {
+      logger.error({ err: error, locationId }, 'Error fetching door_lock_type — cannot determine lock configuration');
+      throw new Error('Unable to determine door lock configuration for location');
+    }
+
+    const raw = data.door_lock_type;
+    return LocationService.isValidDoorLockType(raw) ? raw : 'none';
+  }
+
+  static isValidDoorLockType(value: string): value is DoorLockType {
+    return VALID_DOOR_LOCK_TYPES.includes(value as DoorLockType);
   }
 }

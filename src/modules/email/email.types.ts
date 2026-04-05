@@ -8,7 +8,7 @@ export interface BookingEmailData {
   userFullName: string;
   userEmail: string;
   bookingId: string;
-  bayName: string;
+  spaceName: string;
   locationName: string;
   locationTimezone: string;
   startTime: string;
@@ -16,6 +16,7 @@ export interface BookingEmailData {
   totalAmount: number;
   unlockToken?: string;
   unlockLink?: string;
+  hasDoorLock?: boolean;
   // Cancellation-specific data
   cancellationReason?: string;
   cancelledBy?: 'customer' | 'employee';

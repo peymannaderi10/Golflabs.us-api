@@ -807,7 +807,7 @@ export class LeagueTeamService {
     // Get all league_players for this user that are on teams
     const { data: players, error } = await supabase
       .from('league_players')
-      .select('*, league_teams(*, leagues(name, format, status, total_weeks, season_fee, weekly_prize_pot, prize_pool_config, start_time, num_holes, players_per_team, team_scoring_format))')
+      .select('*, league_teams(*, leagues(name, format, status, deleted_at, total_weeks, season_fee, weekly_prize_pot, prize_pool_config, start_time, num_holes, players_per_team, team_scoring_format))')
       .eq('user_id', userId)
       .neq('enrollment_status', 'withdrawn')
       .not('league_team_id', 'is', null);
@@ -822,6 +822,9 @@ export class LeagueTeamService {
       const team = player.league_teams as any;
       const league = team?.leagues as any;
       if (!team || !league) continue;
+
+      // Skip teams from deleted/cancelled leagues
+      if (league.deleted_at || league.status === 'cancelled') continue;
 
       // Get team members
       const { data: members } = await supabase

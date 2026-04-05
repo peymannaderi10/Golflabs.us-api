@@ -53,7 +53,7 @@ export class PaymentService {
     // 1. Verify the booking is valid for payment
     const { data: booking, error: fetchError } = await supabase
       .from('bookings')
-      .select('id, status, expires_at, user_id, bay_id, location_id, created_at, total_amount, start_time, end_time')
+      .select('id, status, expires_at, user_id, space_id, location_id, created_at, total_amount, start_time, end_time')
       .eq('id', bookingId)
       .single();
 
@@ -261,7 +261,7 @@ export class PaymentService {
     const intentMetadata: Record<string, string> = {
       booking_id: booking.id,
       user_id: booking.user_id,
-      bay_id: booking.bay_id,
+      space_id: booking.space_id,
       location_id: booking.location_id,
       promotion_id: promotionInfo?.promotionId || '',
       discount_amount: (serverDiscountAmount / 100).toString(),

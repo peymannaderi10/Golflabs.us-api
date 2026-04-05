@@ -1,6 +1,6 @@
 export interface BookingDetails {
   date: string;
-  bayId: string; // Should be UUID
+  spaceId: string; // Should be UUID
   startTime: string;
   endTime: string;
   partySize: number;
