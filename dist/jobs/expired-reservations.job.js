@@ -27,6 +27,19 @@ function handleExpiredReservations() {
                 return;
             }
             logger_1.logger.info('Checked for expired reservations');
+            // Clean up orphaned pending bookings (reservation holds off) older than 30 minutes.
+            // These are created when a customer enters checkout without a reservation hold
+            // and never completes payment.
+            const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+            const { error: pendingError } = yield database_1.supabase
+                .from('bookings')
+                .update({ status: 'abandoned' })
+                .eq('status', 'pending')
+                .is('expires_at', null)
+                .lt('created_at', thirtyMinAgo);
+            if (pendingError) {
+                logger_1.logger.error({ err: pendingError }, 'Error cleaning up orphaned pending bookings');
+            }
         }
         catch (error) {
             logger_1.logger.error({ err: error }, 'Error in handleExpiredReservations');

@@ -29,8 +29,18 @@ class BookingController {
             }
         });
         this.checkAvailability = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            var _a;
             try {
                 const { bookingId } = req.params;
+                const authenticatedUserId = (_a = req.user) === null || _a === void 0 ? void 0 : _a.id;
+                if (!authenticatedUserId) {
+                    return res.status(401).json({ error: 'Authentication required' });
+                }
+                // Verify the user owns this booking
+                const bookingUserId = yield this.bookingService.getBookingUserId(bookingId);
+                if (!bookingUserId || bookingUserId !== authenticatedUserId) {
+                    return res.status(404).json({ error: 'Booking not found' });
+                }
                 const available = yield this.bookingService.checkSlotAvailability(bookingId);
                 if (!available) {
                     return res.status(409).json({ error: 'This time slot has been booked by someone else. Please choose a different time.' });

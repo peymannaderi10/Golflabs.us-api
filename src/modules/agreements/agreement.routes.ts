@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { body, param } from 'express-validator';
 import { agreementController } from './agreement.controller';
-import { authenticateUser } from '../auth';
+import { authenticateUser, authenticateEmployee } from '../auth';
 import { handleValidationErrors } from '../../shared/middleware/validation';
 
 const router = Router();
@@ -23,6 +23,13 @@ router.get('/check/:bookingId',
   handleValidationErrors,
   authenticateUser,
   (req, res) => agreementController.checkAgreements(req, res),
+);
+
+router.get('/booking/:bookingId',
+  param('bookingId').isUUID().withMessage('bookingId must be a valid UUID'),
+  handleValidationErrors,
+  authenticateEmployee,
+  (req, res) => agreementController.getBookingAgreements(req, res),
 );
 
 export default router;

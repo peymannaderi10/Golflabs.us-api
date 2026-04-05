@@ -103,6 +103,34 @@ class AgreementService {
             };
         });
     }
+    getBookingLocationId(bookingId) {
+        return __awaiter(this, void 0, void 0, function* () {
+            var _a;
+            const { data } = yield database_1.supabase
+                .from('bookings')
+                .select('location_id')
+                .eq('id', bookingId)
+                .single();
+            return (_a = data === null || data === void 0 ? void 0 : data.location_id) !== null && _a !== void 0 ? _a : null;
+        });
+    }
+    getBookingAgreements(bookingId) {
+        return __awaiter(this, void 0, void 0, function* () {
+            if (!bookingId) {
+                throw new Error('bookingId is required');
+            }
+            const { data, error } = yield database_1.supabase
+                .from('user_agreements')
+                .select('agreement_type, agreement_version, document_hash, accepted_at, signer_name, signer_email, ip_address, user_agent')
+                .eq('booking_id', bookingId)
+                .order('accepted_at', { ascending: true });
+            if (error) {
+                logger_1.logger.error({ err: error }, 'Error fetching booking agreements');
+                throw new Error('Failed to fetch booking agreements');
+            }
+            return data || [];
+        });
+    }
     /**
      * Utility: compute SHA-256 hash of document text.
      * Used server-side to verify hashes sent from the client.

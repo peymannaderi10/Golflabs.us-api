@@ -41,9 +41,20 @@ class BookingService {
             return (_a = data === null || data === void 0 ? void 0 : data.location_id) !== null && _a !== void 0 ? _a : null;
         });
     }
+    getBookingUserId(bookingId) {
+        return __awaiter(this, void 0, void 0, function* () {
+            var _a;
+            const { data } = yield database_1.supabase
+                .from('bookings')
+                .select('user_id')
+                .eq('id', bookingId)
+                .single();
+            return (_a = data === null || data === void 0 ? void 0 : data.user_id) !== null && _a !== void 0 ? _a : null;
+        });
+    }
     reserveBooking(bookingData) {
         return __awaiter(this, void 0, void 0, function* () {
-            var _a, _b, _c, _d, _e, _f;
+            var _a, _b, _c, _d, _e, _f, _g;
             const { locationId, userId, spaceId, date, startTime, endTime, partySize, totalAmount } = bookingData;
             // Basic validation
             if (!locationId || !userId || !spaceId || !date || !startTime || !endTime || !partySize || totalAmount == null) {
@@ -138,10 +149,6 @@ class BookingService {
             // Check if reservation holds are enabled for this location
             const reservationTimeoutMinutes = locationSettings.reservationTimeoutMinutes;
             const reservationsEnabled = reservationTimeoutMinutes !== null && reservationTimeoutMinutes > 0;
-            // Set expiration time using UTC timestamp (only used when reservations are enabled)
-            const expiresAt = reservationsEnabled
-                ? new Date(Date.now() + reservationTimeoutMinutes * 60 * 1000).toISOString()
-                : null;
             // Generate a temporary payment intent ID for the reservation
             const tempPaymentIntentId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
             // Call the PostgreSQL function to create booking and all related records
@@ -165,14 +172,16 @@ class BookingService {
                 }
                 throw error;
             }
-            // Function returns JSONB with { booking_id }
+            // Function returns JSONB with { booking_id, expires_at }
             if (!(data === null || data === void 0 ? void 0 : data.booking_id)) {
                 throw new Error('Failed to create booking - no booking ID returned');
             }
+            // Use the authoritative expires_at from the DB (avoids clock skew with client-side computation)
+            const expiresAt = (_g = data.expires_at) !== null && _g !== void 0 ? _g : null;
             logger_1.logger.info({ bookingId: data.booking_id, spaceId, p_start_time, p_end_time, reservationsEnabled, expiresAt }, 'Created new booking');
             return {
                 bookingId: data.booking_id,
-                expiresAt: expiresAt,
+                expiresAt,
                 reservationTimeoutMinutes: reservationsEnabled ? reservationTimeoutMinutes : null,
             };
         });

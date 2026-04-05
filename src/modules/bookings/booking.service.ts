@@ -30,6 +30,15 @@ export class BookingService {
     return data?.location_id ?? null;
   }
 
+  async getBookingUserId(bookingId: string): Promise<string | null> {
+    const { data } = await supabase
+      .from('bookings')
+      .select('user_id')
+      .eq('id', bookingId)
+      .single();
+    return data?.user_id ?? null;
+  }
+
   async reserveBooking(bookingData: BookingDetails) {
     const {
       locationId,
@@ -160,11 +169,6 @@ export class BookingService {
     const reservationTimeoutMinutes = locationSettings.reservationTimeoutMinutes;
     const reservationsEnabled = reservationTimeoutMinutes !== null && reservationTimeoutMinutes > 0;
 
-    // Set expiration time using UTC timestamp (only used when reservations are enabled)
-    const expiresAt = reservationsEnabled
-      ? new Date(Date.now() + reservationTimeoutMinutes * 60 * 1000).toISOString()
-      : null;
-
     // Generate a temporary payment intent ID for the reservation
     const tempPaymentIntentId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
@@ -191,16 +195,19 @@ export class BookingService {
       throw error;
     }
 
-    // Function returns JSONB with { booking_id }
+    // Function returns JSONB with { booking_id, expires_at }
     if (!data?.booking_id) {
       throw new Error('Failed to create booking - no booking ID returned');
     }
+
+    // Use the authoritative expires_at from the DB (avoids clock skew with client-side computation)
+    const expiresAt = data.expires_at ?? null;
 
     logger.info({ bookingId: data.booking_id, spaceId, p_start_time, p_end_time, reservationsEnabled, expiresAt }, 'Created new booking');
 
     return {
       bookingId: data.booking_id,
-      expiresAt: expiresAt,
+      expiresAt,
       reservationTimeoutMinutes: reservationsEnabled ? reservationTimeoutMinutes : null,
     };
   }

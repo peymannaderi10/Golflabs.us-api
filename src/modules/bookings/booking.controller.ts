@@ -34,6 +34,17 @@ export class BookingController {
   checkAvailability = async (req: Request, res: Response) => {
     try {
       const { bookingId } = req.params;
+      const authenticatedUserId = (req as AuthenticatedRequest).user?.id;
+      if (!authenticatedUserId) {
+        return res.status(401).json({ error: 'Authentication required' });
+      }
+
+      // Verify the user owns this booking
+      const bookingUserId = await this.bookingService.getBookingUserId(bookingId);
+      if (!bookingUserId || bookingUserId !== authenticatedUserId) {
+        return res.status(404).json({ error: 'Booking not found' });
+      }
+
       const available = await this.bookingService.checkSlotAvailability(bookingId);
       if (!available) {
         return res.status(409).json({ error: 'This time slot has been booked by someone else. Please choose a different time.' });

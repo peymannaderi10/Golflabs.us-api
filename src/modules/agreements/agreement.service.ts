@@ -135,6 +135,34 @@ export class AgreementService {
     };
   }
 
+  async getBookingLocationId(bookingId: string): Promise<string | null> {
+    const { data } = await supabase
+      .from('bookings')
+      .select('location_id')
+      .eq('id', bookingId)
+      .single();
+    return data?.location_id ?? null;
+  }
+
+  async getBookingAgreements(bookingId: string) {
+    if (!bookingId) {
+      throw new Error('bookingId is required');
+    }
+
+    const { data, error } = await supabase
+      .from('user_agreements')
+      .select('agreement_type, agreement_version, document_hash, accepted_at, signer_name, signer_email, ip_address, user_agent')
+      .eq('booking_id', bookingId)
+      .order('accepted_at', { ascending: true });
+
+    if (error) {
+      logger.error({ err: error }, 'Error fetching booking agreements');
+      throw new Error('Failed to fetch booking agreements');
+    }
+
+    return data || [];
+  }
+
   /**
    * Utility: compute SHA-256 hash of document text.
    * Used server-side to verify hashes sent from the client.

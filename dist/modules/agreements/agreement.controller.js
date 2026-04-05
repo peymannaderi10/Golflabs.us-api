@@ -87,6 +87,30 @@ class AgreementController {
                 res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
+        this.getBookingAgreements = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            var _a;
+            try {
+                const { bookingId } = req.params;
+                if (!bookingId) {
+                    return res.status(400).json({ error: 'bookingId is required' });
+                }
+                // Location-scoped access check: employee must belong to the booking's location
+                const employeeLocationId = (_a = req.user) === null || _a === void 0 ? void 0 : _a.locationId;
+                const bookingLocationId = yield agreement_service_1.agreementService.getBookingLocationId(bookingId);
+                if (!bookingLocationId) {
+                    return res.status(404).json({ error: 'Booking not found' });
+                }
+                if (employeeLocationId && bookingLocationId !== employeeLocationId) {
+                    return res.status(403).json({ error: 'Access denied' });
+                }
+                const agreements = yield agreement_service_1.agreementService.getBookingAgreements(bookingId);
+                res.json({ success: true, data: agreements });
+            }
+            catch (error) {
+                logger_1.logger.error({ err: error }, 'Error fetching booking agreements');
+                res.status(500).json({ error: 'Failed to fetch booking agreements' });
+            }
+        });
     }
 }
 exports.AgreementController = AgreementController;
