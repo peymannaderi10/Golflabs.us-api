@@ -35,13 +35,20 @@ export class BookingCancelService {
     // 3. Resolve Stripe Connect options
     const stripeOpts = await getStripeOptions(booking.location_id);
 
-    // 4. Check 24-hour policy
+    // 4. Check cancellation policy (configurable per location)
+    const { data: settings } = await supabase
+      .from('location_settings')
+      .select('cancellation_policy_hours')
+      .eq('location_id', booking.location_id)
+      .single();
+    const policyHours = settings?.cancellation_policy_hours ?? 24;
+
     const bookingStartTime = new Date(booking.start_time);
     const now = new Date();
     const hoursDifference = (bookingStartTime.getTime() - now.getTime()) / (1000 * 60 * 60);
 
-    if (hoursDifference < 24) {
-      throw new Error(`Bookings cannot be cancelled within 24 hours of the start time. Hours remaining: ${Math.round(hoursDifference * 10) / 10}`);
+    if (hoursDifference < policyHours) {
+      throw new Error(`Bookings cannot be cancelled within ${policyHours} hours of the start time. Hours remaining: ${Math.round(hoursDifference * 10) / 10}`);
     }
 
     // 4. Get ALL successful payment records (original + extensions) to process refunds

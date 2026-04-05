@@ -18,7 +18,7 @@ const logger_1 = require("../../shared/utils/logger");
 class BookingCancelService {
     cancelBooking(bookingId, userId) {
         return __awaiter(this, void 0, void 0, function* () {
-            var _a, _b;
+            var _a, _b, _c;
             if (!bookingId || !userId) {
                 throw new Error('Booking ID and User ID are required');
             }
@@ -41,12 +41,18 @@ class BookingCancelService {
             }
             // 3. Resolve Stripe Connect options
             const stripeOpts = yield (0, stripe_1.getStripeOptions)(booking.location_id);
-            // 4. Check 24-hour policy
+            // 4. Check cancellation policy (configurable per location)
+            const { data: settings } = yield database_1.supabase
+                .from('location_settings')
+                .select('cancellation_policy_hours')
+                .eq('location_id', booking.location_id)
+                .single();
+            const policyHours = (_a = settings === null || settings === void 0 ? void 0 : settings.cancellation_policy_hours) !== null && _a !== void 0 ? _a : 24;
             const bookingStartTime = new Date(booking.start_time);
             const now = new Date();
             const hoursDifference = (bookingStartTime.getTime() - now.getTime()) / (1000 * 60 * 60);
-            if (hoursDifference < 24) {
-                throw new Error(`Bookings cannot be cancelled within 24 hours of the start time. Hours remaining: ${Math.round(hoursDifference * 10) / 10}`);
+            if (hoursDifference < policyHours) {
+                throw new Error(`Bookings cannot be cancelled within ${policyHours} hours of the start time. Hours remaining: ${Math.round(hoursDifference * 10) / 10}`);
             }
             // 4. Get ALL successful payment records (original + extensions) to process refunds
             const { data: payments, error: paymentError } = yield database_1.supabase
@@ -128,8 +134,8 @@ class BookingCancelService {
                         const stripeObj = stripeId.startsWith('seti_')
                             ? yield stripe_1.stripe.setupIntents.retrieve(stripeId, stripeOpts)
                             : yield stripe_1.stripe.paymentIntents.retrieve(stripeId, stripeOpts);
-                        restoreMembershipId = ((_a = stripeObj.metadata) === null || _a === void 0 ? void 0 : _a.membership_id) || null;
-                        restoreFreeMinutes = parseFloat(((_b = stripeObj.metadata) === null || _b === void 0 ? void 0 : _b.member_free_minutes_applied) || '0');
+                        restoreMembershipId = ((_b = stripeObj.metadata) === null || _b === void 0 ? void 0 : _b.membership_id) || null;
+                        restoreFreeMinutes = parseFloat(((_c = stripeObj.metadata) === null || _c === void 0 ? void 0 : _c.member_free_minutes_applied) || '0');
                     }
                     // Fallback to local payment metadata ($0 extensions / free bookings)
                     if (!restoreMembershipId && payment.metadata) {

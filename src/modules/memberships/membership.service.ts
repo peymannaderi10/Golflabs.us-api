@@ -695,12 +695,12 @@ export class MembershipService {
   async getLocationMembershipSettings(locationId: string): Promise<LocationMembershipSettings> {
     const { data, error } = await supabase
       .from('location_settings')
-      .select('memberships_enabled, leagues_enabled, marketing_enabled, promotions_enabled, door_lock_type, default_booking_window_days, default_booking_hours_start, default_booking_hours_end, booking_buffer_minutes, booking_grace_period_before_minutes, booking_grace_period_after_minutes, reservation_timeout_minutes')
+      .select('memberships_enabled, leagues_enabled, marketing_enabled, promotions_enabled, door_lock_type, default_booking_window_days, default_booking_hours_start, default_booking_hours_end, booking_buffer_minutes, booking_grace_period_before_minutes, booking_grace_period_after_minutes, reservation_timeout_minutes, cancellation_policy_hours')
       .eq('location_id', locationId)
       .single();
 
     if (error || !data) {
-      return { membershipsEnabled: false, leaguesEnabled: true, marketingEnabled: false, promotionsEnabled: false, doorLockType: 'shelly', defaultBookingWindowDays: 7, defaultBookingHours: null, bookingBufferMinutes: 0, bookingGracePeriodBeforeMinutes: 0, bookingGracePeriodAfterMinutes: 0, reservationTimeoutMinutes: 2 };
+      return { membershipsEnabled: false, leaguesEnabled: true, marketingEnabled: false, promotionsEnabled: false, doorLockType: 'shelly', defaultBookingWindowDays: 7, defaultBookingHours: null, bookingBufferMinutes: 0, bookingGracePeriodBeforeMinutes: 0, bookingGracePeriodAfterMinutes: 0, reservationTimeoutMinutes: 2, cancellationPolicyHours: 24 };
     }
 
     return {
@@ -717,6 +717,7 @@ export class MembershipService {
       bookingGracePeriodBeforeMinutes: data.booking_grace_period_before_minutes ?? 0,
       bookingGracePeriodAfterMinutes: data.booking_grace_period_after_minutes ?? 0,
       reservationTimeoutMinutes: data.reservation_timeout_minutes ?? null,
+      cancellationPolicyHours: data.cancellation_policy_hours ?? 24,
     };
   }
 
@@ -732,6 +733,7 @@ export class MembershipService {
     bookingGracePeriodBeforeMinutes?: number;
     bookingGracePeriodAfterMinutes?: number;
     reservationTimeoutMinutes?: number | null;
+    cancellationPolicyHours?: number;
   }): Promise<void> {
     const updateFields: any = {};
     if (updates.membershipsEnabled !== undefined) updateFields.memberships_enabled = updates.membershipsEnabled;
@@ -786,6 +788,12 @@ export class MembershipService {
         }
       }
       updateFields.reservation_timeout_minutes = updates.reservationTimeoutMinutes;
+    }
+    if (updates.cancellationPolicyHours !== undefined) {
+      if (updates.cancellationPolicyHours < 0 || updates.cancellationPolicyHours > 168) {
+        throw new Error('Cancellation policy must be between 0 and 168 hours (7 days)');
+      }
+      updateFields.cancellation_policy_hours = updates.cancellationPolicyHours;
     }
 
     const { error } = await supabase
