@@ -31,6 +31,20 @@ export class BookingController {
     }
   };
 
+  checkAvailability = async (req: Request, res: Response) => {
+    try {
+      const { bookingId } = req.params;
+      const available = await this.bookingService.checkSlotAvailability(bookingId);
+      if (!available) {
+        return res.status(409).json({ error: 'This time slot has been booked by someone else. Please choose a different time.' });
+      }
+      res.json({ available: true });
+    } catch (error: any) {
+      logger.error({ err: error, bookingId: req.params.bookingId }, 'Error checking availability');
+      res.status(500).json({ error: 'Failed to check availability' });
+    }
+  };
+
   getBookings = async (req: Request, res: Response) => {
     try {
       const { locationId, date, startTime } = req.query;

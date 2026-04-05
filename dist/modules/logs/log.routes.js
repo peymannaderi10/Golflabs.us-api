@@ -9,7 +9,7 @@ const validation_1 = require("../../shared/middleware/validation");
 exports.logRoutes = (0, express_1.Router)();
 const controller = new log_controller_1.LogController();
 exports.logRoutes.post('/access', auth_1.authenticateKioskOrEmployee, [
-    (0, express_validator_1.body)('bay_id').isUUID().withMessage('bay_id must be a valid UUID'),
+    (0, express_validator_1.body)('space_id').isUUID().withMessage('space_id must be a valid UUID'),
     (0, express_validator_1.body)('action').isIn([
         'session_started',
         'session_ended',

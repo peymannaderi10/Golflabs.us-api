@@ -15,8 +15,8 @@ const logger_1 = require("../../shared/utils/logger");
 class LogService {
     createAccessLog(logData) {
         return __awaiter(this, void 0, void 0, function* () {
-            if (!logData.bay_id || !logData.action) {
-                throw new Error('Bay ID and action are required for access logs');
+            if (!logData.space_id || !logData.action) {
+                throw new Error('Space ID and action are required for access logs');
             }
             // If booking_id is provided but user_id is not, look up the user_id from the booking
             let enrichedLogData = Object.assign({}, logData);
@@ -66,7 +66,7 @@ class LogService {
         id,
         location_id,
         booking_id,
-        bay_id,
+        space_id,
         user_id,
         action,
         success,
@@ -87,9 +87,9 @@ class LogService {
             full_name
           )
         ),
-        bays:bay_id (
+        spaces:space_id (
           id,
-          bay_number,
+          space_number,
           name
         ),
         user_profiles:user_id (

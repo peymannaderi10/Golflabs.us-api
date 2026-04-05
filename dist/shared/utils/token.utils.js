@@ -6,7 +6,14 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.createUnlockToken = createUnlockToken;
 exports.verifyUnlockToken = verifyUnlockToken;
 const crypto_1 = __importDefault(require("crypto"));
-const UNLOCK_TOKEN_SECRET = process.env.STRIPE_WEBHOOK_SECRET || 'unlock-token-fallback-secret';
+function getUnlockTokenSecret() {
+    const secret = process.env.UNLOCK_TOKEN_SECRET;
+    if (!secret) {
+        throw new Error('UNLOCK_TOKEN_SECRET environment variable is required');
+    }
+    return secret;
+}
+const UNLOCK_TOKEN_SECRET = getUnlockTokenSecret();
 function createUnlockToken(bookingId, startTime, endTime) {
     const payload = {
         bookingId,

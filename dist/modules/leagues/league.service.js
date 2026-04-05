@@ -12,6 +12,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.LeagueService = void 0;
 const database_1 = require("../../config/database");
 const capacity_hold_service_1 = require("../bookings/capacity-hold.service");
+const date_utils_1 = require("../../shared/utils/date.utils");
+const date_fns_tz_1 = require("date-fns-tz");
 const schedule_generator_1 = require("./schedule-generator");
 const logger_1 = require("../../shared/utils/logger");
 // Sub-service imports (facade delegates)
@@ -49,22 +51,30 @@ class LeagueService {
     }
     createLeague(data) {
         return __awaiter(this, void 0, void 0, function* () {
-            const { locationId, name, format = 'stroke_play', numHoles = 9, parPerHole = 3, seasonFee = 0, membersOnly = false, maxPlayers = 32, handicapEnabled = true, courseRotation = 'fixed', scoringType = 'net_stroke_play', pointsConfig, courses, scheduleConfig, prizePoolConfig, playersPerTeam = 2, teamScoringFormat = 'best_ball', capacityHoldType = 'all_bays', capacityHoldValue = 100, leagueBayIds = [], bufferBeforeMins = 0, bufferAfterMins = 0, attendanceRequired = false, attendanceAutoAdjust = false, attendanceReminderHours = 24, attendanceCutoffHours = 8, playersPerBay = 2, teamMinAttendance = null, } = data;
-            // Validate bay count for num_bays hold type
-            if (capacityHoldType === 'num_bays') {
-                const { count: bayCount } = yield database_1.supabase
-                    .from('bays')
+            const { locationId, name, format = 'stroke_play', numHoles = 9, parPerHole = 3, seasonFee = 0, membersOnly = false, maxPlayers = 32, handicapEnabled = true, courseRotation = 'fixed', scoringType = 'net_stroke_play', pointsConfig, courses, scheduleConfig, prizePoolConfig, playersPerTeam = 2, teamScoringFormat = 'best_ball', capacityHoldType = 'all_spaces', capacityHoldValue = 100, leagueSpaceIds = [], bufferBeforeMins = 0, bufferAfterMins = 0, attendanceRequired = false, attendanceAutoAdjust = false, attendanceReminderHours = 24, attendanceCutoffHours = 8, playersPerSpace = 2, teamMinAttendance = null, } = data;
+            // Validate space count for num_spaces hold type
+            if (capacityHoldType === 'num_spaces') {
+                const { count: spaceCount } = yield database_1.supabase
+                    .from('spaces')
                     .select('id', { count: 'exact', head: true })
                     .eq('location_id', locationId)
                     .is('deleted_at', null);
-                if (bayCount !== null && capacityHoldValue > bayCount) {
-                    throw new Error(`Cannot reserve ${capacityHoldValue} bays — this location only has ${bayCount}`);
+                if (spaceCount !== null && capacityHoldValue > spaceCount) {
+                    throw new Error(`Cannot reserve ${capacityHoldValue} spaces — this location only has ${spaceCount}`);
                 }
             }
             // Generate sessions from schedule config
             const generatedSessions = (0, schedule_generator_1.generateSessionDates)(scheduleConfig);
             if (generatedSessions.length === 0) {
                 throw new Error('Schedule config generated 0 sessions');
+            }
+            // Validate earliest session is at least 3 days out (blocks past dates + next 2 days)
+            const minDate = new Date();
+            minDate.setDate(minDate.getDate() + 3);
+            minDate.setHours(0, 0, 0, 0);
+            const earliestSession = new Date(generatedSessions[0].date + 'T00:00:00');
+            if (earliestSession < minDate) {
+                throw new Error('League sessions must start at least 3 days from today');
             }
             const totalWeeks = generatedSessions.length;
             const primaryDayOfWeek = scheduleConfig.daysOfWeek[0];
@@ -97,14 +107,14 @@ class LeagueService {
                 team_scoring_format: format === 'team' ? teamScoringFormat : 'best_ball',
                 capacity_hold_type: capacityHoldType,
                 capacity_hold_value: capacityHoldValue,
-                league_bay_ids: leagueBayIds,
+                league_space_ids: leagueSpaceIds,
                 buffer_before_mins: bufferBeforeMins,
                 buffer_after_mins: bufferAfterMins,
                 attendance_required: attendanceRequired,
                 attendance_auto_adjust: attendanceAutoAdjust,
                 attendance_reminder_hours: attendanceReminderHours,
                 attendance_cutoff_hours: attendanceCutoffHours,
-                players_per_bay: playersPerBay,
+                players_per_space: playersPerSpace,
                 team_min_attendance: teamMinAttendance,
             })
                 .select()
@@ -163,20 +173,8 @@ class LeagueService {
             if (weeksError) {
                 logger_1.logger.error({ err: weeksError }, 'Failed to create league weeks');
             }
-            // Generate capacity holds for each league week
-            if (weeksData && weeksData.length > 0) {
-                try {
-                    yield this.capacityHoldService.generateHoldsForLeague(league.id, locationId, scheduleConfig.startTime, scheduleConfig.endTime, weeksData.map((w) => ({ id: w.id, date: w.date })), {
-                        holdType: capacityHoldType,
-                        holdValue: capacityHoldValue,
-                        bufferBeforeMins,
-                        bufferAfterMins,
-                    });
-                }
-                catch (holdError) {
-                    logger_1.logger.error({ err: holdError }, 'Failed to generate capacity holds');
-                }
-            }
+            // Capacity holds are generated when the league is activated, not at creation.
+            // This allows draft leagues to coexist with bookings until explicitly activated.
             return league;
         });
     }
@@ -247,8 +245,8 @@ class LeagueService {
                 updateData.capacity_hold_type = data.capacityHoldType;
             if (data.capacityHoldValue !== undefined)
                 updateData.capacity_hold_value = data.capacityHoldValue;
-            if (data.leagueBayIds !== undefined)
-                updateData.league_bay_ids = data.leagueBayIds;
+            if (data.leagueSpaceIds !== undefined)
+                updateData.league_space_ids = data.leagueSpaceIds;
             if (data.bufferBeforeMins !== undefined)
                 updateData.buffer_before_mins = data.bufferBeforeMins;
             if (data.bufferAfterMins !== undefined)
@@ -261,8 +259,8 @@ class LeagueService {
                 updateData.attendance_reminder_hours = data.attendanceReminderHours;
             if (data.attendanceCutoffHours !== undefined)
                 updateData.attendance_cutoff_hours = data.attendanceCutoffHours;
-            if (data.playersPerBay !== undefined)
-                updateData.players_per_bay = data.playersPerBay;
+            if (data.playersPerSpace !== undefined)
+                updateData.players_per_space = data.playersPerSpace;
             if (data.teamMinAttendance !== undefined)
                 updateData.team_min_attendance = data.teamMinAttendance;
             if (data.scheduleConfig !== undefined) {
@@ -289,7 +287,7 @@ class LeagueService {
                 data.bufferBeforeMins !== undefined || data.bufferAfterMins !== undefined) {
                 try {
                     yield this.capacityHoldService.updateHoldConfig(leagueId, {
-                        holdType: league.capacity_hold_type || 'all_bays',
+                        holdType: league.capacity_hold_type || 'all_spaces',
                         holdValue: league.capacity_hold_value || 100,
                         bufferBeforeMins: league.buffer_before_mins || 0,
                         bufferAfterMins: league.buffer_after_mins || 0,
@@ -327,11 +325,100 @@ class LeagueService {
             return league;
         });
     }
+    checkLeagueBookingConflicts(leagueId) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const league = yield this.getLeague(leagueId);
+            // Get location timezone
+            const { data: location, error: locError } = yield database_1.supabase
+                .from('locations')
+                .select('timezone')
+                .eq('id', league.location_id)
+                .single();
+            if (locError || !location) {
+                throw new Error(`Failed to fetch location: ${locError === null || locError === void 0 ? void 0 : locError.message}`);
+            }
+            const timezone = location.timezone || 'America/New_York';
+            // Get all league weeks
+            const { data: weeks, error: weeksError } = yield database_1.supabase
+                .from('league_weeks')
+                .select('week_number, date')
+                .eq('league_id', leagueId)
+                .order('week_number');
+            if (weeksError || !weeks) {
+                throw new Error(`Failed to fetch league weeks: ${weeksError === null || weeksError === void 0 ? void 0 : weeksError.message}`);
+            }
+            // Get all spaces at the location
+            const { data: allSpaces } = yield database_1.supabase
+                .from('spaces')
+                .select('id, space_number')
+                .eq('location_id', league.location_id)
+                .is('deleted_at', null)
+                .order('space_number');
+            const totalSpaces = (allSpaces === null || allSpaces === void 0 ? void 0 : allSpaces.length) || 0;
+            const spacesNeeded = Math.ceil((league.max_players || 32) / (league.players_per_space || 2));
+            const allSpaceIds = (allSpaces || []).map((s) => s.id);
+            const conflicts = [];
+            for (const week of weeks) {
+                // Expand the conflict window by buffer times to match what the booking grid will block
+                const leagueStartDate = new Date((0, date_utils_1.createISOTimestamp)(week.date, league.start_time, timezone));
+                const leagueEndDate = new Date((0, date_utils_1.createISOTimestamp)(week.date, league.end_time, timezone));
+                leagueStartDate.setMinutes(leagueStartDate.getMinutes() - (league.buffer_before_mins || 0));
+                leagueEndDate.setMinutes(leagueEndDate.getMinutes() + (league.buffer_after_mins || 0));
+                const leagueStartISO = leagueStartDate.toISOString();
+                const leagueEndISO = leagueEndDate.toISOString();
+                const { data: conflictingBookings, error: bookingsError } = yield database_1.supabase
+                    .from('bookings')
+                    .select('id, space_id, start_time, end_time, user_profiles(full_name), spaces(name)')
+                    .eq('location_id', league.location_id)
+                    .in('status', ['confirmed', 'reserved'])
+                    .lt('start_time', leagueEndISO)
+                    .gt('end_time', leagueStartISO);
+                if (bookingsError) {
+                    logger_1.logger.error({ err: bookingsError, weekDate: week.date }, 'Error checking booking conflicts');
+                    continue;
+                }
+                if (!conflictingBookings || conflictingBookings.length === 0) {
+                    continue;
+                }
+                // Count how many spaces have bookings during this window
+                const bookedSpaceIds = new Set(conflictingBookings.map((b) => b.space_id));
+                const freeSpaces = totalSpaces - bookedSpaceIds.size;
+                // Only a conflict if there aren't enough free spaces for the league to claim
+                if (freeSpaces < spacesNeeded) {
+                    conflicts.push({
+                        weekNumber: week.week_number,
+                        date: week.date,
+                        conflictingBookings: conflictingBookings.map((b) => {
+                            var _a, _b;
+                            const localStart = (0, date_fns_tz_1.toZonedTime)(new Date(b.start_time), timezone);
+                            const localEnd = (0, date_fns_tz_1.toZonedTime)(new Date(b.end_time), timezone);
+                            return {
+                                id: b.id,
+                                spaceName: ((_a = b.spaces) === null || _a === void 0 ? void 0 : _a.name) || 'Unknown',
+                                startTime: (0, date_fns_tz_1.format)(localStart, 'h:mm a', { timeZone: timezone }),
+                                endTime: (0, date_fns_tz_1.format)(localEnd, 'h:mm a', { timeZone: timezone }),
+                                customerName: ((_b = b.user_profiles) === null || _b === void 0 ? void 0 : _b.full_name) || 'Unknown',
+                            };
+                        }),
+                    });
+                }
+            }
+            return {
+                hasConflicts: conflicts.length > 0,
+                conflicts,
+            };
+        });
+    }
     activateLeague(leagueId) {
         return __awaiter(this, void 0, void 0, function* () {
             const league = yield this.getLeague(leagueId);
             if (league.status !== 'draft' && league.status !== 'registration') {
                 throw new Error(`Cannot activate league in '${league.status}' status`);
+            }
+            // Check for booking conflicts before activating
+            const conflictCheck = yield this.checkLeagueBookingConflicts(leagueId);
+            if (conflictCheck.hasConflicts) {
+                return { conflicts: conflictCheck.conflicts };
             }
             const { data, error } = yield database_1.supabase
                 .from('leagues')
@@ -341,6 +428,26 @@ class LeagueService {
                 .single();
             if (error || !data) {
                 throw new Error(`Failed to activate league: ${error === null || error === void 0 ? void 0 : error.message}`);
+            }
+            // Generate capacity holds now that the league is active
+            try {
+                const { data: weeks } = yield database_1.supabase
+                    .from('league_weeks')
+                    .select('id, date')
+                    .eq('league_id', leagueId)
+                    .order('week_number');
+                if (weeks && weeks.length > 0) {
+                    const scheduleConfig = league.schedule_config;
+                    yield this.capacityHoldService.generateHoldsForLeague(leagueId, league.location_id, scheduleConfig.startTime, scheduleConfig.endTime, weeks.map((w) => ({ id: w.id, date: w.date })), {
+                        holdType: league.capacity_hold_type,
+                        holdValue: league.capacity_hold_value,
+                        bufferBeforeMins: league.buffer_before_mins,
+                        bufferAfterMins: league.buffer_after_mins,
+                    }, { maxPlayers: league.max_players, playersPerSpace: league.players_per_space });
+                }
+            }
+            catch (holdError) {
+                logger_1.logger.error({ err: holdError }, 'Failed to generate capacity holds on activation');
             }
             return data;
         });

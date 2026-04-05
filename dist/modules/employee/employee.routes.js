@@ -30,10 +30,10 @@ router.get('/reports/revenue', auth_1.authenticateEmployee, (0, auth_1.validateL
  */
 router.get('/reports/bookings', auth_1.authenticateEmployee, (0, auth_1.validateLocationAccess)('query'), (req, res) => employee_controller_1.employeeController.getBookingStats(req, res));
 /**
- * GET /employee/reports/bays
- * Bay performance and utilization statistics
+ * GET /employee/reports/spaces
+ * Space performance and utilization statistics
  */
-router.get('/reports/bays', auth_1.authenticateEmployee, (0, auth_1.validateLocationAccess)('query'), (req, res) => employee_controller_1.employeeController.getBayStats(req, res));
+router.get('/reports/spaces', auth_1.authenticateEmployee, (0, auth_1.validateLocationAccess)('query'), (req, res) => employee_controller_1.employeeController.getSpaceStats(req, res));
 /**
  * GET /employee/reports/access-logs
  * Access log statistics including success rates and common errors

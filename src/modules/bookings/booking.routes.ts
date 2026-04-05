@@ -23,6 +23,12 @@ export const createBookingRoutes = (socketService: SocketService): Router => {
   bookingRoutes.get('/capacity-holds', controller.getCapacityHolds);
   bookingRoutes.get('/capacity-holds/today', controller.getTodaysHold);
 
+  bookingRoutes.get('/:bookingId/check-availability', authenticateUser,
+    validateUUID('bookingId', 'param'),
+    handleValidationErrors,
+    controller.checkAvailability
+  );
+
   bookingRoutes.get('/:bookingId/extension-options', authenticateKioskOrEmployee,
     validateUUID('bookingId', 'param'),
     handleValidationErrors,

@@ -19,15 +19,16 @@ const resend_1 = require("../../config/resend");
 const token_utils_1 = require("../../shared/utils/token.utils");
 const pricing_utils_1 = require("../../shared/utils/pricing.utils");
 const logger_1 = require("../../shared/utils/logger");
+const location_service_1 = require("../locations/location.service");
 class BookingEmployeeService {
-    getAllBookingsForEmployee(locationId, startDate, endDate, bayId, customerEmail) {
+    getAllBookingsForEmployee(locationId, startDate, endDate, spaceId, customerEmail) {
         return __awaiter(this, void 0, void 0, function* () {
             let query = database_1.supabase
                 .from('bookings')
                 .select(`
         *,
         user_profiles(id, email, full_name, phone),
-        bays(id, name, bay_number),
+        spaces(id, name, space_number),
         payments(id, amount, status, stripe_payment_intent_id, refund_amount, refunded_at),
         booking_cancellations(cancelled_by, cancellation_reason, refund_amount, cancelled_at)
       `)
@@ -52,8 +53,8 @@ class BookingEmployeeService {
                     query = query.lt('start_time', endOfRangePlusOneMinute);
                 }
             }
-            if (bayId) {
-                query = query.eq('bay_id', bayId);
+            if (spaceId) {
+                query = query.eq('space_id', spaceId);
             }
             const { data, error } = yield query.order('start_time', { ascending: true }).limit(500);
             if (error) {
@@ -90,9 +91,9 @@ class BookingEmployeeService {
     createEmployeeBooking(bookingData, employeeId) {
         return __awaiter(this, void 0, void 0, function* () {
             var _a, _b, _c;
-            const { locationId, bayId, date, startTime, endTime, partySize, totalAmount, notes, userId, newCustomer } = bookingData;
+            const { locationId, spaceId, date, startTime, endTime, partySize, totalAmount, notes, userId, newCustomer } = bookingData;
             // Validation
-            if (!locationId || !bayId || !date || !startTime || !endTime) {
+            if (!locationId || !spaceId || !date || !startTime || !endTime) {
                 throw new Error('Missing required booking details');
             }
             if (!userId && !newCustomer) {
@@ -169,7 +170,7 @@ class BookingEmployeeService {
             const { data: conflictingBookings, error: conflictError } = yield database_1.supabase
                 .from('bookings')
                 .select('id, start_time, end_time')
-                .eq('bay_id', bayId)
+                .eq('space_id', spaceId)
                 .not('status', 'in', '("cancelled","expired","abandoned")')
                 .or(`and(start_time.lt.${p_end_time},end_time.gt.${windowStart})`);
             if (conflictError) {
@@ -192,7 +193,7 @@ class BookingEmployeeService {
                 .insert({
                 location_id: locationId,
                 user_id: customerUserId,
-                bay_id: bayId,
+                space_id: spaceId,
                 start_time: p_start_time,
                 end_time: p_end_time,
                 party_size: partySize,
@@ -227,27 +228,27 @@ class BookingEmployeeService {
                 const bookingStart = new Date(p_start_time);
                 const minutesUntilStart = (bookingStart.getTime() - now.getTime()) / (1000 * 60);
                 logger_1.logger.info({ bookingId, minutesUntilStart: minutesUntilStart.toFixed(1) }, 'Employee-created booking start time check');
-                // If booking starts within 15 minutes, send reminder email immediately with unlock token
                 if (minutesUntilStart <= 15) {
                     logger_1.logger.info({ bookingId, minutesUntilStart: minutesUntilStart.toFixed(1) }, 'Employee-created booking starts soon, sending immediate reminder');
-                    // Generate unlock token and link (same as normal booking flow)
-                    const unlockToken = (0, token_utils_1.createUnlockToken)(bookingId, p_start_time, p_end_time);
-                    const unlockLink = `${resend_1.resendConfig.frontendUrl}/unlock?token=${unlockToken}`;
-                    // Update booking with unlock token
-                    const { error: tokenUpdateError } = yield database_1.supabase
-                        .from('bookings')
-                        .update({
-                        unlock_token: unlockToken,
-                        unlock_token_expires_at: p_end_time
-                    })
-                        .eq('id', bookingId);
-                    if (tokenUpdateError) {
-                        logger_1.logger.error({ err: tokenUpdateError, bookingId }, 'Error updating unlock token for booking');
-                        // Don't fail the booking creation if token update fails
+                    const doorLockType = yield location_service_1.LocationService.getDoorLockType(locationId);
+                    let unlockToken = '';
+                    let unlockLink = '';
+                    if (doorLockType !== 'none') {
+                        unlockToken = (0, token_utils_1.createUnlockToken)(bookingId, p_start_time, p_end_time);
+                        unlockLink = `${resend_1.resendConfig.frontendUrl}/unlock?token=${unlockToken}`;
+                        const { error: tokenUpdateError } = yield database_1.supabase
+                            .from('bookings')
+                            .update({
+                            unlock_token: unlockToken,
+                            unlock_token_expires_at: p_end_time
+                        })
+                            .eq('id', bookingId);
+                        if (tokenUpdateError) {
+                            logger_1.logger.error({ err: tokenUpdateError, bookingId }, 'Error updating unlock token for booking');
+                        }
                     }
-                    // Send reminder email immediately
                     yield email_service_1.EmailService.sendReminderEmail(bookingId, unlockToken, unlockLink);
-                    logger_1.logger.info({ bookingId }, 'Sent immediate reminder email for employee-created booking');
+                    logger_1.logger.info({ bookingId, doorLockType }, 'Sent immediate reminder email for employee-created booking');
                 }
                 else {
                     // Booking starts later - unlock token and reminder email will be sent by the reminder job
@@ -269,7 +270,7 @@ class BookingEmployeeService {
                 old_values: null,
                 new_values: {
                     booking_id: bookingId,
-                    bay_id: bayId,
+                    space_id: spaceId,
                     customer_id: customerUserId,
                     start_time: p_start_time,
                     end_time: p_end_time,
@@ -291,7 +292,7 @@ class BookingEmployeeService {
                 .select(`
         *,
         user_profiles(id, email, full_name, phone),
-        bays(id, name, bay_number)
+        spaces(id, name, space_number)
       `)
                 .eq('id', bookingId)
                 .single();
@@ -302,17 +303,17 @@ class BookingEmployeeService {
                 success: true,
                 bookingId,
                 locationId,
-                bayId,
+                spaceId,
                 booking: fullBooking || { id: bookingId },
                 message: 'Booking created successfully by employee'
             };
         });
     }
-    employeeRescheduleBooking(bookingId_1, newStartTime_1, newEndTime_1, locationId_1, bayId_1, employeeId_1) {
-        return __awaiter(this, arguments, void 0, function* (bookingId, newStartTime, newEndTime, locationId, bayId, employeeId, adjustPrice = false) {
+    employeeRescheduleBooking(bookingId_1, newStartTime_1, newEndTime_1, locationId_1, spaceId_1, employeeId_1) {
+        return __awaiter(this, arguments, void 0, function* (bookingId, newStartTime, newEndTime, locationId, spaceId, employeeId, adjustPrice = false) {
             var _a;
-            if (!bookingId || !newStartTime || !newEndTime || !locationId || !bayId) {
-                throw new Error('bookingId, newStartTime, newEndTime, locationId, and bayId are required');
+            if (!bookingId || !newStartTime || !newEndTime || !locationId || !spaceId) {
+                throw new Error('bookingId, newStartTime, newEndTime, locationId, and spaceId are required');
             }
             const newStart = new Date(newStartTime);
             const newEnd = new Date(newEndTime);
@@ -325,7 +326,7 @@ class BookingEmployeeService {
             // 1. Fetch and validate the booking
             const { data: booking, error: bookingError } = yield database_1.supabase
                 .from('bookings')
-                .select('id, location_id, bay_id, user_id, start_time, end_time, status, total_amount')
+                .select('id, location_id, space_id, user_id, start_time, end_time, status, total_amount')
                 .eq('id', bookingId)
                 .single();
             if (bookingError || !booking) {
@@ -349,7 +350,7 @@ class BookingEmployeeService {
             const { data: conflicts, error: conflictError } = yield database_1.supabase
                 .from('bookings')
                 .select('id')
-                .eq('bay_id', bayId)
+                .eq('space_id', spaceId)
                 .neq('id', bookingId)
                 .not('status', 'in', '("cancelled","expired","abandoned")')
                 .lt('start_time', newEndWithBuffer.toISOString())
@@ -425,7 +426,7 @@ class BookingEmployeeService {
                                 metadata: {
                                     booking_id: bookingId,
                                     user_id: booking.user_id,
-                                    bay_id: bayId,
+                                    space_id: spaceId,
                                     location_id: locationId,
                                     reschedule: 'true',
                                     price_adjustment: 'charge',
@@ -509,7 +510,7 @@ class BookingEmployeeService {
                 .update({
                 start_time: newStart.toISOString(),
                 end_time: newEnd.toISOString(),
-                bay_id: bayId,
+                space_id: spaceId,
                 total_amount: newTotalDollars,
                 unlock_token: null,
                 unlock_token_expires_at: null,
@@ -527,7 +528,7 @@ class BookingEmployeeService {
             // 7. Log the reschedule
             yield database_1.supabase.from('access_logs').insert({
                 location_id: locationId,
-                bay_id: bayId,
+                space_id: spaceId,
                 booking_id: bookingId,
                 user_id: booking.user_id,
                 action: 'booking_rescheduled',
@@ -558,7 +559,7 @@ class BookingEmployeeService {
                 success: true,
                 bookingId,
                 locationId,
-                bayId,
+                spaceId,
                 newStartTime: newStart.toISOString(),
                 newEndTime: newEnd.toISOString(),
                 priceAdjusted: adjustPrice && priceAdjustment.type !== 'none',

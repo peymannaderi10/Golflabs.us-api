@@ -44,9 +44,9 @@ class BookingService {
     reserveBooking(bookingData) {
         return __awaiter(this, void 0, void 0, function* () {
             var _a, _b, _c, _d, _e, _f;
-            const { locationId, userId, bayId, date, startTime, endTime, partySize, totalAmount } = bookingData;
+            const { locationId, userId, spaceId, date, startTime, endTime, partySize, totalAmount } = bookingData;
             // Basic validation
-            if (!locationId || !userId || !bayId || !date || !startTime || !endTime || !partySize || totalAmount == null) {
+            if (!locationId || !userId || !spaceId || !date || !startTime || !endTime || !partySize || totalAmount == null) {
                 throw new Error('Missing required booking details');
             }
             // First, get the location's timezone
@@ -71,10 +71,11 @@ class BookingService {
             const p_start_time = (0, date_utils_1.createISOTimestamp)(date, startTime, timezone);
             const p_end_time = (0, date_utils_1.createISOTimestamp)(date, endTime, timezone);
             logger_1.logger.info({ timezone, date, startTime, endTime, p_start_time, p_end_time }, 'Creating booking');
+            // Fetch location settings (needed for booking rules + reservation timeout)
+            const membershipService = new membership_service_1.MembershipService();
+            const locationSettings = yield membershipService.getLocationMembershipSettings(locationId);
             // Enforce booking window and available hours based on membership
             try {
-                const membershipService = new membership_service_1.MembershipService();
-                const locationSettings = yield membershipService.getLocationMembershipSettings(locationId);
                 // Only look up membership benefits if memberships are enabled at this location
                 const membership = locationSettings.membershipsEnabled
                     ? yield membershipService.getActiveMembershipForUser(userId, locationId)
@@ -114,67 +115,89 @@ class BookingService {
             // Convert 12h time (e.g. "6:00 PM") to 24h (e.g. "18:00") for hold comparison
             const start24 = `${String(startTimeParsed.hours).padStart(2, '0')}:${String(startTimeParsed.minutes).padStart(2, '0')}`;
             const end24 = `${String(endTimeParsed.hours).padStart(2, '0')}:${String(endTimeParsed.minutes).padStart(2, '0')}`;
-            // Get total bays at this location for capacity calculations
-            const { data: baysData } = yield database_1.supabase
-                .from('bays')
+            // Get total spaces at this location for capacity calculations
+            const { data: spacesData } = yield database_1.supabase
+                .from('spaces')
                 .select('id')
                 .eq('location_id', locationId)
                 .neq('status', 'closed');
-            const totalBays = (baysData === null || baysData === void 0 ? void 0 : baysData.length) || 0;
-            const holdConflict = yield this.capacityHoldService.checkHoldConflict(locationId, date, start24, end24, totalBays);
+            const totalSpaces = (spacesData === null || spacesData === void 0 ? void 0 : spacesData.length) || 0;
+            // Count existing non-league bookings in this window for capacity hold enforcement
+            const { count: existingBookingsInWindow } = yield database_1.supabase
+                .from('bookings')
+                .select('id', { count: 'exact', head: true })
+                .eq('location_id', locationId)
+                .in('status', ['confirmed', 'reserved'])
+                .lt('start_time', p_end_time)
+                .gt('end_time', p_start_time);
+            const holdConflict = yield this.capacityHoldService.checkHoldConflict(locationId, date, start24, end24, totalSpaces, existingBookingsInWindow !== null && existingBookingsInWindow !== void 0 ? existingBookingsInWindow : 0);
             if (holdConflict) {
                 const leagueName = holdConflict.league_name || 'League Night';
                 throw new Error(`This time is reserved for ${leagueName}. Please choose a different time.`);
             }
-            // Set expiration time using UTC timestamp
-            const expiresAt = new Date(Date.now() + 2 * 60 * 1000).toISOString();
+            // Check if reservation holds are enabled for this location
+            const reservationTimeoutMinutes = locationSettings.reservationTimeoutMinutes;
+            const reservationsEnabled = reservationTimeoutMinutes !== null && reservationTimeoutMinutes > 0;
+            // Set expiration time using UTC timestamp (only used when reservations are enabled)
+            const expiresAt = reservationsEnabled
+                ? new Date(Date.now() + reservationTimeoutMinutes * 60 * 1000).toISOString()
+                : null;
             // Generate a temporary payment intent ID for the reservation
             const tempPaymentIntentId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
             // Call the PostgreSQL function to create booking and all related records
             const { data, error } = yield database_1.supabase.rpc('create_booking_and_payment_record', {
                 p_location_id: locationId,
                 p_user_id: userId,
-                p_bay_id: bayId,
+                p_space_id: spaceId,
                 p_start_time: p_start_time,
                 p_end_time: p_end_time,
                 p_party_size: partySize,
                 p_total_amount: totalAmount,
                 p_payment_intent_id: tempPaymentIntentId,
                 p_user_agent: 'API',
-                p_ip_address: '0.0.0.0'
+                p_ip_address: '0.0.0.0',
+                p_reservation_timeout_minutes: reservationsEnabled ? reservationTimeoutMinutes : null,
             });
             if (error) {
                 logger_1.logger.error({ err: error }, 'Error calling create_booking_and_payment_record function');
-                // Handle common database errors
-                if (((_d = error.message) === null || _d === void 0 ? void 0 : _d.includes('duplicate key')) || ((_e = error.message) === null || _e === void 0 ? void 0 : _e.includes('already exists'))) {
-                    throw new Error('This time slot is no longer available.');
-                }
-                if ((_f = error.message) === null || _f === void 0 ? void 0 : _f.includes('Time slot is already booked')) {
+                if (((_d = error.message) === null || _d === void 0 ? void 0 : _d.includes('duplicate key')) || ((_e = error.message) === null || _e === void 0 ? void 0 : _e.includes('already exists')) || ((_f = error.message) === null || _f === void 0 ? void 0 : _f.includes('Time slot is already booked'))) {
                     throw new Error('This time slot is no longer available.');
                 }
                 throw error;
             }
+            // Function returns JSONB with { booking_id }
             if (!(data === null || data === void 0 ? void 0 : data.booking_id)) {
                 throw new Error('Failed to create booking - no booking ID returned');
             }
-            logger_1.logger.info({ bookingId: data.booking_id, bayId, p_start_time, p_end_time }, 'Created new booking');
-            // Update the booking to have reserved status and set expiration
-            const { error: updateError } = yield database_1.supabase
-                .from('bookings')
-                .update({
-                status: 'reserved',
-                expires_at: expiresAt
-            })
-                .eq('id', data.booking_id);
-            if (updateError) {
-                logger_1.logger.error({ err: updateError }, 'Error updating booking to reserved status');
-                throw updateError;
-            }
-            logger_1.logger.info({ bookingId: data.booking_id, expiresAt }, 'Successfully reserved booking');
+            logger_1.logger.info({ bookingId: data.booking_id, spaceId, p_start_time, p_end_time, reservationsEnabled, expiresAt }, 'Created new booking');
             return {
                 bookingId: data.booking_id,
-                expiresAt: expiresAt
+                expiresAt: expiresAt,
+                reservationTimeoutMinutes: reservationsEnabled ? reservationTimeoutMinutes : null,
             };
+        });
+    }
+    checkSlotAvailability(bookingId) {
+        return __awaiter(this, void 0, void 0, function* () {
+            // Fetch this booking's slot details
+            const { data: booking, error } = yield database_1.supabase
+                .from('bookings')
+                .select('space_id, location_id, start_time, end_time')
+                .eq('id', bookingId)
+                .single();
+            if (error || !booking)
+                return false;
+            // Check if a confirmed booking exists in the same slot (not this booking)
+            const { count } = yield database_1.supabase
+                .from('bookings')
+                .select('id', { count: 'exact', head: true })
+                .eq('space_id', booking.space_id)
+                .eq('location_id', booking.location_id)
+                .lt('start_time', booking.end_time)
+                .gt('end_time', booking.start_time)
+                .eq('status', 'confirmed')
+                .neq('id', bookingId);
+            return (count !== null && count !== void 0 ? count : 0) === 0;
         });
     }
     getBookings(locationId, date, startTime) {
@@ -207,7 +230,7 @@ class BookingService {
             // end_time falls on this date (cross-midnight bookings from extensions)
             let query = database_1.supabase
                 .from('bookings')
-                .select('id, bay_id, user_id, start_time, end_time, status, expires_at')
+                .select('id, space_id, user_id, start_time, end_time, status, expires_at')
                 .eq('location_id', locationId)
                 .lt('start_time', endOfDayPlusOneMinute)
                 .gt('end_time', startOfDayUTC)
@@ -223,10 +246,15 @@ class BookingService {
                 logger_1.logger.error({ err: error }, 'Error fetching bookings');
                 throw new Error('Failed to fetch bookings');
             }
-            // Filter out 'reserved' bookings that have expired
+            // Filter out bookings that shouldn't block the timetable:
+            // - Reserved bookings whose hold has expired
+            // - Pending bookings with no expires_at (reservation holds off — slot not held during checkout)
             const now = new Date().toISOString();
             const activeBookings = data.filter(booking => {
                 if (booking.status === 'reserved' && booking.expires_at && booking.expires_at < now) {
+                    return false;
+                }
+                if (booking.status === 'pending' && !booking.expires_at) {
                     return false;
                 }
                 return true;
@@ -269,7 +297,7 @@ class BookingService {
                     // Booking extends to or past midnight — use "11:59 PM" (grid end marker)
                     return {
                         id: booking.id,
-                        bayId: booking.bay_id,
+                        spaceId: booking.space_id,
                         userId: booking.user_id,
                         startTime: minutesToTimeStr(startMin),
                         endTime: '11:59 PM',
@@ -285,7 +313,7 @@ class BookingService {
                     endMin = 1440;
                 return {
                     id: booking.id,
-                    bayId: booking.bay_id,
+                    spaceId: booking.space_id,
                     userId: booking.user_id,
                     startTime: minutesToTimeStr(startMin),
                     endTime: endMin >= 1440 ? '11:59 PM' : minutesToTimeStr(endMin),
@@ -305,7 +333,7 @@ class BookingService {
             const now = new Date().toISOString();
             const { data, error } = yield database_1.supabase
                 .from('bookings')
-                .select('id, start_time, end_time, total_amount, status, expires_at, bay_id, location_id, bays (name, bay_number)')
+                .select('id, start_time, end_time, total_amount, status, expires_at, space_id, location_id, spaces (name, space_number)')
                 .eq('user_id', userId)
                 .eq('status', 'reserved')
                 .gt('expires_at', now)
@@ -326,10 +354,10 @@ class BookingService {
                 totalAmount: reservation.total_amount,
                 status: reservation.status,
                 expiresAt: reservation.expires_at,
-                bayId: reservation.bay_id,
+                spaceId: reservation.space_id,
                 locationId: reservation.location_id,
-                bayName: ((_a = reservation.bays) === null || _a === void 0 ? void 0 : _a.name) || 'N/A',
-                bayNumber: ((_b = reservation.bays) === null || _b === void 0 ? void 0 : _b.bay_number) || 'N/A'
+                spaceName: ((_a = reservation.spaces) === null || _a === void 0 ? void 0 : _a.name) || 'N/A',
+                spaceNumber: ((_b = reservation.spaces) === null || _b === void 0 ? void 0 : _b.space_number) || 'N/A'
             };
             return { reservation: formattedReservation };
         });
@@ -342,7 +370,7 @@ class BookingService {
             const now = new Date().toISOString();
             const { data, error } = yield database_1.supabase
                 .from('bookings')
-                .select('id, start_time, end_time, total_amount, status, bays (name, bay_number)')
+                .select('id, start_time, end_time, total_amount, status, spaces (name, space_number)')
                 .eq('user_id', userId)
                 .gte('end_time', now)
                 .not('status', 'in', '("reserved","expired","abandoned","cancelled")')
@@ -359,8 +387,8 @@ class BookingService {
                     endTime: booking.end_time,
                     totalAmount: booking.total_amount,
                     status: booking.status,
-                    bayName: ((_a = booking.bays) === null || _a === void 0 ? void 0 : _a.name) || 'N/A',
-                    bayNumber: ((_b = booking.bays) === null || _b === void 0 ? void 0 : _b.bay_number) || 'N/A'
+                    spaceName: ((_a = booking.spaces) === null || _a === void 0 ? void 0 : _a.name) || 'N/A',
+                    spaceNumber: ((_b = booking.spaces) === null || _b === void 0 ? void 0 : _b.space_number) || 'N/A'
                 });
             });
             return formattedBookings;
@@ -378,7 +406,7 @@ class BookingService {
             // Include bookings that have ended OR that were cancelled (even if their end_time is in the future)
             const { data, error, count } = yield database_1.supabase
                 .from('bookings')
-                .select('id, start_time, end_time, total_amount, status, bays (name, bay_number)', { count: 'exact' })
+                .select('id, start_time, end_time, total_amount, status, spaces (name, space_number)', { count: 'exact' })
                 .eq('user_id', userId)
                 .not('status', 'in', '("abandoned","reserved","expired")')
                 .or(`end_time.lt.${now},status.eq.cancelled`)
@@ -396,8 +424,8 @@ class BookingService {
                     endTime: booking.end_time,
                     totalAmount: booking.total_amount,
                     status: booking.status,
-                    bayName: ((_a = booking.bays) === null || _a === void 0 ? void 0 : _a.name) || 'N/A',
-                    bayNumber: ((_b = booking.bays) === null || _b === void 0 ? void 0 : _b.bay_number) || 'N/A'
+                    spaceName: ((_a = booking.spaces) === null || _a === void 0 ? void 0 : _a.name) || 'N/A',
+                    spaceNumber: ((_b = booking.spaces) === null || _b === void 0 ? void 0 : _b.space_number) || 'N/A'
                 });
             });
             return { data: formattedBookings, total: count || 0, page, pageSize: cappedPageSize };
@@ -453,9 +481,9 @@ class BookingService {
     // =====================================================
     // DELEGATED METHODS — Employee Operations
     // =====================================================
-    getAllBookingsForEmployee(locationId, startDate, endDate, bayId, customerEmail) {
+    getAllBookingsForEmployee(locationId, startDate, endDate, spaceId, customerEmail) {
         return __awaiter(this, void 0, void 0, function* () {
-            return this.employeeService.getAllBookingsForEmployee(locationId, startDate, endDate, bayId, customerEmail);
+            return this.employeeService.getAllBookingsForEmployee(locationId, startDate, endDate, spaceId, customerEmail);
         });
     }
     searchCustomersByEmail(email) {
@@ -468,9 +496,9 @@ class BookingService {
             return this.employeeService.createEmployeeBooking(bookingData, employeeId);
         });
     }
-    employeeRescheduleBooking(bookingId_1, newStartTime_1, newEndTime_1, locationId_1, bayId_1, employeeId_1) {
-        return __awaiter(this, arguments, void 0, function* (bookingId, newStartTime, newEndTime, locationId, bayId, employeeId, adjustPrice = false) {
-            return this.employeeService.employeeRescheduleBooking(bookingId, newStartTime, newEndTime, locationId, bayId, employeeId, adjustPrice);
+    employeeRescheduleBooking(bookingId_1, newStartTime_1, newEndTime_1, locationId_1, spaceId_1, employeeId_1) {
+        return __awaiter(this, arguments, void 0, function* (bookingId, newStartTime, newEndTime, locationId, spaceId, employeeId, adjustPrice = false) {
+            return this.employeeService.employeeRescheduleBooking(bookingId, newStartTime, newEndTime, locationId, spaceId, employeeId, adjustPrice);
         });
     }
     // =====================================================
@@ -481,14 +509,14 @@ class BookingService {
             return this.extensionService.getExtensionOptions(bookingId, requestedOptions);
         });
     }
-    extendBooking(bookingId_1, extensionMinutes_1, locationId_1, bayId_1) {
-        return __awaiter(this, arguments, void 0, function* (bookingId, extensionMinutes, locationId, bayId, useFreeMinutes = false) {
-            return this.extensionService.extendBooking(bookingId, extensionMinutes, locationId, bayId, useFreeMinutes);
+    extendBooking(bookingId_1, extensionMinutes_1, locationId_1, spaceId_1) {
+        return __awaiter(this, arguments, void 0, function* (bookingId, extensionMinutes, locationId, spaceId, useFreeMinutes = false) {
+            return this.extensionService.extendBooking(bookingId, extensionMinutes, locationId, spaceId, useFreeMinutes);
         });
     }
-    employeeExtendBooking(bookingId_1, extensionMinutes_1, locationId_1, bayId_1, employeeId_1) {
-        return __awaiter(this, arguments, void 0, function* (bookingId, extensionMinutes, locationId, bayId, employeeId, skipPayment = false) {
-            return this.extensionService.employeeExtendBooking(bookingId, extensionMinutes, locationId, bayId, employeeId, skipPayment);
+    employeeExtendBooking(bookingId_1, extensionMinutes_1, locationId_1, spaceId_1, employeeId_1) {
+        return __awaiter(this, arguments, void 0, function* (bookingId, extensionMinutes, locationId, spaceId, employeeId, skipPayment = false) {
+            return this.extensionService.employeeExtendBooking(bookingId, extensionMinutes, locationId, spaceId, employeeId, skipPayment);
         });
     }
 }

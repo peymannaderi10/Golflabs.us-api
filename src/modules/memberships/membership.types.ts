@@ -80,4 +80,5 @@ export interface LocationMembershipSettings {
   bookingBufferMinutes: number;
   bookingGracePeriodBeforeMinutes: number;
   bookingGracePeriodAfterMinutes: number;
+  reservationTimeoutMinutes: number | null;
 }

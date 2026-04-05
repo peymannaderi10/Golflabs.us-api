@@ -156,9 +156,9 @@ class EmployeeService {
         });
     }
     /**
-     * Get bay performance statistics for a location within a date range
+     * Get space performance statistics for a location within a date range
      */
-    getBayStats(locationId, startDate, endDate) {
+    getSpaceStats(locationId, startDate, endDate) {
         return __awaiter(this, void 0, void 0, function* () {
             // Get location timezone
             const { data: location } = yield database_1.supabase
@@ -169,27 +169,27 @@ class EmployeeService {
             const timezone = (location === null || location === void 0 ? void 0 : location.timezone) || 'America/New_York';
             const startUTC = (0, date_utils_1.createISOTimestamp)(startDate, '12:00 AM', timezone);
             const endUTC = (0, date_utils_1.createISOTimestamp)(endDate, '11:59 PM', timezone);
-            // Get all bays for this location
-            const { data: bays, error: baysError } = yield database_1.supabase
-                .from('bays')
-                .select('id, bay_number, name')
+            // Get all spaces for this location
+            const { data: spaces, error: spacesError } = yield database_1.supabase
+                .from('spaces')
+                .select('id, space_number, name')
                 .eq('location_id', locationId)
                 .is('deleted_at', null)
-                .order('bay_number');
-            if (baysError) {
-                logger_1.logger.error({ err: baysError }, 'Error fetching bays');
-                throw baysError;
+                .order('space_number');
+            if (spacesError) {
+                logger_1.logger.error({ err: spacesError }, 'Error fetching spaces');
+                throw spacesError;
             }
-            // Get confirmed bookings for each bay
+            // Get confirmed bookings for each space
             const { data: bookings, error: bookingsError } = yield database_1.supabase
                 .from('bookings')
-                .select('bay_id, start_time, end_time, total_amount')
+                .select('space_id, start_time, end_time, total_amount')
                 .eq('location_id', locationId)
                 .eq('status', 'confirmed')
                 .gte('start_time', startUTC)
                 .lte('start_time', endUTC);
             if (bookingsError) {
-                logger_1.logger.error({ err: bookingsError }, 'Error fetching bay bookings');
+                logger_1.logger.error({ err: bookingsError }, 'Error fetching space bookings');
                 throw bookingsError;
             }
             // Calculate operating hours for utilization calculation
@@ -197,32 +197,32 @@ class EmployeeService {
             const endDateObj = new Date(endDate);
             const daysDiff = Math.ceil((endDateObj.getTime() - startDateObj.getTime()) / (1000 * 60 * 60 * 24)) + 1;
             // Assume 14 hours of operation per day (e.g., 9am-11pm)
-            const totalAvailableHoursPerBay = daysDiff * 14;
-            // Aggregate by bay
-            const bayPerformanceMap = new Map();
+            const totalAvailableHoursPerSpace = daysDiff * 14;
+            // Aggregate by space
+            const spacePerformanceMap = new Map();
             (bookings || []).forEach((booking) => {
-                const bayId = booking.bay_id;
-                if (!bayId)
+                const spaceId = booking.space_id;
+                if (!spaceId)
                     return;
                 const start = new Date(booking.start_time).getTime();
                 const end = new Date(booking.end_time).getTime();
                 const hoursBooked = (end - start) / (1000 * 60 * 60);
-                const existing = bayPerformanceMap.get(bayId) || { hoursBooked: 0, bookings: 0, revenue: 0 };
+                const existing = spacePerformanceMap.get(spaceId) || { hoursBooked: 0, bookings: 0, revenue: 0 };
                 existing.hoursBooked += hoursBooked;
                 existing.bookings += 1;
                 existing.revenue += booking.total_amount || 0;
-                bayPerformanceMap.set(bayId, existing);
+                spacePerformanceMap.set(spaceId, existing);
             });
-            // Build bay performance array
-            const bayPerformance = (bays || []).map((bay) => {
-                const stats = bayPerformanceMap.get(bay.id) || { hoursBooked: 0, bookings: 0, revenue: 0 };
-                const utilizationRate = totalAvailableHoursPerBay > 0
-                    ? (stats.hoursBooked / totalAvailableHoursPerBay) * 100
+            // Build space performance array
+            const spacePerformance = (spaces || []).map((space) => {
+                const stats = spacePerformanceMap.get(space.id) || { hoursBooked: 0, bookings: 0, revenue: 0 };
+                const utilizationRate = totalAvailableHoursPerSpace > 0
+                    ? (stats.hoursBooked / totalAvailableHoursPerSpace) * 100
                     : 0;
                 return {
-                    bayId: bay.id,
-                    bayNumber: bay.bay_number,
-                    bayName: bay.name,
+                    spaceId: space.id,
+                    spaceNumber: space.space_number,
+                    spaceName: space.name,
                     totalHoursBooked: Math.round(stats.hoursBooked * 10) / 10,
                     totalBookings: stats.bookings,
                     utilizationRate: Math.round(utilizationRate * 10) / 10,
@@ -230,17 +230,17 @@ class EmployeeService {
                 };
             });
             // Sort by bookings for top performing
-            const sortedByBookings = [...bayPerformance].sort((a, b) => b.totalBookings - a.totalBookings);
-            const topPerformingBay = sortedByBookings[0] || null;
+            const sortedByBookings = [...spacePerformance].sort((a, b) => b.totalBookings - a.totalBookings);
+            const topPerformingSpace = sortedByBookings[0] || null;
             // Calculate average utilization
-            const averageUtilization = bayPerformance.length > 0
-                ? bayPerformance.reduce((sum, b) => sum + b.utilizationRate, 0) / bayPerformance.length
+            const averageUtilization = spacePerformance.length > 0
+                ? spacePerformance.reduce((sum, b) => sum + b.utilizationRate, 0) / spacePerformance.length
                 : 0;
             return {
-                bays: bayPerformance,
-                totalBays: (bays === null || bays === void 0 ? void 0 : bays.length) || 0,
+                spaces: spacePerformance,
+                totalSpaces: (spaces === null || spaces === void 0 ? void 0 : spaces.length) || 0,
                 averageUtilization: Math.round(averageUtilization * 10) / 10,
-                topPerformingBay,
+                topPerformingSpace,
             };
         });
     }
@@ -315,10 +315,10 @@ class EmployeeService {
      */
     getOverview(locationId, startDate, endDate) {
         return __awaiter(this, void 0, void 0, function* () {
-            const [revenueStats, bookingStats, bayStats, accessLogStats] = yield Promise.all([
+            const [revenueStats, bookingStats, spaceStats, accessLogStats] = yield Promise.all([
                 this.getRevenueStats(locationId, startDate, endDate),
                 this.getBookingStats(locationId, startDate, endDate),
-                this.getBayStats(locationId, startDate, endDate),
+                this.getSpaceStats(locationId, startDate, endDate),
                 this.getAccessLogStats(locationId, startDate, endDate),
             ]);
             // Find peak hour and busiest day from booking stats
@@ -358,7 +358,7 @@ class EmployeeService {
                     cancellationRate: Math.round(bookingStats.cancellationRate * 10) / 10,
                 },
                 utilization: {
-                    averageRate: bayStats.averageUtilization,
+                    averageRate: spaceStats.averageUtilization,
                     peakHour,
                     busiestDay: dayNames[busiestDayIndex],
                 },
@@ -392,10 +392,10 @@ class EmployeeService {
                 const rows = stats.dailyRevenue.map(d => `${esc(d.date)},${esc(d.revenue)},${esc(d.bookingCount)}`).join('\n');
                 return header + rows;
             }
-            else if (type === 'bays') {
-                const stats = yield this.getBayStats(locationId, startDate, endDate);
-                const header = 'Bay Number,Bay Name,Hours Booked,Bookings,Revenue,Utilization %\n';
-                const rows = stats.bays.map(b => `${esc(b.bayNumber)},${esc(b.bayName)},${esc(b.totalHoursBooked)},${esc(b.totalBookings)},${esc(b.revenue)},${esc(b.utilizationRate)}`).join('\n');
+            else if (type === 'spaces') {
+                const stats = yield this.getSpaceStats(locationId, startDate, endDate);
+                const header = 'Space Number,Space Name,Hours Booked,Bookings,Revenue,Utilization %\n';
+                const rows = stats.spaces.map(b => `${esc(b.spaceNumber)},${esc(b.spaceName)},${esc(b.totalHoursBooked)},${esc(b.totalBookings)},${esc(b.revenue)},${esc(b.utilizationRate)}`).join('\n');
                 return header + rows;
             }
             return '';
@@ -545,7 +545,7 @@ class EmployeeService {
                 start_time, 
                 total_amount, 
                 status, 
-                bays (name)
+                spaces (name)
             `)
                 .eq('user_id', customerId)
                 .eq('location_id', locationId)
@@ -570,7 +570,7 @@ class EmployeeService {
                 return ({
                     id: b.id,
                     date: b.start_time,
-                    bayName: ((_a = b.bays) === null || _a === void 0 ? void 0 : _a.name) || 'Unknown Bay',
+                    spaceName: ((_a = b.spaces) === null || _a === void 0 ? void 0 : _a.name) || 'Unknown Space',
                     status: b.status,
                     amount: b.total_amount || 0,
                 });

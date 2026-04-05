@@ -32,7 +32,7 @@ class UserService {
                 //    and the kiosk gets notified
                 const { data: activeBookings } = yield database_1.supabase
                     .from('bookings')
-                    .select('id, location_id, bay_id, status')
+                    .select('id, location_id, space_id, status')
                     .eq('user_id', userId)
                     .in('status', ['confirmed', 'reserved']);
                 if (activeBookings && activeBookings.length > 0) {
@@ -67,12 +67,12 @@ class UserService {
                         }
                     }
                     logger_1.logger.info({ userId, cancelledCount: bookingIds.length }, 'Cancelled active bookings for deleted account');
-                    // Notify kiosks so bay screens update
+                    // Notify kiosks so space screens update
                     if (socketService) {
                         for (const booking of activeBookings) {
-                            if (booking.location_id && booking.bay_id) {
+                            if (booking.location_id && booking.space_id) {
                                 try {
-                                    socketService.triggerBookingUpdate(booking.location_id, booking.bay_id, booking.id);
+                                    socketService.triggerBookingUpdate(booking.location_id, booking.space_id, booking.id);
                                 }
                                 catch (socketErr) {
                                     logger_1.logger.error({ err: socketErr, bookingId: booking.id }, 'Error notifying kiosk of cancelled booking');
@@ -136,7 +136,7 @@ class UserService {
             }
             const [profile, bookings, payments, agreements, marketingPrefs, accessLogs] = yield Promise.all([
                 database_1.supabase.from('user_profiles').select('id, email, full_name, phone, created_at').eq('id', userId).single(),
-                database_1.supabase.from('bookings').select('id, location_id, bay_id, start_time, end_time, total_amount, status, party_size, created_at').eq('user_id', userId),
+                database_1.supabase.from('bookings').select('id, location_id, space_id, start_time, end_time, total_amount, status, party_size, created_at').eq('user_id', userId),
                 database_1.supabase.from('payments').select('id, amount, status, created_at').eq('user_id', userId),
                 database_1.supabase.from('user_agreements').select('agreement_type, accepted_at').eq('user_id', userId),
                 database_1.supabase.from('marketing_preferences').select('email_opted_in, email_opted_out, email_opted_in_at, email_opted_out_at').eq('user_id', userId),

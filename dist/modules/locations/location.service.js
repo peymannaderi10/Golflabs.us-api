@@ -12,20 +12,26 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.LocationService = void 0;
 const database_1 = require("../../config/database");
 const logger_1 = require("../../shared/utils/logger");
+const VALID_DOOR_LOCK_TYPES = ['none', 'shelly'];
 function formatSettings(ls) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r;
     return {
         membershipsEnabled: (_a = ls.memberships_enabled) !== null && _a !== void 0 ? _a : false,
         leaguesEnabled: (_b = ls.leagues_enabled) !== null && _b !== void 0 ? _b : true,
         marketingEnabled: (_c = ls.marketing_enabled) !== null && _c !== void 0 ? _c : false,
-        defaultBookingWindowDays: (_d = ls.default_booking_window_days) !== null && _d !== void 0 ? _d : 7,
-        defaultBookingHoursStart: (_e = ls.default_booking_hours_start) !== null && _e !== void 0 ? _e : null,
-        defaultBookingHoursEnd: (_f = ls.default_booking_hours_end) !== null && _f !== void 0 ? _f : null,
-        cancellationPolicyHours: (_g = ls.cancellation_policy_hours) !== null && _g !== void 0 ? _g : 24,
-        bookingBufferMinutes: (_h = ls.booking_buffer_minutes) !== null && _h !== void 0 ? _h : 0,
-        brandPrimaryColor: (_j = ls.brand_primary_color) !== null && _j !== void 0 ? _j : '#00A36C',
-        brandLogoUrl: (_k = ls.brand_logo_url) !== null && _k !== void 0 ? _k : null,
-        customDomain: (_l = ls.custom_domain) !== null && _l !== void 0 ? _l : null,
+        promotionsEnabled: (_d = ls.promotions_enabled) !== null && _d !== void 0 ? _d : false,
+        doorLockType: (_e = ls.door_lock_type) !== null && _e !== void 0 ? _e : 'shelly',
+        defaultBookingWindowDays: (_f = ls.default_booking_window_days) !== null && _f !== void 0 ? _f : 7,
+        defaultBookingHoursStart: (_g = ls.default_booking_hours_start) !== null && _g !== void 0 ? _g : null,
+        defaultBookingHoursEnd: (_h = ls.default_booking_hours_end) !== null && _h !== void 0 ? _h : null,
+        cancellationPolicyHours: (_j = ls.cancellation_policy_hours) !== null && _j !== void 0 ? _j : 24,
+        bookingBufferMinutes: (_k = ls.booking_buffer_minutes) !== null && _k !== void 0 ? _k : 0,
+        bookingGracePeriodBeforeMinutes: (_l = ls.booking_grace_period_before_minutes) !== null && _l !== void 0 ? _l : 0,
+        bookingGracePeriodAfterMinutes: (_m = ls.booking_grace_period_after_minutes) !== null && _m !== void 0 ? _m : 0,
+        reservationTimeoutMinutes: (_o = ls.reservation_timeout_minutes) !== null && _o !== void 0 ? _o : null,
+        brandPrimaryColor: (_p = ls.brand_primary_color) !== null && _p !== void 0 ? _p : '#00A36C',
+        brandLogoUrl: (_q = ls.brand_logo_url) !== null && _q !== void 0 ? _q : null,
+        customDomain: (_r = ls.custom_domain) !== null && _r !== void 0 ? _r : null,
     };
 }
 function formatLocation(location, settings) {
@@ -132,6 +138,29 @@ class LocationService {
                 .single();
             return formatLocation(data, settingsRow || {});
         });
+    }
+    /**
+     * Lightweight lookup for door_lock_type by location.
+     * Used by unlock endpoints, reminder jobs, and webhook handlers
+     * to decide whether to generate tokens / allow unlock commands.
+     */
+    static getDoorLockType(locationId) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const { data, error } = yield database_1.supabase
+                .from('location_settings')
+                .select('door_lock_type')
+                .eq('location_id', locationId)
+                .single();
+            if (error || !data) {
+                logger_1.logger.error({ err: error, locationId }, 'Error fetching door_lock_type — cannot determine lock configuration');
+                throw new Error('Unable to determine door lock configuration for location');
+            }
+            const raw = data.door_lock_type;
+            return LocationService.isValidDoorLockType(raw) ? raw : 'none';
+        });
+    }
+    static isValidDoorLockType(value) {
+        return VALID_DOOR_LOCK_TYPES.includes(value);
     }
 }
 exports.LocationService = LocationService;

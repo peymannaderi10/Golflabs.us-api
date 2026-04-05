@@ -68,9 +68,18 @@ class LeagueScoringService {
     }
     finalizeWeek(leagueId, weekId) {
         return __awaiter(this, void 0, void 0, function* () {
-            // Recalculate standings first (before marking as finalized)
-            yield this.standingsService.recalculateStandings(leagueId);
             const league = yield this.getLeague(leagueId);
+            // Mark week as finalized FIRST so recalculateStandings includes this week's scores
+            const { error: weekError } = yield database_1.supabase
+                .from('league_weeks')
+                .update({ status: 'finalized' })
+                .eq('id', weekId)
+                .eq('league_id', leagueId);
+            if (weekError) {
+                throw new Error(`Failed to finalize week: ${weekError.message}`);
+            }
+            // Recalculate standings (now includes the newly finalized week)
+            yield this.standingsService.recalculateStandings(leagueId);
             // Recalculate handicaps
             if (league.handicap_enabled) {
                 yield this.standingsService.recalculateHandicaps(leagueId, weekId);
@@ -94,15 +103,6 @@ class LeagueScoringService {
                 catch (payoutError) {
                     logger_1.logger.error({ err: payoutError, weekId }, 'Error generating payouts for week');
                 }
-            }
-            // Mark week as finalized LAST — after all dependent operations succeed
-            const { error: weekError } = yield database_1.supabase
-                .from('league_weeks')
-                .update({ status: 'finalized' })
-                .eq('id', weekId)
-                .eq('league_id', leagueId);
-            if (weekError) {
-                throw new Error(`Failed to finalize week: ${weekError.message}`);
             }
             const standings = yield this.standingsService.getStandings(leagueId);
             return { standings, payouts };
@@ -150,14 +150,14 @@ class LeagueScoringService {
     }
     submitScore(data) {
         return __awaiter(this, void 0, void 0, function* () {
-            const { leagueWeekId, leaguePlayerId, holeNumber, strokes, bayId, enteredVia = 'kiosk' } = data;
+            const { leagueWeekId, leaguePlayerId, holeNumber, strokes, spaceId, enteredVia = 'kiosk' } = data;
             yield this.validateScoreSubmission(data);
             const { data: result, error } = yield database_1.supabase.rpc('submit_league_score', {
                 p_league_week_id: leagueWeekId,
                 p_league_player_id: leaguePlayerId,
                 p_hole_number: holeNumber,
                 p_strokes: strokes,
-                p_bay_id: bayId || null,
+                p_space_id: spaceId || null,
                 p_entered_via: enteredVia,
             });
             if (error || !result) {
@@ -188,7 +188,7 @@ class LeagueScoringService {
                     p_league_player_id: leaguePlayerId,
                     p_hole_number: holeNumber,
                     p_strokes: strokes,
-                    p_bay_id: null,
+                    p_space_id: null,
                     p_entered_via: enteredVia,
                 });
                 if (error) {

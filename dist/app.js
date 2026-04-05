@@ -27,7 +27,7 @@ const booking_routes_1 = require("./modules/bookings/booking.routes");
 const payment_routes_1 = require("./modules/payments/payment.routes");
 const pricing_routes_1 = require("./modules/pricing/pricing.routes");
 const location_routes_1 = require("./modules/locations/location.routes");
-const bay_routes_1 = require("./modules/bays/bay.routes");
+const space_routes_1 = require("./modules/spaces/space.routes");
 const log_routes_1 = require("./modules/logs/log.routes");
 const unlock_routes_1 = require("./modules/unlock/unlock.routes");
 const user_routes_1 = require("./modules/user/user.routes");
@@ -35,6 +35,7 @@ const promotion_routes_1 = __importDefault(require("./modules/promotions/promoti
 const employee_1 = require("./modules/employee");
 const league_routes_1 = require("./modules/leagues/league.routes");
 const agreement_routes_1 = __importDefault(require("./modules/agreements/agreement.routes"));
+const document_routes_1 = __importDefault(require("./modules/documents/document.routes"));
 const membership_routes_1 = require("./modules/memberships/membership.routes");
 const marketing_routes_1 = require("./modules/marketing/marketing.routes");
 const marketing_controller_1 = require("./modules/marketing/marketing.controller");
@@ -101,14 +102,14 @@ const webhookRateLimit = (0, express_rate_limit_1.default)({
 });
 // Webhook endpoints need raw body - must be before express.json()
 exports.app.post('/stripe-webhook', webhookRateLimit, express_1.default.raw({ type: 'application/json' }), (req, res) => (0, stripe_webhooks_1.handleStripeWebhook)(req, res, socketService));
-exports.app.post('/resend-webhook', express_1.default.raw({ type: 'application/json' }), email_webhooks_1.handleResendWebhook);
+exports.app.post('/resend-webhook', webhookRateLimit, express_1.default.raw({ type: 'application/json' }), email_webhooks_1.handleResendWebhook);
 // Compress responses for all other routes
 exports.app.use((0, compression_1.default)());
 // Use json parser for all other routes
 exports.app.use(express_1.default.json());
 const globalRateLimit = (0, express_rate_limit_1.default)({
     windowMs: 1 * 60 * 1000,
-    max: 100,
+    max: process.env.NODE_ENV === 'production' ? 100 : 500,
     message: { error: 'Too many requests, please try again later' },
     standardHeaders: true,
     legacyHeaders: false,
@@ -214,7 +215,7 @@ exports.app.use('/bookings', (0, booking_routes_1.createBookingRoutes)(socketSer
 exports.app.use('/', payment_routes_1.paymentRoutes); // Payment routes are at root level for backwards compatibility
 exports.app.use('/', pricing_routes_1.pricingRoutes); // Pricing routes are at root level for backwards compatibility
 exports.app.use('/locations', location_routes_1.locationRoutes);
-exports.app.use('/bays', (0, bay_routes_1.createBayRoutes)(socketService));
+exports.app.use('/spaces', (0, space_routes_1.createSpaceRoutes)(socketService));
 exports.app.use('/logs', log_routes_1.logRoutes);
 exports.app.use('/', (0, unlock_routes_1.unlockRoutes)(socketService)); // Unlock routes at root level
 exports.app.use('/', (0, user_routes_1.createUserRoutes)(socketService)); // User routes at root level
@@ -224,6 +225,7 @@ exports.app.use('/leagues', (0, league_routes_1.createLeagueRoutes)(socketServic
 exports.app.use('/team-invites', (0, league_routes_1.createTeamInviteRoutes)(socketService)); // Team invite routes (token-based)
 exports.app.use('/attendance', (0, league_routes_1.createAttendanceRoutes)(socketService)); // Attendance confirmation routes (token-based)
 exports.app.use('/agreements', agreement_routes_1.default); // Legal agreement tracking routes
+exports.app.use('/documents', document_routes_1.default); // Per-location legal document management
 exports.app.use('/memberships', membership_routes_1.membershipRoutes); // Membership subscription routes
 exports.app.use('/employee/marketing', marketing_routes_1.marketingRoutes); // Marketing campaigns (employee-auth)
 exports.app.get('/marketing/unsubscribe', (req, res) => marketing_controller_1.marketingController.unsubscribe(req, res)); // Public unsubscribe

@@ -25,6 +25,7 @@ const database_1 = require("../../config/database");
 const stripe_1 = require("../../config/stripe");
 const email_service_1 = require("../email/email.service");
 const logger_1 = require("../../shared/utils/logger");
+const location_service_1 = require("../locations/location.service");
 class MembershipService {
     // =====================================================
     // PLAN CRUD (Employee)
@@ -655,30 +656,35 @@ class MembershipService {
     // =====================================================
     getLocationMembershipSettings(locationId) {
         return __awaiter(this, void 0, void 0, function* () {
-            var _a, _b;
+            var _a, _b, _c, _d, _e, _f, _g;
             const { data, error } = yield database_1.supabase
                 .from('location_settings')
-                .select('memberships_enabled, leagues_enabled, marketing_enabled, default_booking_window_days, default_booking_hours_start, default_booking_hours_end, booking_buffer_minutes')
+                .select('memberships_enabled, leagues_enabled, marketing_enabled, promotions_enabled, door_lock_type, default_booking_window_days, default_booking_hours_start, default_booking_hours_end, booking_buffer_minutes, booking_grace_period_before_minutes, booking_grace_period_after_minutes, reservation_timeout_minutes')
                 .eq('location_id', locationId)
                 .single();
             if (error || !data) {
-                return { membershipsEnabled: false, leaguesEnabled: true, marketingEnabled: false, defaultBookingWindowDays: 7, defaultBookingHours: null, bookingBufferMinutes: 0 };
+                return { membershipsEnabled: false, leaguesEnabled: true, marketingEnabled: false, promotionsEnabled: false, doorLockType: 'shelly', defaultBookingWindowDays: 7, defaultBookingHours: null, bookingBufferMinutes: 0, bookingGracePeriodBeforeMinutes: 0, bookingGracePeriodAfterMinutes: 0, reservationTimeoutMinutes: 2 };
             }
             return {
                 membershipsEnabled: data.memberships_enabled,
                 leaguesEnabled: data.leagues_enabled,
                 marketingEnabled: (_a = data.marketing_enabled) !== null && _a !== void 0 ? _a : false,
+                promotionsEnabled: (_b = data.promotions_enabled) !== null && _b !== void 0 ? _b : false,
+                doorLockType: (_c = data.door_lock_type) !== null && _c !== void 0 ? _c : 'shelly',
                 defaultBookingWindowDays: data.default_booking_window_days,
                 defaultBookingHours: data.default_booking_hours_start && data.default_booking_hours_end
                     ? { start: data.default_booking_hours_start, end: data.default_booking_hours_end }
                     : null,
-                bookingBufferMinutes: (_b = data.booking_buffer_minutes) !== null && _b !== void 0 ? _b : 0,
+                bookingBufferMinutes: (_d = data.booking_buffer_minutes) !== null && _d !== void 0 ? _d : 0,
+                bookingGracePeriodBeforeMinutes: (_e = data.booking_grace_period_before_minutes) !== null && _e !== void 0 ? _e : 0,
+                bookingGracePeriodAfterMinutes: (_f = data.booking_grace_period_after_minutes) !== null && _f !== void 0 ? _f : 0,
+                reservationTimeoutMinutes: (_g = data.reservation_timeout_minutes) !== null && _g !== void 0 ? _g : null,
             };
         });
     }
     updateLocationMembershipSettings(locationId, updates) {
         return __awaiter(this, void 0, void 0, function* () {
-            var _a, _b, _c, _d;
+            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
             const updateFields = {};
             if (updates.membershipsEnabled !== undefined)
                 updateFields.memberships_enabled = updates.membershipsEnabled;
@@ -686,6 +692,14 @@ class MembershipService {
                 updateFields.leagues_enabled = updates.leaguesEnabled;
             if (updates.marketingEnabled !== undefined)
                 updateFields.marketing_enabled = updates.marketingEnabled;
+            if (updates.promotionsEnabled !== undefined)
+                updateFields.promotions_enabled = updates.promotionsEnabled;
+            if (updates.doorLockType !== undefined) {
+                if (!location_service_1.LocationService.isValidDoorLockType(updates.doorLockType)) {
+                    throw new Error('Invalid door lock type');
+                }
+                updateFields.door_lock_type = updates.doorLockType;
+            }
             if (updates.defaultBookingWindowDays !== undefined)
                 updateFields.default_booking_window_days = updates.defaultBookingWindowDays;
             if (updates.defaultBookingHours !== undefined) {
@@ -697,6 +711,42 @@ class MembershipService {
                     throw new Error('Buffer must be 0, 15, 30, 45, or 60 minutes');
                 }
                 updateFields.booking_buffer_minutes = updates.bookingBufferMinutes;
+            }
+            if (updates.bookingGracePeriodBeforeMinutes !== undefined || updates.bookingGracePeriodAfterMinutes !== undefined) {
+                // Fetch current settings for any fields not in this update payload
+                let bufferMins = (_e = updates.bookingBufferMinutes) !== null && _e !== void 0 ? _e : updateFields.booking_buffer_minutes;
+                let currentBefore = 0;
+                let currentAfter = 0;
+                if (bufferMins === undefined || updates.bookingGracePeriodBeforeMinutes === undefined || updates.bookingGracePeriodAfterMinutes === undefined) {
+                    const { data: current } = yield database_1.supabase
+                        .from('location_settings')
+                        .select('booking_buffer_minutes, booking_grace_period_before_minutes, booking_grace_period_after_minutes')
+                        .eq('location_id', locationId)
+                        .single();
+                    if (bufferMins === undefined)
+                        bufferMins = (_f = current === null || current === void 0 ? void 0 : current.booking_buffer_minutes) !== null && _f !== void 0 ? _f : 0;
+                    currentBefore = (_g = current === null || current === void 0 ? void 0 : current.booking_grace_period_before_minutes) !== null && _g !== void 0 ? _g : 0;
+                    currentAfter = (_h = current === null || current === void 0 ? void 0 : current.booking_grace_period_after_minutes) !== null && _h !== void 0 ? _h : 0;
+                }
+                const before = (_j = updates.bookingGracePeriodBeforeMinutes) !== null && _j !== void 0 ? _j : currentBefore;
+                const after = (_k = updates.bookingGracePeriodAfterMinutes) !== null && _k !== void 0 ? _k : currentAfter;
+                if (before < 0 || after < 0)
+                    throw new Error('Grace period cannot be negative');
+                if (before + after > bufferMins) {
+                    throw new Error(`Total grace period (${before} + ${after} = ${before + after}) cannot exceed the buffer (${bufferMins} min)`);
+                }
+                if (updates.bookingGracePeriodBeforeMinutes !== undefined)
+                    updateFields.booking_grace_period_before_minutes = before;
+                if (updates.bookingGracePeriodAfterMinutes !== undefined)
+                    updateFields.booking_grace_period_after_minutes = after;
+            }
+            if (updates.reservationTimeoutMinutes !== undefined) {
+                if (updates.reservationTimeoutMinutes !== null) {
+                    if (updates.reservationTimeoutMinutes < 1 || updates.reservationTimeoutMinutes > 30) {
+                        throw new Error('Reservation timeout must be between 1 and 30 minutes');
+                    }
+                }
+                updateFields.reservation_timeout_minutes = updates.reservationTimeoutMinutes;
             }
             const { error } = yield database_1.supabase
                 .from('location_settings')

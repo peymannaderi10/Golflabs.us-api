@@ -70,21 +70,23 @@ export class PaymentService {
 
     logger.info({ bookingId, status: booking.status, expiresAt: booking.expires_at, createdAt: booking.created_at, userId: booking.user_id }, 'Payment intent requested for booking');
 
-    if (booking.status !== 'reserved') {
+    if (booking.status !== 'reserved' && booking.status !== 'pending') {
       logger.error({ bookingId, status: booking.status }, 'Booking has invalid status for payment');
       throw new Error(`Booking cannot be paid for. Status: ${booking.status}`);
     }
 
-    // Check expiration using UTC timestamp comparison
-    const now = new Date().toISOString();
-    if (booking.expires_at < now) {
-      // The reservation has expired, update its status
-      await supabase
-        .from('bookings')
-        .update({ status: 'expired' })
-        .eq('id', bookingId)
-        .eq('status', 'reserved');
-      throw new Error('Booking reservation has expired.');
+    // Check expiration using UTC timestamp comparison (only for reserved bookings with an expiry)
+    if (booking.status === 'reserved' && booking.expires_at) {
+      const now = new Date().toISOString();
+      if (booking.expires_at < now) {
+        // The reservation has expired, update its status
+        await supabase
+          .from('bookings')
+          .update({ status: 'expired' })
+          .eq('id', bookingId)
+          .eq('status', 'reserved');
+        throw new Error('Booking reservation has expired.');
+      }
     }
 
     // 1b. Compute the price server-side (never trust client amount)

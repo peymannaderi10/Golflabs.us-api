@@ -18,6 +18,7 @@ interface LocationSettingsRow {
   booking_buffer_minutes: number;
   booking_grace_period_before_minutes: number;
   booking_grace_period_after_minutes: number;
+  reservation_timeout_minutes: number | null;
   brand_primary_color: string;
   brand_logo_url: string | null;
   custom_domain: string | null;
@@ -37,6 +38,7 @@ function formatSettings(ls: Partial<LocationSettingsRow>) {
     bookingBufferMinutes: ls.booking_buffer_minutes ?? 0,
     bookingGracePeriodBeforeMinutes: ls.booking_grace_period_before_minutes ?? 0,
     bookingGracePeriodAfterMinutes: ls.booking_grace_period_after_minutes ?? 0,
+    reservationTimeoutMinutes: ls.reservation_timeout_minutes ?? null,
     brandPrimaryColor: ls.brand_primary_color ?? '#00A36C',
     brandLogoUrl: ls.brand_logo_url ?? null,
     customDomain: ls.custom_domain ?? null,

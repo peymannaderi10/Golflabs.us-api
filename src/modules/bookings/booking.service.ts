@@ -76,10 +76,12 @@ export class BookingService {
 
     logger.info({ timezone, date, startTime, endTime, p_start_time, p_end_time }, 'Creating booking');
 
+    // Fetch location settings (needed for booking rules + reservation timeout)
+    const membershipService = new MembershipService();
+    const locationSettings = await membershipService.getLocationMembershipSettings(locationId);
+
     // Enforce booking window and available hours based on membership
     try {
-      const membershipService = new MembershipService();
-      const locationSettings = await membershipService.getLocationMembershipSettings(locationId);
 
       // Only look up membership benefits if memberships are enabled at this location
       const membership = locationSettings.membershipsEnabled
@@ -154,8 +156,14 @@ export class BookingService {
       throw new Error(`This time is reserved for ${leagueName}. Please choose a different time.`);
     }
 
-    // Set expiration time using UTC timestamp
-    const expiresAt = new Date(Date.now() + 2 * 60 * 1000).toISOString();
+    // Check if reservation holds are enabled for this location
+    const reservationTimeoutMinutes = locationSettings.reservationTimeoutMinutes;
+    const reservationsEnabled = reservationTimeoutMinutes !== null && reservationTimeoutMinutes > 0;
+
+    // Set expiration time using UTC timestamp (only used when reservations are enabled)
+    const expiresAt = reservationsEnabled
+      ? new Date(Date.now() + reservationTimeoutMinutes * 60 * 1000).toISOString()
+      : null;
 
     // Generate a temporary payment intent ID for the reservation
     const tempPaymentIntentId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -172,6 +180,7 @@ export class BookingService {
       p_payment_intent_id: tempPaymentIntentId,
       p_user_agent: 'API',
       p_ip_address: '0.0.0.0',
+      p_reservation_timeout_minutes: reservationsEnabled ? reservationTimeoutMinutes : null,
     });
 
     if (error) {
@@ -187,28 +196,37 @@ export class BookingService {
       throw new Error('Failed to create booking - no booking ID returned');
     }
 
-    logger.info({ bookingId: data.booking_id, spaceId, p_start_time, p_end_time }, 'Created new booking');
-
-    // Update the booking to have reserved status and set expiration
-    const { error: updateError } = await supabase
-      .from('bookings')
-      .update({
-        status: 'reserved',
-        expires_at: expiresAt
-      })
-      .eq('id', data.booking_id);
-
-    if (updateError) {
-      logger.error({ err: updateError }, 'Error updating booking to reserved status');
-      throw updateError;
-    }
-
-    logger.info({ bookingId: data.booking_id, expiresAt }, 'Successfully reserved booking');
+    logger.info({ bookingId: data.booking_id, spaceId, p_start_time, p_end_time, reservationsEnabled, expiresAt }, 'Created new booking');
 
     return {
       bookingId: data.booking_id,
-      expiresAt: expiresAt
+      expiresAt: expiresAt,
+      reservationTimeoutMinutes: reservationsEnabled ? reservationTimeoutMinutes : null,
     };
+  }
+
+  async checkSlotAvailability(bookingId: string): Promise<boolean> {
+    // Fetch this booking's slot details
+    const { data: booking, error } = await supabase
+      .from('bookings')
+      .select('space_id, location_id, start_time, end_time')
+      .eq('id', bookingId)
+      .single();
+
+    if (error || !booking) return false;
+
+    // Check if a confirmed booking exists in the same slot (not this booking)
+    const { count } = await supabase
+      .from('bookings')
+      .select('id', { count: 'exact', head: true })
+      .eq('space_id', booking.space_id)
+      .eq('location_id', booking.location_id)
+      .lt('start_time', booking.end_time)
+      .gt('end_time', booking.start_time)
+      .eq('status', 'confirmed')
+      .neq('id', bookingId);
+
+    return (count ?? 0) === 0;
   }
 
   async getBookings(locationId: string, date: string, startTime?: string) {
@@ -269,10 +287,15 @@ export class BookingService {
       throw new Error('Failed to fetch bookings');
     }
 
-    // Filter out 'reserved' bookings that have expired
+    // Filter out bookings that shouldn't block the timetable:
+    // - Reserved bookings whose hold has expired
+    // - Pending bookings with no expires_at (reservation holds off — slot not held during checkout)
     const now = new Date().toISOString();
     const activeBookings = data.filter(booking => {
       if (booking.status === 'reserved' && booking.expires_at && booking.expires_at < now) {
+        return false;
+      }
+      if (booking.status === 'pending' && !booking.expires_at) {
         return false;
       }
       return true;

@@ -30,7 +30,7 @@ function processAttendanceCutoffs() {
             // 1. Get all active leagues with attendance enabled
             const { data: leagues, error } = yield database_1.supabase
                 .from('leagues')
-                .select('id, name, start_time, attendance_cutoff_hours, attendance_auto_adjust, players_per_bay, team_min_attendance, format')
+                .select('id, name, start_time, attendance_cutoff_hours, attendance_auto_adjust, players_per_space, team_min_attendance, format')
                 .eq('attendance_required', true)
                 .in('status', ['active', 'registration']);
             if (error || !leagues || leagues.length === 0)
@@ -72,16 +72,16 @@ function processAttendanceCutoffs() {
                             if (league.attendance_auto_adjust) {
                                 const result = yield attendanceService.adjustCapacityHold(league.id, week.id);
                                 if (result.adjusted) {
-                                    logger_1.logger.info({ leagueId: league.id, leagueName: league.name, weekNumber: week.week_number, originalBays: result.originalBays, baysNeeded: result.baysNeeded }, 'Auto-adjusted capacity');
+                                    logger_1.logger.info({ leagueId: league.id, leagueName: league.name, weekNumber: week.week_number, originalSpaces: result.originalSpaces, spacesNeeded: result.spacesNeeded }, 'Auto-adjusted capacity');
                                 }
                                 else {
-                                    logger_1.logger.info({ leagueId: league.id, leagueName: league.name, weekNumber: week.week_number, baysNeeded: result.baysNeeded, originalBays: result.originalBays }, 'Capacity hold unchanged');
+                                    logger_1.logger.info({ leagueId: league.id, leagueName: league.name, weekNumber: week.week_number, spacesNeeded: result.spacesNeeded, originalSpaces: result.originalSpaces }, 'Capacity hold unchanged');
                                 }
                             }
                             else {
                                 // Log informational-only mode
-                                const summary = yield attendanceService.getAttendanceSummary(week.id, league.players_per_bay || 2);
-                                logger_1.logger.info({ leagueId: league.id, leagueName: league.name, weekNumber: week.week_number, confirmed: summary.confirmed, totalPlayers: summary.totalPlayers, baysNeeded: summary.baysNeeded }, 'Attendance locked (informational)');
+                                const summary = yield attendanceService.getAttendanceSummary(week.id, league.players_per_space || 2);
+                                logger_1.logger.info({ leagueId: league.id, leagueName: league.name, weekNumber: week.week_number, confirmed: summary.confirmed, totalPlayers: summary.totalPlayers, spacesNeeded: summary.spacesNeeded }, 'Attendance locked (informational)');
                             }
                             // 6. Team min attendance check (informational)
                             if (league.format === 'team' && league.team_min_attendance) {

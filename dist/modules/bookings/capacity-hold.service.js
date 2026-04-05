@@ -12,28 +12,95 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.CapacityHoldService = void 0;
 const database_1 = require("../../config/database");
 const logger_1 = require("../../shared/utils/logger");
+const date_utils_1 = require("../../shared/utils/date.utils");
 class CapacityHoldService {
     /**
      * Generate capacity holds for all weeks of a league.
      * Called when a league is created.
+     *
+     * Smart initial hold: instead of blindly using `all_spaces`, calculate
+     * the actual spaces needed based on max_players / players_per_space.
+     * If that exceeds total spaces at the location, cap at all spaces.
      */
-    generateHoldsForLeague(leagueId, locationId, startTime, endTime, weeks, config) {
+    generateHoldsForLeague(leagueId, locationId, startTime, endTime, weeks, config, leagueContext) {
         return __awaiter(this, void 0, void 0, function* () {
             if (weeks.length === 0)
                 return;
-            const rows = weeks.map(week => ({
-                league_id: leagueId,
-                league_week_id: week.id,
-                location_id: locationId,
-                hold_date: week.date,
-                start_time: startTime,
-                end_time: endTime,
-                hold_type: config.holdType,
-                hold_value: config.holdValue,
-                buffer_before_mins: config.bufferBeforeMins,
-                buffer_after_mins: config.bufferAfterMins,
-                status: 'active',
-            }));
+            // Get all spaces at the location sorted by space_number
+            const { data: allSpaces } = yield database_1.supabase
+                .from('spaces')
+                .select('id, space_number')
+                .eq('location_id', locationId)
+                .is('deleted_at', null)
+                .order('space_number');
+            const totalSpaces = (allSpaces === null || allSpaces === void 0 ? void 0 : allSpaces.length) || 0;
+            if (totalSpaces === 0)
+                return;
+            let holdType = config.holdType;
+            let holdValue = config.holdValue;
+            let spacesNeeded = totalSpaces;
+            // Smart initial hold: calculate actual spaces needed from league capacity
+            if (leagueContext && leagueContext.maxPlayers > 0 && leagueContext.playersPerSpace > 0) {
+                spacesNeeded = Math.ceil(leagueContext.maxPlayers / leagueContext.playersPerSpace);
+                if (spacesNeeded < totalSpaces) {
+                    holdType = 'num_spaces';
+                    holdValue = spacesNeeded;
+                    logger_1.logger.info({ leagueId, spacesNeeded, totalSpaces, maxPlayers: leagueContext.maxPlayers, playersPerSpace: leagueContext.playersPerSpace }, 'Smart hold: reserving calculated spaces instead of all');
+                }
+                else {
+                    holdType = 'all_spaces';
+                    holdValue = 100;
+                    logger_1.logger.info({ leagueId, spacesNeeded, totalSpaces }, 'Smart hold: reserving all spaces');
+                }
+            }
+            // Get location timezone for booking overlap checks
+            const { data: location } = yield database_1.supabase
+                .from('locations')
+                .select('timezone')
+                .eq('id', locationId)
+                .single();
+            const timezone = (location === null || location === void 0 ? void 0 : location.timezone) || 'America/New_York';
+            const rows = [];
+            for (const week of weeks) {
+                let heldSpaceIds = null;
+                if (holdType === 'num_spaces') {
+                    // Find which spaces have bookings during this league window (including buffers)
+                    const windowStart = new Date((0, date_utils_1.createISOTimestamp)(week.date, startTime, timezone));
+                    const windowEnd = new Date((0, date_utils_1.createISOTimestamp)(week.date, endTime, timezone));
+                    windowStart.setMinutes(windowStart.getMinutes() - config.bufferBeforeMins);
+                    windowEnd.setMinutes(windowEnd.getMinutes() + config.bufferAfterMins);
+                    const { data: overlappingBookings } = yield database_1.supabase
+                        .from('bookings')
+                        .select('space_id')
+                        .eq('location_id', locationId)
+                        .in('status', ['confirmed', 'reserved'])
+                        .lt('start_time', windowEnd.toISOString())
+                        .gt('end_time', windowStart.toISOString());
+                    const bookedSpaceIds = new Set((overlappingBookings || []).map((b) => b.space_id));
+                    // Prefer free spaces first, then fill with booked ones if needed
+                    const freeSpaces = (allSpaces || []).filter(s => !bookedSpaceIds.has(s.id));
+                    const bookedSpaces = (allSpaces || []).filter(s => bookedSpaceIds.has(s.id));
+                    const picked = [...freeSpaces, ...bookedSpaces].slice(0, spacesNeeded);
+                    heldSpaceIds = picked.map(s => s.id);
+                }
+                else if (holdType === 'all_spaces') {
+                    heldSpaceIds = (allSpaces || []).map(s => s.id);
+                }
+                rows.push({
+                    league_id: leagueId,
+                    league_week_id: week.id,
+                    location_id: locationId,
+                    hold_date: week.date,
+                    start_time: startTime,
+                    end_time: endTime,
+                    hold_type: holdType,
+                    hold_value: holdValue,
+                    buffer_before_mins: config.bufferBeforeMins,
+                    buffer_after_mins: config.bufferAfterMins,
+                    held_space_ids: heldSpaceIds,
+                    status: 'active',
+                });
+            }
             const { error } = yield database_1.supabase
                 .from('capacity_holds')
                 .insert(rows);
@@ -41,7 +108,7 @@ class CapacityHoldService {
                 logger_1.logger.error({ err: error }, 'Failed to generate capacity holds');
                 throw new Error(`Failed to generate capacity holds: ${error.message}`);
             }
-            logger_1.logger.info({ count: rows.length, leagueId }, 'Generated capacity holds for league');
+            logger_1.logger.info({ count: rows.length, leagueId, holdType, holdValue }, 'Generated capacity holds for league');
         });
     }
     /**
@@ -157,11 +224,11 @@ class CapacityHoldService {
      * @param date        YYYY-MM-DD
      * @param startTime   HH:MM (24h) of the booking start
      * @param endTime     HH:MM (24h) of the booking end
-     * @param totalBays   Total number of bays at the location (for num_bays / pct_capacity)
+     * @param totalSpaces   Total number of spaces at the location (for num_spaces / pct_capacity)
      * @param existingBookingsInWindow  Count of non-league bookings already in this window
      */
-    checkHoldConflict(locationId_1, date_1, startTime_1, endTime_1, totalBays_1) {
-        return __awaiter(this, arguments, void 0, function* (locationId, date, startTime, endTime, totalBays, existingBookingsInWindow = 0) {
+    checkHoldConflict(locationId_1, date_1, startTime_1, endTime_1, totalSpaces_1) {
+        return __awaiter(this, arguments, void 0, function* (locationId, date, startTime, endTime, totalSpaces, existingBookingsInWindow = 0) {
             const holds = yield this.getHoldsForDate(locationId, date);
             for (const hold of holds) {
                 // Calculate effective hold window with buffers
@@ -170,21 +237,21 @@ class CapacityHoldService {
                 // Check overlap: booking overlaps hold if booking_start < hold_end AND booking_end > hold_start
                 if (startTime < holdEnd && endTime > holdStart) {
                     // Determine if this hold blocks the booking
-                    if (hold.hold_type === 'all_bays') {
-                        return hold; // All bays blocked
+                    if (hold.hold_type === 'all_spaces') {
+                        return hold; // All spaces blocked
                     }
-                    if (hold.hold_type === 'num_bays') {
-                        // hold_value = number of bays reserved for league
-                        const publicBaysAvailable = totalBays - hold.hold_value;
-                        if (existingBookingsInWindow >= publicBaysAvailable) {
-                            return hold; // No more public bays available
+                    if (hold.hold_type === 'num_spaces') {
+                        // hold_value = number of spaces reserved for league
+                        const publicSpacesAvailable = totalSpaces - hold.hold_value;
+                        if (existingBookingsInWindow >= publicSpacesAvailable) {
+                            return hold; // No more public spaces available
                         }
                     }
                     if (hold.hold_type === 'pct_capacity') {
-                        // hold_value = percentage of bays reserved (e.g. 75)
-                        const reservedBays = Math.ceil(totalBays * (hold.hold_value / 100));
-                        const publicBaysAvailable = totalBays - reservedBays;
-                        if (existingBookingsInWindow >= publicBaysAvailable) {
+                        // hold_value = percentage of spaces reserved (e.g. 75)
+                        const reservedSpaces = Math.ceil(totalSpaces * (hold.hold_value / 100));
+                        const publicSpacesAvailable = totalSpaces - reservedSpaces;
+                        if (existingBookingsInWindow >= publicSpacesAvailable) {
                             return hold;
                         }
                     }

@@ -51,13 +51,13 @@ class SocketService {
                     socket.emit('auth_error', { message: 'Invalid or missing kiosk API key' });
                     return;
                 }
-                if (payload.locationId && payload.bayId) {
-                    const bayRoom = `location-${payload.locationId}-bay-${payload.bayId}`;
+                if (payload.locationId && payload.spaceId) {
+                    const spaceRoom = `location-${payload.locationId}-space-${payload.spaceId}`;
                     const locationRoom = `location-${payload.locationId}`;
-                    socket.join(bayRoom);
+                    socket.join(spaceRoom);
                     socket.join(locationRoom);
                     socket.data.isKiosk = true;
-                    logger_1.logger.info({ socketId: socket.id, bayId: payload.bayId, bayRoom, locationRoom }, 'Socket joined rooms');
+                    logger_1.logger.info({ socketId: socket.id, spaceId: payload.spaceId, spaceRoom, locationRoom }, 'Socket joined rooms');
                 }
             });
             // Only allow booking requests from authenticated kiosk sockets
@@ -66,9 +66,9 @@ class SocketService {
                     socket.emit('auth_error', { message: 'Not authenticated as kiosk' });
                     return;
                 }
-                if (payload.locationId && payload.bayId) {
-                    logger_1.logger.info({ socketId: socket.id, bayId: payload.bayId }, 'Kiosk requested initial bookings');
-                    this.sendAllBookingsUpdate(payload.locationId, payload.bayId);
+                if (payload.locationId && payload.spaceId) {
+                    logger_1.logger.info({ socketId: socket.id, spaceId: payload.spaceId }, 'Kiosk requested initial bookings');
+                    this.sendAllBookingsUpdate(payload.locationId, payload.spaceId);
                 }
             });
             // Register a kiosk/TV to a league room (requires kiosk auth)
@@ -130,43 +130,43 @@ class SocketService {
         });
     }
     /**
-     * Fetches the specific booking and broadcasts it to the bay kiosk.
+     * Fetches the specific booking and broadcasts it to the space kiosk.
      * @param locationId The ID of the location to update.
-     * @param bayId The ID of the specific bay to update.
+     * @param spaceId The ID of the specific space to update.
      * @param bookingId The specific booking that changed (optional, if not provided will send all bookings)
      */
-    triggerBookingUpdate(locationId, bayId, bookingId) {
+    triggerBookingUpdate(locationId, spaceId, bookingId) {
         return __awaiter(this, void 0, void 0, function* () {
-            if (!locationId || !bayId)
+            if (!locationId || !spaceId)
                 return;
-            logger_1.logger.info({ locationId, bayId, bookingId }, 'Triggering booking update');
+            logger_1.logger.info({ locationId, spaceId, bookingId }, 'Triggering booking update');
             try {
                 if (bookingId) {
                     // Send only the specific booking that changed
-                    yield this.sendSpecificBookingUpdate(locationId, bayId, bookingId);
+                    yield this.sendSpecificBookingUpdate(locationId, spaceId, bookingId);
                 }
                 else {
                     // Fallback: send all bookings (for initial load or polling)
-                    yield this.sendAllBookingsUpdate(locationId, bayId);
+                    yield this.sendAllBookingsUpdate(locationId, spaceId);
                 }
             }
             catch (error) {
-                logger_1.logger.error({ err: error, locationId, bayId }, 'Failed to trigger booking update');
+                logger_1.logger.error({ err: error, locationId, spaceId }, 'Failed to trigger booking update');
             }
         });
     }
     /**
      * Send update for a specific booking
      */
-    sendSpecificBookingUpdate(locationId, bayId, bookingId) {
+    sendSpecificBookingUpdate(locationId, spaceId, bookingId) {
         return __awaiter(this, void 0, void 0, function* () {
             // Get the specific booking details
             const { data: booking, error } = yield database_1.supabase
                 .from('bookings')
-                .select('id, bay_id, user_id, start_time, end_time, status')
+                .select('id, space_id, user_id, start_time, end_time, status')
                 .eq('id', bookingId)
                 .eq('location_id', locationId)
-                .eq('bay_id', bayId)
+                .eq('space_id', spaceId)
                 .single();
             if (error || !booking) {
                 logger_1.logger.error({ err: error, bookingId }, 'Could not fetch booking for update');
@@ -181,12 +181,13 @@ class SocketService {
             // Format the booking time for display
             const startTimeUTC = new Date(booking.start_time);
             const endTimeUTC = new Date(booking.end_time);
-            const { data: location } = yield database_1.supabase
-                .from('locations')
-                .select('timezone')
-                .eq('id', locationId)
-                .single();
+            const [{ data: location }, { data: settings }] = yield Promise.all([
+                database_1.supabase.from('locations').select('timezone').eq('id', locationId).single(),
+                database_1.supabase.from('location_settings').select('booking_grace_period_before_minutes, booking_grace_period_after_minutes').eq('location_id', locationId).single(),
+            ]);
             const timezone = (location === null || location === void 0 ? void 0 : location.timezone) || 'America/New_York';
+            const graceBefore = ((settings === null || settings === void 0 ? void 0 : settings.booking_grace_period_before_minutes) || 0) * 60000;
+            const graceAfter = ((settings === null || settings === void 0 ? void 0 : settings.booking_grace_period_after_minutes) || 0) * 60000;
             const startTimeLocal = startTimeUTC.toLocaleString('en-US', {
                 hour: 'numeric',
                 minute: '2-digit',
@@ -203,29 +204,31 @@ class SocketService {
                 type: 'booking_update',
                 action: booking.status === 'cancelled' ? 'remove' : 'add',
                 locationId,
-                bayId,
+                spaceId,
                 date: dateForLocation,
                 booking: {
                     id: booking.id,
-                    bayId: booking.bay_id,
+                    spaceId: booking.space_id,
                     userId: booking.user_id,
                     startTime: startTimeLocal,
                     endTime: endTimeLocal,
-                    startTimeISO: booking.start_time,
-                    endTimeISO: booking.end_time,
+                    startTimeISO: new Date(startTimeUTC.getTime() - graceBefore).toISOString(),
+                    endTimeISO: new Date(endTimeUTC.getTime() + graceAfter).toISOString(),
+                    startTimeOriginalISO: startTimeUTC.toISOString(),
+                    endTimeOriginalISO: endTimeUTC.toISOString(),
                     status: booking.status
                 },
                 timestamp: new Date().toISOString()
             };
-            const room = `location-${locationId}-bay-${bayId}`;
+            const room = `location-${locationId}-space-${spaceId}`;
             this.io.to(room).emit('booking_update', payload);
             logger_1.logger.info({ action: payload.action, room, bookingId }, 'Broadcasted booking update');
         });
     }
     /**
-     * Send all bookings for a bay (fallback method)
+     * Send all bookings for a space (fallback method)
      */
-    sendAllBookingsUpdate(locationId, bayId) {
+    sendAllBookingsUpdate(locationId, spaceId) {
         return __awaiter(this, void 0, void 0, function* () {
             // We need to get the current date in the location's specific timezone
             const dateForLocation = yield this.getTodayForLocation(locationId);
@@ -233,30 +236,37 @@ class SocketService {
                 logger_1.logger.error({ locationId }, 'Could not determine date for location, aborting broadcast');
                 return;
             }
-            const bookings = yield this.bookingService.getBookings(locationId, dateForLocation);
-            // Filter bookings for this specific bay
-            const bayBookings = bookings.filter(booking => booking.bayId === bayId);
-            // Enhanced payload with location and bay information for precise kiosk targeting
+            const [bookings, { data: graceSettings }] = yield Promise.all([
+                this.bookingService.getBookings(locationId, dateForLocation),
+                database_1.supabase.from('location_settings').select('booking_grace_period_before_minutes, booking_grace_period_after_minutes').eq('location_id', locationId).single(),
+            ]);
+            const graceBefore = ((graceSettings === null || graceSettings === void 0 ? void 0 : graceSettings.booking_grace_period_before_minutes) || 0) * 60000;
+            const graceAfter = ((graceSettings === null || graceSettings === void 0 ? void 0 : graceSettings.booking_grace_period_after_minutes) || 0) * 60000;
+            // Filter bookings for this specific space
+            const spaceBookings = bookings.filter(booking => booking.spaceId === spaceId);
+            // Enhanced payload with location and space information for precise kiosk targeting
             const payload = {
                 type: 'bookings_refresh',
                 locationId,
-                bayId,
+                spaceId,
                 date: dateForLocation,
-                bookings: bayBookings.map(booking => ({
+                bookings: spaceBookings.map(booking => ({
                     id: booking.id,
-                    bayId: booking.bayId,
+                    spaceId: booking.spaceId,
                     userId: booking.userId,
                     startTime: booking.startTime,
                     endTime: booking.endTime,
-                    startTimeISO: booking.startTimeISO,
-                    endTimeISO: booking.endTimeISO,
-                    status: 'confirmed' // All bookings from getBookings are confirmed
+                    startTimeISO: new Date(new Date(booking.startTimeISO).getTime() - graceBefore).toISOString(),
+                    endTimeISO: new Date(new Date(booking.endTimeISO).getTime() + graceAfter).toISOString(),
+                    startTimeOriginalISO: booking.startTimeISO,
+                    endTimeOriginalISO: booking.endTimeISO,
+                    status: 'confirmed'
                 })),
                 timestamp: new Date().toISOString()
             };
-            const room = `location-${locationId}-bay-${bayId}`;
+            const room = `location-${locationId}-space-${spaceId}`;
             this.io.to(room).emit('bookings_updated', payload);
-            logger_1.logger.info({ room, bookingCount: bayBookings.length, bayId, date: dateForLocation }, 'Broadcasted bookings_updated');
+            logger_1.logger.info({ room, bookingCount: spaceBookings.length, spaceId, date: dateForLocation }, 'Broadcasted bookings_updated');
         });
     }
     /**
@@ -304,48 +314,45 @@ class SocketService {
     /**
      * Sends an unlock command to the specified kiosk and waits for a response.
      * @param locationId The ID of the location.
-     * @param bayId The ID of the bay.
+     * @param spaceId The ID of the space.
      * @param duration The duration in seconds for the door to remain unlocked.
      * @param bookingId The ID of the booking triggering the unlock.
      * @returns A promise that resolves to true if the unlock was successful, otherwise false.
      */
-    sendUnlockCommand(locationId, bayId, duration, bookingId) {
-        return new Promise((resolve) => __awaiter(this, void 0, void 0, function* () {
-            const room = `location-${locationId}-bay-${bayId}`;
+    sendUnlockCommand(locationId, spaceId, duration, bookingId) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const room = `location-${locationId}-space-${spaceId}`;
             const payload = {
                 type: 'door_unlock',
                 duration,
                 bookingId,
                 locationId,
-                bayId,
+                spaceId,
                 timestamp: new Date().toISOString()
             };
             try {
-                // Find sockets for the target kiosk
                 const sockets = yield this.io.in(room).fetchSockets();
                 if (sockets.length === 0) {
                     logger_1.logger.error({ room }, 'No kiosk connected in room');
-                    return resolve(false);
+                    return false;
                 }
-                const kioskSocket = sockets[0]; // Assuming one kiosk per room
+                const kioskSocket = sockets[0];
                 logger_1.logger.info({ kioskSocketId: kioskSocket.id, room }, 'Sending unlock command to kiosk');
-                // Emit with a timeout and acknowledgment callback
                 const response = yield kioskSocket.timeout(10000).emitWithAck('unlock', payload);
                 if (response.success) {
                     logger_1.logger.info({ kioskSocketId: kioskSocket.id }, 'Kiosk confirmed unlock success');
-                    resolve(true);
+                    return true;
                 }
                 else {
                     logger_1.logger.error({ kioskSocketId: kioskSocket.id, error: response.error }, 'Kiosk reported unlock failure');
-                    resolve(false);
+                    return false;
                 }
             }
             catch (e) {
-                // This catch block handles timeout errors or other socket errors
                 logger_1.logger.error({ err: e, room }, 'Did not receive unlock confirmation from room');
-                resolve(false);
+                return false;
             }
-        }));
+        });
     }
     /**
      * Broadcasts an event to all kiosks at a location.
@@ -357,43 +364,43 @@ class SocketService {
         logger_1.logger.info({ event, room }, 'Broadcasted event to room');
     }
     /**
-     * Broadcasts a bay status change to all dashboards and kiosks at a location.
+     * Broadcasts a space status change to all dashboards and kiosks at a location.
      */
-    broadcastBayUpdate(locationId, bay) {
+    broadcastSpaceUpdate(locationId, space) {
         const payload = {
-            type: 'bay_update',
+            type: 'space_update',
             locationId,
-            bay,
+            space,
             timestamp: new Date().toISOString()
         };
-        this.broadcastToLocation(locationId, 'bay_update', payload);
-        logger_1.logger.info({ locationId, bayId: bay.id, status: bay.status }, 'Broadcasted bay_update');
+        this.broadcastToLocation(locationId, 'space_update', payload);
+        logger_1.logger.info({ locationId, spaceId: space.id, status: space.status }, 'Broadcasted space_update');
     }
     /**
-     * Broadcasts when a new bay is created.
+     * Broadcasts when a new space is created.
      */
-    broadcastBayCreated(locationId, bay) {
+    broadcastSpaceCreated(locationId, space) {
         const payload = {
-            type: 'bay_created',
+            type: 'space_created',
             locationId,
-            bay,
+            space,
             timestamp: new Date().toISOString()
         };
-        this.broadcastToLocation(locationId, 'bay_created', payload);
-        logger_1.logger.info({ locationId, bayId: bay.id }, 'Broadcasted bay_created');
+        this.broadcastToLocation(locationId, 'space_created', payload);
+        logger_1.logger.info({ locationId, spaceId: space.id }, 'Broadcasted space_created');
     }
     /**
-     * Broadcasts when a bay is deleted.
+     * Broadcasts when a space is deleted.
      */
-    broadcastBayDeleted(locationId, bayId) {
+    broadcastSpaceDeleted(locationId, spaceId) {
         const payload = {
-            type: 'bay_deleted',
+            type: 'space_deleted',
             locationId,
-            bayId,
+            spaceId,
             timestamp: new Date().toISOString()
         };
-        this.broadcastToLocation(locationId, 'bay_deleted', payload);
-        logger_1.logger.info({ locationId, bayId }, 'Broadcasted bay_deleted');
+        this.broadcastToLocation(locationId, 'space_deleted', payload);
+        logger_1.logger.info({ locationId, spaceId }, 'Broadcasted space_deleted');
     }
 }
 exports.SocketService = SocketService;

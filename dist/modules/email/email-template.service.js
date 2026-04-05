@@ -21,7 +21,7 @@ const email_template_defaults_1 = require("./email-template.defaults");
 const DEFAULT_BRAND = {
     brandName: 'GOLF LABS US',
     brandColor: '#2c5530',
-    brandTagline: 'Ready to improve your game? 🏌️‍♂️',
+    brandTagline: 'Ready to improve your game?',
 };
 class EmailTemplateService {
     // ------------------------------------------------------------------
@@ -190,10 +190,11 @@ class EmailTemplateService {
     // Shared variable preparation
     // ------------------------------------------------------------------
     static prepareBookingVars(data) {
+        var _a;
         const timezone = data.locationTimezone || 'America/New_York';
         const localStart = (0, date_fns_tz_1.toZonedTime)(new Date(data.startTime), timezone);
         const localEnd = (0, date_fns_tz_1.toZonedTime)(new Date(data.endTime), timezone);
-        return Object.assign(Object.assign({}, DEFAULT_BRAND), { userFullName: data.userFullName, locationName: data.locationName, bayName: data.bayName, startDate: (0, date_fns_tz_1.format)(localStart, 'EEEE, MMMM d, yyyy', { timeZone: timezone }), startTime: (0, date_fns_tz_1.format)(localStart, 'h:mm a', { timeZone: timezone }), endTime: (0, date_fns_tz_1.format)(localEnd, 'h:mm a', { timeZone: timezone }), unlockLink: data.unlockLink || '', formattedAmount: (data.totalAmount / 100).toFixed(2), refundAmount: data.refundAmount != null ? data.refundAmount.toFixed(2) : (data.totalAmount / 100).toFixed(2), isCancelledByEmployee: data.cancelledBy === 'employee', cancellationReason: data.cancellationReason || '', refundProcessed: !!data.refundProcessed });
+        return Object.assign(Object.assign({}, DEFAULT_BRAND), { userFullName: data.userFullName, locationName: data.locationName, spaceName: data.spaceName, startDate: (0, date_fns_tz_1.format)(localStart, 'EEEE, MMMM d, yyyy', { timeZone: timezone }), startTime: (0, date_fns_tz_1.format)(localStart, 'h:mm a', { timeZone: timezone }), endTime: (0, date_fns_tz_1.format)(localEnd, 'h:mm a', { timeZone: timezone }), unlockLink: data.unlockLink || '', hasDoorLock: (_a = data.hasDoorLock) !== null && _a !== void 0 ? _a : false, formattedAmount: (data.totalAmount / 100).toFixed(2), refundAmount: data.refundAmount != null ? data.refundAmount.toFixed(2) : (data.totalAmount / 100).toFixed(2), isCancelledByEmployee: data.cancelledBy === 'employee', cancellationReason: data.cancellationReason || '', refundProcessed: !!data.refundProcessed });
     }
     // ------------------------------------------------------------------
     // CRUD helpers for managing templates in the DB

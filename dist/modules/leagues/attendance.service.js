@@ -118,6 +118,17 @@ class AttendanceService {
             if (updateError) {
                 return { success: false, message: 'Failed to update attendance.' };
             }
+            // Live-adjust capacity hold based on updated attendance
+            if (row.league_week_id) {
+                const { data: week } = yield database_1.supabase
+                    .from('league_weeks')
+                    .select('league_id')
+                    .eq('id', row.league_week_id)
+                    .single();
+                if (week === null || week === void 0 ? void 0 : week.league_id) {
+                    this.liveAdjustCapacityHold(week.league_id, row.league_week_id).catch(err => logger_1.logger.error({ err, leagueId: week.league_id, weekId: row.league_week_id }, 'liveAdjustCapacityHold failed (non-fatal)'));
+                }
+            }
             return {
                 success: true,
                 message: status === 'confirmed' ? 'You\'re confirmed! See you on league night.' : 'Got it — you won\'t be attending this week.',
@@ -159,6 +170,15 @@ class AttendanceService {
             if (updateError) {
                 throw new Error(`Failed to update attendance: ${updateError.message}`);
             }
+            // Live-adjust capacity hold based on updated attendance
+            const { data: week } = yield database_1.supabase
+                .from('league_weeks')
+                .select('league_id')
+                .eq('id', weekId)
+                .single();
+            if (week === null || week === void 0 ? void 0 : week.league_id) {
+                this.liveAdjustCapacityHold(week.league_id, weekId).catch(err => logger_1.logger.error({ err, leagueId: week.league_id, weekId }, 'liveAdjustCapacityHold failed (non-fatal)'));
+            }
             return updated;
         });
     }
@@ -185,23 +205,23 @@ class AttendanceService {
         });
     }
     /**
-     * Get attendance summary with counts and calculated bays needed.
+     * Get attendance summary with counts and calculated spaces needed.
      */
     getAttendanceSummary(weekId_1) {
-        return __awaiter(this, arguments, void 0, function* (weekId, playersPerBay = 2) {
+        return __awaiter(this, arguments, void 0, function* (weekId, playersPerSpace = 2) {
             const rows = yield this.getAttendanceForWeek(weekId);
             const confirmed = rows.filter(r => r.status === 'confirmed').length;
             const declined = rows.filter(r => r.status === 'declined').length;
             const noResponse = rows.filter(r => r.status === 'no_response').length;
             const locked = rows.length > 0 && rows[0].locked;
-            const baysNeeded = confirmed > 0 ? Math.ceil(confirmed / playersPerBay) : 0;
+            const spacesNeeded = confirmed > 0 ? Math.ceil(confirmed / playersPerSpace) : 0;
             return {
                 weekId,
                 totalPlayers: rows.length,
                 confirmed,
                 declined,
                 noResponse,
-                baysNeeded,
+                spacesNeeded,
                 locked,
             };
         });
@@ -243,66 +263,117 @@ class AttendanceService {
         });
     }
     /**
-     * Adjust capacity hold based on confirmed attendance.
-     * Only called when attendance_auto_adjust = true.
-     *
-     * Logic:
-     * 1. Get confirmed count and compute bays_needed = ceil(confirmed / players_per_bay)
-     * 2. Compare with original hold — only REDUCE, never increase
-     * 3. If confirmed === 0, suspend the hold entirely
-     * 4. If bays_needed >= original reserved bays, leave unchanged
+     * Live-adjust capacity hold as players respond (confirm/decline).
+     * Counts confirmed + no_response as potential attendees (they might still show up).
+     * Only reduces the hold, never increases beyond the original.
+     */
+    liveAdjustCapacityHold(leagueId, weekId) {
+        return __awaiter(this, void 0, void 0, function* () {
+            try {
+                const { data: league } = yield database_1.supabase
+                    .from('leagues')
+                    .select('attendance_auto_adjust, players_per_space, capacity_hold_type, capacity_hold_value, location_id')
+                    .eq('id', leagueId)
+                    .single();
+                if (!league || !league.attendance_auto_adjust)
+                    return;
+                const playersPerSpace = league.players_per_space || 2;
+                const rows = yield this.getAttendanceForWeek(weekId);
+                // Count confirmed + no_response as potential attendees
+                const potentialAttendees = rows.filter(r => r.status === 'confirmed' || r.status === 'no_response').length;
+                const spacesNeeded = potentialAttendees > 0 ? Math.ceil(potentialAttendees / playersPerSpace) : 0;
+                // Get total spaces at location
+                const { data: spaces } = yield database_1.supabase
+                    .from('spaces')
+                    .select('id')
+                    .eq('location_id', league.location_id)
+                    .is('deleted_at', null);
+                const totalSpaces = (spaces === null || spaces === void 0 ? void 0 : spaces.length) || 0;
+                // Compute original reserved spaces
+                let originalReservedSpaces;
+                switch (league.capacity_hold_type) {
+                    case 'all_spaces':
+                        originalReservedSpaces = totalSpaces;
+                        break;
+                    case 'num_spaces':
+                        originalReservedSpaces = league.capacity_hold_value;
+                        break;
+                    default: originalReservedSpaces = totalSpaces;
+                }
+                if (potentialAttendees === 0) {
+                    yield this.suspendHoldForWeek(weekId);
+                    logger_1.logger.info({ weekId, leagueId }, 'Live-adjust: suspended hold (0 potential attendees)');
+                    return;
+                }
+                // Only reduce, never increase beyond original
+                if (spacesNeeded < originalReservedSpaces) {
+                    yield this.updateHoldForWeek(weekId, spacesNeeded);
+                    logger_1.logger.info({ weekId, leagueId, spacesNeeded, originalReservedSpaces }, 'Live-adjust: reduced hold');
+                }
+            }
+            catch (err) {
+                logger_1.logger.error({ err, leagueId, weekId }, 'Error in live capacity adjustment');
+                // Don't throw — this is a best-effort optimization
+            }
+        });
+    }
+    /**
+     * Final capacity adjustment at cutoff time.
+     * Only counts confirmed players (no_response = not coming).
+     * Only reduces the hold, never increases beyond the original.
      */
     adjustCapacityHold(leagueId, weekId) {
         return __awaiter(this, void 0, void 0, function* () {
             // 1. Get the league config
             const { data: league, error: leagueError } = yield database_1.supabase
                 .from('leagues')
-                .select('players_per_bay, capacity_hold_type, capacity_hold_value, location_id')
+                .select('players_per_space, capacity_hold_type, capacity_hold_value, location_id')
                 .eq('id', leagueId)
                 .single();
             if (leagueError || !league) {
                 throw new Error('League not found for capacity adjustment.');
             }
-            const playersPerBay = league.players_per_bay || 2;
+            const playersPerSpace = league.players_per_space || 2;
             // 2. Get the attendance summary
-            const summary = yield this.getAttendanceSummary(weekId, playersPerBay);
-            // 3. Get the total number of bays at the location
-            const { data: bays } = yield database_1.supabase
-                .from('bays')
+            const summary = yield this.getAttendanceSummary(weekId, playersPerSpace);
+            // 3. Get the total number of spaces at the location
+            const { data: spaces } = yield database_1.supabase
+                .from('spaces')
                 .select('id')
-                .eq('location_id', league.location_id);
-            const totalBays = (bays === null || bays === void 0 ? void 0 : bays.length) || 0;
-            // 4. Compute original reserved bays based on hold config
-            let originalReservedBays;
+                .eq('location_id', league.location_id)
+                .is('deleted_at', null);
+            const totalSpaces = (spaces === null || spaces === void 0 ? void 0 : spaces.length) || 0;
+            // 4. Compute original reserved spaces based on hold config
+            let originalReservedSpaces;
             switch (league.capacity_hold_type) {
-                case 'all_bays':
-                    originalReservedBays = totalBays;
+                case 'all_spaces':
+                    originalReservedSpaces = totalSpaces;
                     break;
-                case 'num_bays':
-                    originalReservedBays = league.capacity_hold_value;
+                case 'num_spaces':
+                    originalReservedSpaces = league.capacity_hold_value;
                     break;
                 case 'pct_capacity':
-                    originalReservedBays = Math.ceil(totalBays * (league.capacity_hold_value / 100));
+                    originalReservedSpaces = Math.ceil(totalSpaces * (league.capacity_hold_value / 100));
                     break;
                 default:
-                    originalReservedBays = totalBays;
+                    originalReservedSpaces = totalSpaces;
             }
             // 5. If 0 confirmed, suspend the hold entirely
             if (summary.confirmed === 0) {
                 yield this.suspendHoldForWeek(weekId);
                 logger_1.logger.info({ weekId }, 'Suspended hold for week - 0 confirmed players');
-                return { adjusted: true, baysNeeded: 0, originalBays: originalReservedBays };
+                return { adjusted: true, spacesNeeded: 0, originalSpaces: originalReservedSpaces };
             }
             // 6. Compare: only reduce, never increase
-            const baysNeeded = summary.baysNeeded;
-            if (baysNeeded >= originalReservedBays) {
-                logger_1.logger.info({ weekId, baysNeeded, originalReservedBays }, 'Hold for week unchanged - bays needed >= original');
-                return { adjusted: false, baysNeeded, originalBays: originalReservedBays };
+            const spacesNeeded = summary.spacesNeeded;
+            if (spacesNeeded >= originalReservedSpaces) {
+                logger_1.logger.info({ weekId, spacesNeeded, originalReservedSpaces }, 'Hold for week unchanged - spaces needed >= original');
+                return { adjusted: false, spacesNeeded, originalSpaces: originalReservedSpaces };
             }
             // 7. Reduce the hold for this specific week
-            yield this.updateHoldForWeek(weekId, baysNeeded);
-            logger_1.logger.info({ weekId, originalReservedBays, baysNeeded }, 'Adjusted hold for week');
-            return { adjusted: true, baysNeeded, originalBays: originalReservedBays };
+            yield this.updateHoldForWeek(weekId, spacesNeeded);
+            logger_1.logger.info({ weekId, originalReservedSpaces, spacesNeeded }, 'Adjusted hold for week');
+            return { adjusted: true, spacesNeeded, originalSpaces: originalReservedSpaces };
         });
     }
     // =====================================================
@@ -338,15 +409,15 @@ class AttendanceService {
         });
     }
     /**
-     * Update a specific week's hold to a reduced number of bays.
+     * Update a specific week's hold to a reduced number of spaces.
      */
-    updateHoldForWeek(weekId, baysNeeded) {
+    updateHoldForWeek(weekId, spacesNeeded) {
         return __awaiter(this, void 0, void 0, function* () {
             const { error } = yield database_1.supabase
                 .from('capacity_holds')
                 .update({
-                hold_type: 'num_bays',
-                hold_value: baysNeeded,
+                hold_type: 'num_spaces',
+                hold_value: spacesNeeded,
                 updated_at: new Date().toISOString(),
             })
                 .eq('league_week_id', weekId)

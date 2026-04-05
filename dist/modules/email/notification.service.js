@@ -12,6 +12,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.NotificationService = void 0;
 const database_1 = require("../../config/database");
 const logger_1 = require("../../shared/utils/logger");
+const location_service_1 = require("../locations/location.service");
 class NotificationService {
     /**
      * Create a new notification record
@@ -175,7 +176,7 @@ class NotificationService {
           full_name,
           email
         ),
-        bays (
+        spaces (
           name
         ),
         locations (
@@ -194,15 +195,15 @@ class NotificationService {
                 return null;
             }
             // Check if we have the required related data
-            if (!data.user_profiles || !data.bays || !data.locations) {
-                logger_1.logger.error({ bookingId, hasUser: !!data.user_profiles, hasBay: !!data.bays, hasLocation: !!data.locations }, 'Missing related data for booking');
+            if (!data.user_profiles || !data.spaces || !data.locations) {
+                logger_1.logger.error({ bookingId, hasUser: !!data.user_profiles, hasSpace: !!data.spaces, hasLocation: !!data.locations }, 'Missing related data for booking');
                 return null;
             }
             // Supabase joins return arrays, so get the first element
             const userProfile = Array.isArray(data.user_profiles) ? data.user_profiles[0] : data.user_profiles;
-            const bay = Array.isArray(data.bays) ? data.bays[0] : data.bays;
+            const space = Array.isArray(data.spaces) ? data.spaces[0] : data.spaces;
             const location = Array.isArray(data.locations) ? data.locations[0] : data.locations;
-            if (!userProfile || !bay || !location) {
+            if (!userProfile || !space || !location) {
                 logger_1.logger.error({ bookingId }, 'Missing required nested data for booking');
                 return null;
             }
@@ -210,14 +211,15 @@ class NotificationService {
                 userFullName: userProfile.full_name || 'Valued Customer',
                 userEmail: userProfile.email,
                 bookingId: data.id,
-                bayName: bay.name,
+                spaceName: space.name,
                 locationName: location.name,
                 locationTimezone: location.timezone || 'America/New_York',
                 startTime: data.start_time,
                 endTime: data.end_time,
                 totalAmount: data.total_amount * 100, // Convert to cents for consistency
                 locationId: data.location_id,
-                userId: data.user_id
+                userId: data.user_id,
+                hasDoorLock: (yield location_service_1.LocationService.getDoorLockType(data.location_id)) !== 'none',
             };
         });
     }

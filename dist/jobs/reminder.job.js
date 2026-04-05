@@ -15,6 +15,7 @@ const resend_1 = require("../config/resend");
 const email_service_1 = require("../modules/email/email.service");
 const token_utils_1 = require("../shared/utils/token.utils");
 const logger_1 = require("../shared/utils/logger");
+const location_service_1 = require("../modules/locations/location.service");
 /**
  * Process booking reminders for sessions starting in the next 16 minutes.
  * - Ideal: 14-16 min window sends ~15 min before booking
@@ -62,25 +63,39 @@ function enqueueReminders() {
                 return;
             }
             logger_1.logger.info({ count: bookingsNeedingReminders.length }, 'Processing bookings without reminders');
+            // Batch-fetch door_lock_type for all unique locations in parallel
+            const uniqueLocationIds = [...new Set(bookingsNeedingReminders.map(b => b.location_id))];
+            const doorLockTypes = yield Promise.all(uniqueLocationIds.map(locId => location_service_1.LocationService.getDoorLockType(locId)));
+            const doorLockTypeMap = new Map();
+            uniqueLocationIds.forEach((locId, i) => doorLockTypeMap.set(locId, doorLockTypes[i]));
             for (const booking of bookingsNeedingReminders) {
                 try {
-                    const token = (0, token_utils_1.createUnlockToken)(booking.id, booking.start_time, booking.end_time);
-                    const unlockLink = `${resend_1.resendConfig.frontendUrl}/unlock?token=${token}`;
-                    // Update booking with unlock token (partial update - only these columns)
-                    const { error: updateError } = yield database_1.supabase
-                        .from('bookings')
-                        .update({
-                        unlock_token: token,
-                        unlock_token_expires_at: booking.end_time
-                    })
-                        .eq('id', booking.id);
-                    if (updateError) {
-                        logger_1.logger.error({ err: updateError, bookingId: booking.id }, 'Error updating unlock token');
+                    const doorLockType = doorLockTypeMap.get(booking.location_id);
+                    if (!doorLockType) {
+                        logger_1.logger.error({ bookingId: booking.id, locationId: booking.location_id }, 'Door lock type not found for location, skipping reminder');
                         continue;
                     }
-                    // Queue the reminder email
+                    let token = '';
+                    let unlockLink = '';
+                    // Only generate unlock token for locations with automated door locks
+                    if (doorLockType !== 'none') {
+                        token = (0, token_utils_1.createUnlockToken)(booking.id, booking.start_time, booking.end_time);
+                        unlockLink = `${resend_1.resendConfig.frontendUrl}/unlock?token=${token}`;
+                        const { error: updateError } = yield database_1.supabase
+                            .from('bookings')
+                            .update({
+                            unlock_token: token,
+                            unlock_token_expires_at: booking.end_time
+                        })
+                            .eq('id', booking.id);
+                        if (updateError) {
+                            logger_1.logger.error({ err: updateError, bookingId: booking.id }, 'Error updating unlock token');
+                            continue;
+                        }
+                    }
+                    // Always send the reminder email — unlock section is conditionally rendered via template
                     yield email_service_1.EmailService.sendReminderEmail(booking.id, token, unlockLink);
-                    logger_1.logger.info({ bookingId: booking.id }, 'Queued reminder for booking');
+                    logger_1.logger.info({ bookingId: booking.id, doorLockType }, 'Queued reminder for booking');
                 }
                 catch (error) {
                     logger_1.logger.error({ err: error, bookingId: booking.id }, 'Error processing reminder for booking');

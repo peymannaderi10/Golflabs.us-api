@@ -48,7 +48,7 @@ class PaymentService {
             // 1. Verify the booking is valid for payment
             const { data: booking, error: fetchError } = yield database_1.supabase
                 .from('bookings')
-                .select('id, status, expires_at, user_id, bay_id, location_id, created_at, total_amount, start_time, end_time')
+                .select('id, status, expires_at, user_id, space_id, location_id, created_at, total_amount, start_time, end_time')
                 .eq('id', bookingId)
                 .single();
             if (fetchError || !booking) {
@@ -61,20 +61,22 @@ class PaymentService {
                 throw new Error('Booking not found.');
             }
             logger_1.logger.info({ bookingId, status: booking.status, expiresAt: booking.expires_at, createdAt: booking.created_at, userId: booking.user_id }, 'Payment intent requested for booking');
-            if (booking.status !== 'reserved') {
+            if (booking.status !== 'reserved' && booking.status !== 'pending') {
                 logger_1.logger.error({ bookingId, status: booking.status }, 'Booking has invalid status for payment');
                 throw new Error(`Booking cannot be paid for. Status: ${booking.status}`);
             }
-            // Check expiration using UTC timestamp comparison
-            const now = new Date().toISOString();
-            if (booking.expires_at < now) {
-                // The reservation has expired, update its status
-                yield database_1.supabase
-                    .from('bookings')
-                    .update({ status: 'expired' })
-                    .eq('id', bookingId)
-                    .eq('status', 'reserved');
-                throw new Error('Booking reservation has expired.');
+            // Check expiration using UTC timestamp comparison (only for reserved bookings with an expiry)
+            if (booking.status === 'reserved' && booking.expires_at) {
+                const now = new Date().toISOString();
+                if (booking.expires_at < now) {
+                    // The reservation has expired, update its status
+                    yield database_1.supabase
+                        .from('bookings')
+                        .update({ status: 'expired' })
+                        .eq('id', bookingId)
+                        .eq('status', 'reserved');
+                    throw new Error('Booking reservation has expired.');
+                }
             }
             // 1b. Compute the price server-side (never trust client amount)
             const priceResult = yield this.calculatePrice(booking.location_id, booking.start_time, booking.end_time, booking.user_id);
@@ -238,7 +240,7 @@ class PaymentService {
             const intentMetadata = {
                 booking_id: booking.id,
                 user_id: booking.user_id,
-                bay_id: booking.bay_id,
+                space_id: booking.space_id,
                 location_id: booking.location_id,
                 promotion_id: (promotionInfo === null || promotionInfo === void 0 ? void 0 : promotionInfo.promotionId) || '',
                 discount_amount: (serverDiscountAmount / 100).toString(),

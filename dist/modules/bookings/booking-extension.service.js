@@ -30,7 +30,7 @@ class BookingExtensionService {
             // 1. Fetch the booking and validate it's currently active
             const { data: booking, error: bookingError } = yield database_1.supabase
                 .from('bookings')
-                .select('id, location_id, bay_id, user_id, start_time, end_time, status')
+                .select('id, location_id, space_id, user_id, start_time, end_time, status')
                 .eq('id', bookingId)
                 .single();
             if (bookingError || !booking) {
@@ -55,12 +55,12 @@ class BookingExtensionService {
             }
             const timezone = location.timezone || 'America/New_York';
             const taxRate = parseFloat(location.sales_tax_rate) || 0;
-            // 3. Find the next booking on this bay to determine max extension
+            // 3. Find the next booking on this space to determine max extension
             // Use gte to catch back-to-back bookings (next starts exactly when current ends)
             const { data: nextBookings, error: nextError } = yield database_1.supabase
                 .from('bookings')
                 .select('start_time')
-                .eq('bay_id', booking.bay_id)
+                .eq('space_id', booking.space_id)
                 .neq('id', bookingId)
                 .not('status', 'in', '("cancelled","expired","abandoned")')
                 .gte('start_time', booking.end_time)
@@ -189,11 +189,11 @@ class BookingExtensionService {
      * Extend an active booking by charging the saved card off-session.
      * Called by the kiosk when the player confirms the extension.
      */
-    extendBooking(bookingId_1, extensionMinutes_1, locationId_1, bayId_1) {
-        return __awaiter(this, arguments, void 0, function* (bookingId, extensionMinutes, locationId, bayId, useFreeMinutes = false) {
+    extendBooking(bookingId_1, extensionMinutes_1, locationId_1, spaceId_1) {
+        return __awaiter(this, arguments, void 0, function* (bookingId, extensionMinutes, locationId, spaceId, useFreeMinutes = false) {
             var _a;
-            if (!bookingId || !extensionMinutes || !locationId || !bayId) {
-                throw new Error('bookingId, extensionMinutes, locationId, and bayId are required');
+            if (!bookingId || !extensionMinutes || !locationId || !spaceId) {
+                throw new Error('bookingId, extensionMinutes, locationId, and spaceId are required');
             }
             if (![15, 30, 45, 60].includes(extensionMinutes)) {
                 throw new Error('extensionMinutes must be 15, 30, 45, or 60');
@@ -201,7 +201,7 @@ class BookingExtensionService {
             // 1. Fetch and validate the booking
             const { data: booking, error: bookingError } = yield database_1.supabase
                 .from('bookings')
-                .select('id, location_id, bay_id, user_id, start_time, end_time, status, total_amount')
+                .select('id, location_id, space_id, user_id, start_time, end_time, status, total_amount')
                 .eq('id', bookingId)
                 .single();
             if (bookingError || !booking) {
@@ -210,8 +210,8 @@ class BookingExtensionService {
             if (booking.status !== 'confirmed') {
                 throw new Error('Booking is not confirmed');
             }
-            if (booking.bay_id !== bayId || booking.location_id !== locationId) {
-                throw new Error('Booking does not match the specified bay/location');
+            if (booking.space_id !== spaceId || booking.location_id !== locationId) {
+                throw new Error('Booking does not match the specified space/location');
             }
             const now = new Date();
             const currentEndTime = new Date(booking.end_time);
@@ -230,7 +230,7 @@ class BookingExtensionService {
             const { data: conflicts, error: conflictError } = yield database_1.supabase
                 .from('bookings')
                 .select('id')
-                .eq('bay_id', bayId)
+                .eq('space_id', spaceId)
                 .neq('id', bookingId)
                 .not('status', 'in', '("cancelled","expired","abandoned")')
                 .lt('start_time', newEndWithBuffer.toISOString())
@@ -325,7 +325,7 @@ class BookingExtensionService {
             const paymentMetadata = {
                 booking_id: bookingId,
                 user_id: booking.user_id,
-                bay_id: bayId,
+                space_id: spaceId,
                 location_id: locationId,
                 extension: 'true',
                 extension_minutes: extensionMinutes.toString(),
@@ -357,7 +357,7 @@ class BookingExtensionService {
                     logger_1.logger.error({ err: stripeError, bookingId }, 'Extension payment failed');
                     yield database_1.supabase.from('access_logs').insert({
                         location_id: locationId,
-                        bay_id: bayId,
+                        space_id: spaceId,
                         booking_id: bookingId,
                         user_id: booking.user_id,
                         action: 'extension_payment_failed',
@@ -417,7 +417,7 @@ class BookingExtensionService {
             // 10. Log the successful extension
             yield database_1.supabase.from('access_logs').insert({
                 location_id: locationId,
-                bay_id: bayId,
+                space_id: spaceId,
                 booking_id: bookingId,
                 user_id: booking.user_id,
                 action: 'extension_accepted',
@@ -440,7 +440,7 @@ class BookingExtensionService {
                 success: true,
                 bookingId,
                 locationId,
-                bayId,
+                spaceId,
                 newEndTime: newEndTime.toISOString(),
                 amountCharged: finalCents / 100,
                 amountChargedFormatted: `$${(finalCents / 100).toFixed(2)}`,
@@ -453,11 +453,11 @@ class BookingExtensionService {
      * Validates availability, updates end_time, and optionally charges the saved card.
      * When skipPayment is true the time is extended without a Stripe charge.
      */
-    employeeExtendBooking(bookingId_1, extensionMinutes_1, locationId_1, bayId_1, employeeId_1) {
-        return __awaiter(this, arguments, void 0, function* (bookingId, extensionMinutes, locationId, bayId, employeeId, skipPayment = false) {
+    employeeExtendBooking(bookingId_1, extensionMinutes_1, locationId_1, spaceId_1, employeeId_1) {
+        return __awaiter(this, arguments, void 0, function* (bookingId, extensionMinutes, locationId, spaceId, employeeId, skipPayment = false) {
             var _a;
-            if (!bookingId || !extensionMinutes || !locationId || !bayId) {
-                throw new Error('bookingId, extensionMinutes, locationId, and bayId are required');
+            if (!bookingId || !extensionMinutes || !locationId || !spaceId) {
+                throw new Error('bookingId, extensionMinutes, locationId, and spaceId are required');
             }
             if (![15, 30, 45, 60].includes(extensionMinutes)) {
                 throw new Error('extensionMinutes must be 15, 30, 45, or 60');
@@ -465,7 +465,7 @@ class BookingExtensionService {
             // 1. Fetch and validate the booking
             const { data: booking, error: bookingError } = yield database_1.supabase
                 .from('bookings')
-                .select('id, location_id, bay_id, user_id, start_time, end_time, status, total_amount')
+                .select('id, location_id, space_id, user_id, start_time, end_time, status, total_amount')
                 .eq('id', bookingId)
                 .single();
             if (bookingError || !booking) {
@@ -474,8 +474,8 @@ class BookingExtensionService {
             if (booking.status !== 'confirmed') {
                 throw new Error('Booking is not confirmed');
             }
-            if (booking.bay_id !== bayId || booking.location_id !== locationId) {
-                throw new Error('Booking does not match the specified bay/location');
+            if (booking.space_id !== spaceId || booking.location_id !== locationId) {
+                throw new Error('Booking does not match the specified space/location');
             }
             const now = new Date();
             const currentEndTime = new Date(booking.end_time);
@@ -494,7 +494,7 @@ class BookingExtensionService {
             const { data: conflicts, error: conflictError } = yield database_1.supabase
                 .from('bookings')
                 .select('id')
-                .eq('bay_id', bayId)
+                .eq('space_id', spaceId)
                 .neq('id', bookingId)
                 .not('status', 'in', '("cancelled","expired","abandoned")')
                 .lt('start_time', empNewEndWithBuffer.toISOString())
@@ -544,7 +544,7 @@ class BookingExtensionService {
                         metadata: {
                             booking_id: bookingId,
                             user_id: booking.user_id,
-                            bay_id: bayId,
+                            space_id: spaceId,
                             location_id: locationId,
                             extension: 'true',
                             extension_minutes: extensionMinutes.toString(),
@@ -558,7 +558,7 @@ class BookingExtensionService {
                     logger_1.logger.error({ err: stripeError, bookingId }, 'Employee extension payment failed for booking');
                     yield database_1.supabase.from('access_logs').insert({
                         location_id: locationId,
-                        bay_id: bayId,
+                        space_id: spaceId,
                         booking_id: bookingId,
                         user_id: booking.user_id,
                         action: 'extension_payment_failed',
@@ -603,7 +603,7 @@ class BookingExtensionService {
             // 6. Log the successful extension
             yield database_1.supabase.from('access_logs').insert({
                 location_id: locationId,
-                bay_id: bayId,
+                space_id: spaceId,
                 booking_id: bookingId,
                 user_id: booking.user_id,
                 action: 'extension_accepted',
@@ -623,7 +623,7 @@ class BookingExtensionService {
                 success: true,
                 bookingId,
                 locationId,
-                bayId,
+                spaceId,
                 newEndTime: newEndTime.toISOString(),
                 amountCharged: skipPayment ? 0 : totalCents / 100,
                 amountChargedFormatted: skipPayment ? '$0.00' : `$${(totalCents / 100).toFixed(2)}`,

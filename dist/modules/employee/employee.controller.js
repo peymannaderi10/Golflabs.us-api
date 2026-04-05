@@ -115,9 +115,9 @@ class EmployeeController {
     }
     /**
      * GET /employee/reports/bays
-     * Bay performance statistics
+     * Space performance statistics
      */
-    getBayStats(req, res) {
+    getSpaceStats(req, res) {
         return __awaiter(this, void 0, void 0, function* () {
             try {
                 const validation = validateQueryParams(req.query);
@@ -125,11 +125,11 @@ class EmployeeController {
                     return res.status(400).json({ success: false, error: validation.error });
                 }
                 const { locationId, startDate, endDate } = validation.params;
-                const data = yield employee_service_1.employeeService.getBayStats(locationId, startDate, endDate);
+                const data = yield employee_service_1.employeeService.getSpaceStats(locationId, startDate, endDate);
                 return res.json(createResponse(data, validation.params));
             }
             catch (error) {
-                logger_1.logger.error({ err: error }, 'Error in getBayStats');
+                logger_1.logger.error({ err: error }, 'Error in getSpaceStats');
                 return res.status(500).json({ success: false, error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
@@ -168,8 +168,8 @@ class EmployeeController {
                 }
                 const { locationId, startDate, endDate } = validation.params;
                 const type = req.query.type;
-                if (!type || !['revenue', 'bays'].includes(type)) {
-                    return res.status(400).json({ success: false, error: 'Invalid export type. Must be "revenue" or "bays"' });
+                if (!type || !['revenue', 'spaces'].includes(type)) {
+                    return res.status(400).json({ success: false, error: 'Invalid export type. Must be "revenue" or "spaces"' });
                 }
                 const csv = yield employee_service_1.employeeService.exportCSV(locationId, startDate, endDate, type);
                 res.setHeader('Content-Type', 'text/csv');

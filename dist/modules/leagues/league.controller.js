@@ -109,11 +109,27 @@ class LeagueController {
         });
         this.activateLeague = (req, res) => __awaiter(this, void 0, void 0, function* () {
             try {
-                const league = yield this.leagueService.activateLeague(req.params.leagueId);
-                res.json(league);
+                const result = yield this.leagueService.activateLeague(req.params.leagueId);
+                if ('conflicts' in result) {
+                    return res.status(409).json({
+                        error: 'Cannot activate league — booking conflicts exist',
+                        conflicts: result.conflicts,
+                    });
+                }
+                res.json(result);
             }
             catch (error) {
                 logger_1.logger.error({ err: error }, 'Error activating league');
+                res.status(400).json({ error: error.message });
+            }
+        });
+        this.checkConflicts = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            try {
+                const result = yield this.leagueService.checkLeagueBookingConflicts(req.params.leagueId);
+                res.json(result);
+            }
+            catch (error) {
+                logger_1.logger.error({ err: error }, 'Error checking league booking conflicts');
                 res.status(400).json({ error: error.message });
             }
         });
@@ -335,7 +351,7 @@ class LeagueController {
             try {
                 // Support both single score and batch: { entries: [{ leaguePlayerId, holeNumber, strokes }] }
                 const entries = (req.body.entries
-                    ? req.body.entries.map((e) => (Object.assign(Object.assign({}, e), { leagueWeekId: req.body.leagueWeekId || e.leagueWeekId, bayId: req.body.bayId || e.bayId, enteredVia: req.body.enteredVia || e.enteredVia || 'kiosk' })))
+                    ? req.body.entries.map((e) => (Object.assign(Object.assign({}, e), { leagueWeekId: req.body.leagueWeekId || e.leagueWeekId, spaceId: req.body.spaceId || e.spaceId, enteredVia: req.body.enteredVia || e.enteredVia || 'kiosk' })))
                     : [req.body]);
                 // Validate all entries upfront
                 for (const entry of entries) {
@@ -825,10 +841,10 @@ class LeagueController {
         this.getWeekAttendanceSummary = (req, res) => __awaiter(this, void 0, void 0, function* () {
             try {
                 const { leagueId, weekId } = req.params;
-                // Get players_per_bay from league
+                // Get players_per_space from league
                 const league = yield this.leagueService.getLeague(leagueId);
-                const playersPerBay = (league === null || league === void 0 ? void 0 : league.players_per_bay) || 2;
-                const summary = yield this.attendanceService.getAttendanceSummary(weekId, playersPerBay);
+                const playersPerSpace = (league === null || league === void 0 ? void 0 : league.players_per_space) || 2;
+                const summary = yield this.attendanceService.getAttendanceSummary(weekId, playersPerSpace);
                 res.json(summary);
             }
             catch (error) {
@@ -941,7 +957,7 @@ class LeagueController {
                     return res.status(404).json({ error: 'No active hold found for this week' });
                 }
                 yield this.capacityHoldService.suspendHold(weekHold.id);
-                res.json({ success: true, message: 'Week skipped — hold suspended and bays released.' });
+                res.json({ success: true, message: 'Week skipped — hold suspended and spaces released.' });
             }
             catch (error) {
                 logger_1.logger.error({ err: error }, 'Error skipping week');

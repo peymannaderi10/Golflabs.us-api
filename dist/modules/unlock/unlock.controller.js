@@ -14,10 +14,11 @@ const database_1 = require("../../config/database");
 const token_utils_1 = require("../../shared/utils/token.utils");
 const error_utils_1 = require("../../shared/utils/error.utils");
 const logger_1 = require("../../shared/utils/logger");
+const location_service_1 = require("../locations/location.service");
 class UnlockController {
     constructor(socketService) {
         /**
-         * Employee unlock - tries each bay at a location until one responds successfully
+         * Employee unlock - tries each space at a location until one responds successfully
          */
         this.employeeUnlock = (req, res) => __awaiter(this, void 0, void 0, function* () {
             var _a;
@@ -26,35 +27,39 @@ class UnlockController {
                 if (!locationId) {
                     return res.status(400).json({ error: 'locationId is required' });
                 }
-                // Get all available bays for the location
-                const { data: bays, error: baysError } = yield database_1.supabase
-                    .from('bays')
-                    .select('id, name, bay_number, status')
+                const doorLockType = yield location_service_1.LocationService.getDoorLockType(locationId);
+                if (doorLockType === 'none') {
+                    return res.status(400).json({ error: 'This location does not have an automated door lock.' });
+                }
+                // Get all available spaces for the location
+                const { data: spaces, error: spacesError } = yield database_1.supabase
+                    .from('spaces')
+                    .select('id, name, space_number, status')
                     .eq('location_id', locationId)
                     .eq('status', 'available')
-                    .order('bay_number', { ascending: true });
-                if (baysError) {
-                    logger_1.logger.error({ err: baysError }, 'Error fetching bays');
-                    return res.status(500).json({ error: 'Failed to fetch bays' });
+                    .order('space_number', { ascending: true });
+                if (spacesError) {
+                    logger_1.logger.error({ err: spacesError }, 'Error fetching spaces');
+                    return res.status(500).json({ error: 'Failed to fetch spaces' });
                 }
-                if (!bays || bays.length === 0) {
-                    return res.status(404).json({ error: 'No available bays found for this location' });
+                if (!spaces || spaces.length === 0) {
+                    return res.status(404).json({ error: 'No available spaces found for this location' });
                 }
                 // Extract IP address and user agent for logging
                 const ipAddress = req.ip || req.connection.remoteAddress || '0.0.0.0';
                 const userAgent = req.get('User-Agent') || 'Unknown';
                 const employeeId = ((_a = req.user) === null || _a === void 0 ? void 0 : _a.id) || 'unknown';
-                // Try each bay until one successfully responds
-                for (const bay of bays) {
-                    logger_1.logger.info({ bayName: bay.name, bayId: bay.id }, 'Attempting employee unlock on bay');
-                    const unlockSuccessful = yield this.socketService.sendUnlockCommand(locationId, bay.id, 5, // 5 seconds unlock duration
+                // Try each space until one successfully responds
+                for (const space of spaces) {
+                    logger_1.logger.info({ spaceName: space.name, spaceId: space.id }, 'Attempting employee unlock on space');
+                    const unlockSuccessful = yield this.socketService.sendUnlockCommand(locationId, space.id, 5, // 5 seconds unlock duration
                     `employee-unlock` // Not a real booking -- access log is created separately with booking_id: null
                     );
                     if (unlockSuccessful) {
                         // Log the successful unlock
                         yield database_1.supabase.from('access_logs').insert({
                             location_id: locationId,
-                            bay_id: bay.id,
+                            space_id: space.id,
                             booking_id: null,
                             user_id: employeeId,
                             action: 'employee_door_unlock',
@@ -63,20 +68,20 @@ class UnlockController {
                             user_agent: userAgent,
                             unlock_method: 'employee_dashboard',
                             metadata: {
-                                bay_name: bay.name,
-                                bay_number: bay.bay_number
+                                space_name: space.name,
+                                space_number: space.space_number
                             }
                         });
-                        logger_1.logger.info({ bayName: bay.name }, 'Employee unlock successful on bay');
+                        logger_1.logger.info({ spaceName: space.name }, 'Employee unlock successful on space');
                         return res.json({
                             success: true,
-                            message: `Door unlocked successfully via ${bay.name}`,
-                            bayId: bay.id,
-                            bayName: bay.name
+                            message: `Door unlocked successfully via ${space.name}`,
+                            spaceId: space.id,
+                            spaceName: space.name
                         });
                     }
                 }
-                // If no bay responded successfully
+                // If no space responded successfully
                 logger_1.logger.error({ locationId }, 'Employee unlock failed - no kiosk responded');
                 return res.status(503).json({
                     success: false,
@@ -105,7 +110,7 @@ class UnlockController {
                 // Verify booking exists and is confirmed
                 const { data: booking, error: bookingError } = yield database_1.supabase
                     .from('bookings')
-                    .select('id, status, bay_id, location_id, user_id, start_time, end_time')
+                    .select('id, status, space_id, location_id, user_id, start_time, end_time')
                     .eq('id', bookingId)
                     .single();
                 if (bookingError || !booking) {
@@ -115,6 +120,10 @@ class UnlockController {
                 if (booking.status !== 'confirmed') {
                     logger_1.logger.info({ bookingId, status: booking.status }, 'Booking has invalid status for unlock');
                     return res.status(403).json({ error: 'Booking is not confirmed' });
+                }
+                const doorLockType = yield location_service_1.LocationService.getDoorLockType(booking.location_id);
+                if (doorLockType === 'none') {
+                    return res.status(400).json({ error: 'This location does not have an automated door lock.' });
                 }
                 // Check if booking is currently active (within the time window)
                 const now = new Date();
@@ -142,7 +151,7 @@ class UnlockController {
                     .from('access_logs')
                     .insert({
                     location_id: booking.location_id,
-                    bay_id: booking.bay_id,
+                    space_id: booking.space_id,
                     booking_id: bookingId,
                     user_id: booking.user_id,
                     action: 'door_unlock_button_pressed',
@@ -162,14 +171,14 @@ class UnlockController {
                     // Don't fail the request, just log the error
                 }
                 // Send unlock command to kiosk via websocket
-                const unlockSuccessful = yield this.socketService.sendUnlockCommand(booking.location_id, booking.bay_id, 5, // 5 seconds unlock duration
+                const unlockSuccessful = yield this.socketService.sendUnlockCommand(booking.location_id, booking.space_id, 5, // 5 seconds unlock duration
                 bookingId);
                 if (!unlockSuccessful) {
                     logger_1.logger.error({ bookingId }, 'Unlock failed - kiosk did not confirm');
                     // Log the failure
                     yield database_1.supabase.from('access_logs').insert({
                         location_id: booking.location_id,
-                        bay_id: booking.bay_id,
+                        space_id: booking.space_id,
                         booking_id: bookingId,
                         user_id: booking.user_id,
                         action: 'door_unlock_failure',

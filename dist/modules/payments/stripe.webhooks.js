@@ -18,6 +18,7 @@ const league_service_1 = require("../leagues/league.service");
 const membership_service_1 = require("../memberships/membership.service");
 const token_utils_1 = require("../../shared/utils/token.utils");
 const logger_1 = require("../../shared/utils/logger");
+const location_service_1 = require("../locations/location.service");
 function handleStripeWebhook(req, res, socketService) {
     return __awaiter(this, void 0, void 0, function* () {
         var _a, _b, _c;
@@ -298,18 +299,18 @@ function handleStripeWebhook(req, res, socketService) {
                         }
                         // Trigger a real-time update for the kiosks at the location
                         try {
-                            // We need the location_id and bay_id from the booking to know which specific kiosk to notify.
+                            // We need the location_id and space_id from the booking to know which specific kiosk to notify.
                             const { data: booking, error: fetchError } = yield database_1.supabase
                                 .from('bookings')
-                                .select('location_id, bay_id')
+                                .select('location_id, space_id')
                                 .eq('id', bookingId)
                                 .single();
-                            if (fetchError || !(booking === null || booking === void 0 ? void 0 : booking.location_id) || !(booking === null || booking === void 0 ? void 0 : booking.bay_id)) {
-                                logger_1.logger.error({ err: fetchError, bookingId }, 'Could not fetch location_id and bay_id for kiosk update');
+                            if (fetchError || !(booking === null || booking === void 0 ? void 0 : booking.location_id) || !(booking === null || booking === void 0 ? void 0 : booking.space_id)) {
+                                logger_1.logger.error({ err: fetchError, bookingId }, 'Could not fetch location_id and space_id for kiosk update');
                             }
                             else {
-                                logger_1.logger.info({ locationId: booking.location_id, bayId: booking.bay_id }, 'Payment confirmed, triggering kiosk update');
-                                yield socketService.triggerBookingUpdate(booking.location_id, booking.bay_id, bookingId);
+                                logger_1.logger.info({ locationId: booking.location_id, spaceId: booking.space_id }, 'Payment confirmed, triggering kiosk update');
+                                yield socketService.triggerBookingUpdate(booking.location_id, booking.space_id, bookingId);
                             }
                         }
                         catch (kioskError) {
@@ -317,10 +318,9 @@ function handleStripeWebhook(req, res, socketService) {
                         }
                         // Check if booking starts within 15 minutes - if so, send reminder immediately
                         try {
-                            // Get booking details to check start time
                             const { data: bookingDetails, error: bookingFetchError } = yield database_1.supabase
                                 .from('bookings')
-                                .select('start_time, end_time')
+                                .select('start_time, end_time, location_id')
                                 .eq('id', bookingId)
                                 .single();
                             if (!bookingFetchError && bookingDetails) {
@@ -328,29 +328,33 @@ function handleStripeWebhook(req, res, socketService) {
                                 const bookingStart = new Date(bookingDetails.start_time);
                                 const minutesUntilStart = (bookingStart.getTime() - now.getTime()) / (1000 * 60);
                                 logger_1.logger.info({ bookingId, minutesUntilStart: minutesUntilStart.toFixed(1) }, 'Checked booking start time');
-                                // If booking starts within 15 minutes, send reminder email immediately
                                 if (minutesUntilStart <= 15) {
                                     logger_1.logger.info({ bookingId, minutesUntilStart: minutesUntilStart.toFixed(1) }, 'Booking starts soon, sending immediate reminder');
-                                    // Generate unlock token and link (same as reminder job)
-                                    const unlockToken = (0, token_utils_1.createUnlockToken)(bookingId, bookingDetails.start_time, bookingDetails.end_time);
-                                    const unlockLink = `${process.env.FRONTEND_URL || 'https://app.golflabs.us'}/unlock?token=${unlockToken}`;
-                                    // Update booking with unlock token
-                                    yield database_1.supabase
-                                        .from('bookings')
-                                        .update({
-                                        unlock_token: unlockToken,
-                                        unlock_token_expires_at: bookingDetails.end_time
-                                    })
-                                        .eq('id', bookingId);
-                                    // Send reminder email immediately
+                                    const doorLockType = yield location_service_1.LocationService.getDoorLockType(bookingDetails.location_id);
+                                    let unlockToken = '';
+                                    let unlockLink = '';
+                                    if (doorLockType !== 'none') {
+                                        unlockToken = (0, token_utils_1.createUnlockToken)(bookingId, bookingDetails.start_time, bookingDetails.end_time);
+                                        unlockLink = `${process.env.FRONTEND_URL || 'https://app.golflabs.us'}/unlock?token=${unlockToken}`;
+                                        const { error: tokenUpdateError } = yield database_1.supabase
+                                            .from('bookings')
+                                            .update({
+                                            unlock_token: unlockToken,
+                                            unlock_token_expires_at: bookingDetails.end_time
+                                        })
+                                            .eq('id', bookingId);
+                                        if (tokenUpdateError) {
+                                            logger_1.logger.error({ err: tokenUpdateError, bookingId }, 'Error updating unlock token, skipping reminder');
+                                            return;
+                                        }
+                                    }
                                     yield email_service_1.EmailService.sendReminderEmail(bookingId, unlockToken, unlockLink);
-                                    logger_1.logger.info({ bookingId }, 'Sent immediate reminder email');
+                                    logger_1.logger.info({ bookingId, doorLockType }, 'Sent immediate reminder email');
                                 }
                             }
                         }
                         catch (reminderError) {
                             logger_1.logger.error({ err: reminderError, bookingId }, 'Error handling immediate reminder');
-                            // Don't fail the webhook if reminder fails
                         }
                     }
                 }
@@ -490,12 +494,12 @@ function handleStripeWebhook(req, res, socketService) {
                     try {
                         const { data: setupBooking, error: setupFetchError } = yield database_1.supabase
                             .from('bookings')
-                            .select('location_id, bay_id')
+                            .select('location_id, space_id')
                             .eq('id', setupBookingId)
                             .single();
-                        if (!setupFetchError && (setupBooking === null || setupBooking === void 0 ? void 0 : setupBooking.location_id) && (setupBooking === null || setupBooking === void 0 ? void 0 : setupBooking.bay_id)) {
-                            logger_1.logger.info({ locationId: setupBooking.location_id, bayId: setupBooking.bay_id }, 'Free booking confirmed, triggering kiosk update');
-                            yield socketService.triggerBookingUpdate(setupBooking.location_id, setupBooking.bay_id, setupBookingId);
+                        if (!setupFetchError && (setupBooking === null || setupBooking === void 0 ? void 0 : setupBooking.location_id) && (setupBooking === null || setupBooking === void 0 ? void 0 : setupBooking.space_id)) {
+                            logger_1.logger.info({ locationId: setupBooking.location_id, spaceId: setupBooking.space_id }, 'Free booking confirmed, triggering kiosk update');
+                            yield socketService.triggerBookingUpdate(setupBooking.location_id, setupBooking.space_id, setupBookingId);
                         }
                     }
                     catch (kioskError) {
@@ -505,7 +509,7 @@ function handleStripeWebhook(req, res, socketService) {
                     try {
                         const { data: setupBookingDetails, error: setupBookingFetchError } = yield database_1.supabase
                             .from('bookings')
-                            .select('start_time, end_time')
+                            .select('start_time, end_time, location_id')
                             .eq('id', setupBookingId)
                             .single();
                         if (!setupBookingFetchError && setupBookingDetails) {
@@ -514,17 +518,22 @@ function handleStripeWebhook(req, res, socketService) {
                             const minutesUntilStart = (bookingStart.getTime() - now.getTime()) / (1000 * 60);
                             if (minutesUntilStart <= 15) {
                                 logger_1.logger.info({ bookingId: setupBookingId, minutesUntilStart: minutesUntilStart.toFixed(1) }, 'Free booking starts soon, sending immediate reminder');
-                                const unlockToken = (0, token_utils_1.createUnlockToken)(setupBookingId, setupBookingDetails.start_time, setupBookingDetails.end_time);
-                                const unlockLink = `${process.env.FRONTEND_URL || 'https://app.golflabs.us'}/unlock?token=${unlockToken}`;
-                                yield database_1.supabase
-                                    .from('bookings')
-                                    .update({
-                                    unlock_token: unlockToken,
-                                    unlock_token_expires_at: setupBookingDetails.end_time
-                                })
-                                    .eq('id', setupBookingId);
+                                const doorLockType = yield location_service_1.LocationService.getDoorLockType(setupBookingDetails.location_id);
+                                let unlockToken = '';
+                                let unlockLink = '';
+                                if (doorLockType !== 'none') {
+                                    unlockToken = (0, token_utils_1.createUnlockToken)(setupBookingId, setupBookingDetails.start_time, setupBookingDetails.end_time);
+                                    unlockLink = `${process.env.FRONTEND_URL || 'https://app.golflabs.us'}/unlock?token=${unlockToken}`;
+                                    yield database_1.supabase
+                                        .from('bookings')
+                                        .update({
+                                        unlock_token: unlockToken,
+                                        unlock_token_expires_at: setupBookingDetails.end_time
+                                    })
+                                        .eq('id', setupBookingId);
+                                }
                                 yield email_service_1.EmailService.sendReminderEmail(setupBookingId, unlockToken, unlockLink);
-                                logger_1.logger.info({ bookingId: setupBookingId }, 'Sent immediate reminder email for free booking');
+                                logger_1.logger.info({ bookingId: setupBookingId, doorLockType }, 'Sent immediate reminder email for free booking');
                             }
                         }
                     }
@@ -803,7 +812,7 @@ function handleStripeWebhook(req, res, socketService) {
                         })
                             .eq('booking_id', refundBookingId);
                         const { error: cancellationUpdateError } = yield database_1.supabase
-                            .from('bookings_cancellations')
+                            .from('booking_cancellations')
                             .update({
                             cancellation_reason: `Refund failed: ${refund.failure_reason || 'Unknown reason'}. Manual processing required.`
                         })
