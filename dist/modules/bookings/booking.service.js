@@ -179,7 +179,6 @@ class BookingService {
     }
     checkSlotAvailability(bookingId) {
         return __awaiter(this, void 0, void 0, function* () {
-            // Fetch this booking's slot details
             const { data: booking, error } = yield database_1.supabase
                 .from('bookings')
                 .select('space_id, location_id, start_time, end_time')
@@ -187,17 +186,26 @@ class BookingService {
                 .single();
             if (error || !booking)
                 return false;
-            // Check if a confirmed booking exists in the same slot (not this booking)
-            const { count } = yield database_1.supabase
+            // Check for any confirmed or active reserved booking in the same slot
+            const now = new Date().toISOString();
+            const { data: conflicts } = yield database_1.supabase
                 .from('bookings')
-                .select('id', { count: 'exact', head: true })
+                .select('id, status, expires_at')
                 .eq('space_id', booking.space_id)
                 .eq('location_id', booking.location_id)
                 .lt('start_time', booking.end_time)
                 .gt('end_time', booking.start_time)
-                .eq('status', 'confirmed')
+                .in('status', ['confirmed', 'reserved'])
                 .neq('id', bookingId);
-            return (count !== null && count !== void 0 ? count : 0) === 0;
+            if (!conflicts || conflicts.length === 0)
+                return true;
+            // Filter out expired reservations
+            const activeConflicts = conflicts.filter(c => {
+                if (c.status === 'reserved' && c.expires_at && c.expires_at < now)
+                    return false;
+                return true;
+            });
+            return activeConflicts.length === 0;
         });
     }
     getBookings(locationId, date, startTime) {
