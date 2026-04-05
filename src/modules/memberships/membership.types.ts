@@ -82,4 +82,7 @@ export interface LocationMembershipSettings {
   bookingGracePeriodAfterMinutes: number;
   reservationTimeoutMinutes: number | null;
   cancellationPolicyHours: number;
+  brandPrimaryColor: string;
+  brandLogoUrl: string | null;
+  customDomain: string | null;
 }

@@ -695,12 +695,12 @@ export class MembershipService {
   async getLocationMembershipSettings(locationId: string): Promise<LocationMembershipSettings> {
     const { data, error } = await supabase
       .from('location_settings')
-      .select('memberships_enabled, leagues_enabled, marketing_enabled, promotions_enabled, door_lock_type, default_booking_window_days, default_booking_hours_start, default_booking_hours_end, booking_buffer_minutes, booking_grace_period_before_minutes, booking_grace_period_after_minutes, reservation_timeout_minutes, cancellation_policy_hours')
+      .select('memberships_enabled, leagues_enabled, marketing_enabled, promotions_enabled, door_lock_type, default_booking_window_days, default_booking_hours_start, default_booking_hours_end, booking_buffer_minutes, booking_grace_period_before_minutes, booking_grace_period_after_minutes, reservation_timeout_minutes, cancellation_policy_hours, brand_primary_color, brand_logo_url, custom_domain')
       .eq('location_id', locationId)
       .single();
 
     if (error || !data) {
-      return { membershipsEnabled: false, leaguesEnabled: true, marketingEnabled: false, promotionsEnabled: false, doorLockType: 'shelly', defaultBookingWindowDays: 7, defaultBookingHours: null, bookingBufferMinutes: 0, bookingGracePeriodBeforeMinutes: 0, bookingGracePeriodAfterMinutes: 0, reservationTimeoutMinutes: null, cancellationPolicyHours: 24 };
+      return { membershipsEnabled: false, leaguesEnabled: true, marketingEnabled: false, promotionsEnabled: false, doorLockType: 'shelly', defaultBookingWindowDays: 7, defaultBookingHours: null, bookingBufferMinutes: 0, bookingGracePeriodBeforeMinutes: 0, bookingGracePeriodAfterMinutes: 0, reservationTimeoutMinutes: null, cancellationPolicyHours: 24, brandPrimaryColor: '158 100% 33%', brandLogoUrl: null, customDomain: null };
     }
 
     return {
@@ -718,6 +718,9 @@ export class MembershipService {
       bookingGracePeriodAfterMinutes: data.booking_grace_period_after_minutes ?? 0,
       reservationTimeoutMinutes: data.reservation_timeout_minutes ?? null,
       cancellationPolicyHours: data.cancellation_policy_hours ?? 24,
+      brandPrimaryColor: data.brand_primary_color ?? '158 100% 33%',
+      brandLogoUrl: data.brand_logo_url ?? null,
+      customDomain: data.custom_domain ?? null,
     };
   }
 
@@ -734,6 +737,9 @@ export class MembershipService {
     bookingGracePeriodAfterMinutes?: number;
     reservationTimeoutMinutes?: number | null;
     cancellationPolicyHours?: number;
+    brandPrimaryColor?: string;
+    brandLogoUrl?: string | null;
+    customDomain?: string | null;
   }): Promise<void> {
     const updateFields: any = {};
     if (updates.membershipsEnabled !== undefined) updateFields.memberships_enabled = updates.membershipsEnabled;
@@ -794,6 +800,22 @@ export class MembershipService {
         throw new Error('Cancellation policy must be between 0 and 168 hours (7 days)');
       }
       updateFields.cancellation_policy_hours = updates.cancellationPolicyHours;
+    }
+    if (updates.brandPrimaryColor !== undefined) {
+      const hslMatch = /^(\d{1,3})\s(\d{1,3})%\s(\d{1,3})%$/.exec(updates.brandPrimaryColor);
+      if (!hslMatch || Number(hslMatch[1]) > 360 || Number(hslMatch[2]) > 100 || Number(hslMatch[3]) > 100) {
+        throw new Error('Brand color must be a valid HSL string (e.g. 158 100% 33%)');
+      }
+      updateFields.brand_primary_color = updates.brandPrimaryColor;
+    }
+    if (updates.brandLogoUrl !== undefined) {
+      if (updates.brandLogoUrl && !updates.brandLogoUrl.startsWith('https://')) {
+        throw new Error('Logo URL must use HTTPS');
+      }
+      updateFields.brand_logo_url = updates.brandLogoUrl || null;
+    }
+    if (updates.customDomain !== undefined) {
+      updateFields.custom_domain = updates.customDomain || null;
     }
 
     const { error } = await supabase

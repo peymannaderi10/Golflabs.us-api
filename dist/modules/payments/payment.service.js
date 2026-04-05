@@ -78,11 +78,33 @@ class PaymentService {
                     throw new Error('Booking reservation has expired.');
                 }
             }
-            // 1b. Compute the price server-side (never trust client amount)
+            // 1b. Re-check slot availability to prevent double-booking (client check is bypassable)
+            const now = new Date().toISOString();
+            const { data: conflicts } = yield database_1.supabase
+                .from('bookings')
+                .select('id, status, expires_at')
+                .eq('space_id', booking.space_id)
+                .eq('location_id', booking.location_id)
+                .lt('start_time', booking.end_time)
+                .gt('end_time', booking.start_time)
+                .in('status', ['confirmed', 'reserved'])
+                .neq('id', bookingId);
+            if (conflicts && conflicts.length > 0) {
+                const activeConflicts = conflicts.filter(c => {
+                    if (c.status === 'reserved' && c.expires_at && c.expires_at < now)
+                        return false;
+                    return true;
+                });
+                if (activeConflicts.length > 0) {
+                    logger_1.logger.warn({ bookingId, activeConflicts: activeConflicts.map(c => c.id) }, 'Slot conflict detected before payment');
+                    throw new Error('This time slot is no longer available');
+                }
+            }
+            // 1c. Compute the price server-side (never trust client amount)
             const priceResult = yield this.calculatePrice(booking.location_id, booking.start_time, booking.end_time, booking.user_id);
             let subtotal = priceResult.total; // in cents, includes membership discounts
             const originalSubtotal = subtotal;
-            // 1c. If a promotion is claimed, validate and apply it server-side
+            // 1d. If a promotion is claimed, validate and apply it server-side
             let serverDiscountAmount = 0;
             if (promotionInfo === null || promotionInfo === void 0 ? void 0 : promotionInfo.promotionId) {
                 try {
@@ -151,7 +173,7 @@ class PaymentService {
                     // Continue without discount — charge full price rather than fail
                 }
             }
-            // 1d. Apply sales tax
+            // 1e. Apply sales tax
             const { data: locationData } = yield database_1.supabase
                 .from('locations')
                 .select('sales_tax_rate')

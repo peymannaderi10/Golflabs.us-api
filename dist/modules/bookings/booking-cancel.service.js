@@ -286,16 +286,16 @@ class BookingCancelService {
             // 1. Get the booking details
             const { data: booking, error: fetchError } = yield database_1.supabase
                 .from('bookings')
-                .select('id, user_id, start_time, status, location_id, space_id')
+                .select('id, user_id, start_time, status, expires_at, location_id, space_id')
                 .eq('id', bookingId)
                 .eq('user_id', userId)
                 .single();
             if (fetchError || !booking) {
                 throw new Error('Reserved booking not found or access denied');
             }
-            // 2. Check if booking can be cancelled (must be reserved status)
-            if (booking.status !== 'reserved') {
-                throw new Error('Only reserved bookings can be cancelled through this endpoint');
+            // 2. Check if booking can be cancelled (reserved, or pending-checkout with no expires_at)
+            if (booking.status !== 'reserved' && !(booking.status === 'pending' && !booking.expires_at)) {
+                throw new Error('Only reserved or pending-checkout bookings can be cancelled through this endpoint');
             }
             // 3. Update booking status to abandoned (reservation cancelled) and immediately expire it
             const { error: updateBookingError } = yield database_1.supabase

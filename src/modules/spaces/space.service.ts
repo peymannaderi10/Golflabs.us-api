@@ -154,6 +154,207 @@ export class SpaceService {
   }
 
   // =====================================================
+  // SPACE CLOSURES
+  // =====================================================
+
+  async getClosures(spaceId: string) {
+    const { data, error } = await supabase
+      .from('space_closures')
+      .select('*')
+      .eq('space_id', spaceId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      logger.error({ err: error }, 'Error fetching space closures');
+      throw new Error('Failed to fetch space closures');
+    }
+    return data || [];
+  }
+
+  async getClosuresByLocation(locationId: string) {
+    const { data, error } = await supabase
+      .from('space_closures')
+      .select('*')
+      .eq('location_id', locationId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      logger.error({ err: error }, 'Error fetching location closures');
+      throw new Error('Failed to fetch location closures');
+    }
+    return data || [];
+  }
+
+  async createClosure(params: {
+    spaceId: string;
+    locationId: string;
+    closureType: 'indefinite' | 'dates' | 'recurring' | 'range' | 'hours';
+    dates?: string[];
+    recurringDays?: number[];
+    startDate?: string;
+    endDate?: string;
+    startTime?: string;
+    endTime?: string;
+    reason?: string;
+    createdBy: string;
+  }) {
+    const { spaceId, locationId, closureType, dates, recurringDays, startDate, endDate, startTime, endTime, reason, createdBy } = params;
+
+    // Insert the closure row first
+    const { data, error } = await supabase
+      .from('space_closures')
+      .insert({
+        space_id: spaceId,
+        location_id: locationId,
+        closure_type: closureType,
+        dates: dates || null,
+        recurring_days: recurringDays || null,
+        start_date: startDate || null,
+        end_date: endDate || null,
+        start_time: startTime || null,
+        end_time: endTime || null,
+        reason: reason || null,
+        created_by: createdBy,
+      })
+      .select('*')
+      .single();
+
+    if (error) {
+      logger.error({ err: error }, 'Error creating space closure');
+      throw new Error('Failed to create space closure');
+    }
+
+    // Only after successful insert, set spaces.status to 'closed' for indefinite closures
+    if (closureType === 'indefinite') {
+      await this.updateSpaceStatus(spaceId, 'closed');
+    }
+
+    return data;
+  }
+
+  async getClosureById(closureId: string) {
+    const { data, error } = await supabase
+      .from('space_closures')
+      .select('*')
+      .eq('id', closureId)
+      .single();
+
+    if (error) {
+      logger.error({ err: error }, 'Error fetching closure by ID');
+      return null;
+    }
+    return data;
+  }
+
+  async deleteClosure(closureId: string) {
+    // Get the closure first to check if it's indefinite
+    const { data: closure } = await supabase
+      .from('space_closures')
+      .select('id, space_id, closure_type')
+      .eq('id', closureId)
+      .single();
+
+    if (!closure) {
+      throw new Error('Closure not found');
+    }
+
+    // Count remaining indefinite closures (excluding this one) BEFORE deleting
+    let shouldReopenSpace = false;
+    if (closure.closure_type === 'indefinite') {
+      const { count } = await supabase
+        .from('space_closures')
+        .select('id', { count: 'exact', head: true })
+        .eq('space_id', closure.space_id)
+        .eq('closure_type', 'indefinite')
+        .neq('id', closureId);
+
+      shouldReopenSpace = (count ?? 0) === 0;
+    }
+
+    const { error } = await supabase
+      .from('space_closures')
+      .delete()
+      .eq('id', closureId);
+
+    if (error) {
+      logger.error({ err: error }, 'Error deleting space closure');
+      throw new Error('Failed to delete space closure');
+    }
+
+    // If this was the last indefinite closure, reopen the space
+    if (shouldReopenSpace) {
+      await this.updateSpaceStatus(closure.space_id, 'available');
+    }
+
+    return { success: true, spaceId: closure.space_id };
+  }
+
+  async getActiveClosuresForSlot(spaceId: string, bookingDate: string, startTime: string, endTime: string): Promise<boolean> {
+    // Check if any closure applies to this slot
+    const { data: closures } = await supabase
+      .from('space_closures')
+      .select('*')
+      .eq('space_id', spaceId);
+
+    if (!closures || closures.length === 0) return false;
+
+    const date = new Date(bookingDate);
+    const dayOfWeek = date.getDay(); // 0=Sunday
+    const dateStr = bookingDate.split('T')[0]; // YYYY-MM-DD
+
+    for (const c of closures) {
+      switch (c.closure_type) {
+        case 'indefinite':
+          return true;
+
+        case 'dates':
+          if (c.dates?.includes(dateStr)) {
+            if (!c.start_time || !c.end_time) return true; // all day
+            if (this.timeOverlaps(startTime, endTime, c.start_time, c.end_time)) return true;
+          }
+          break;
+
+        case 'recurring':
+          if (c.recurring_days?.includes(dayOfWeek)) {
+            // Check optional date scope
+            if (c.start_date && dateStr < c.start_date) break;
+            if (c.end_date && dateStr > c.end_date) break;
+            if (!c.start_time || !c.end_time) return true; // all day
+            if (this.timeOverlaps(startTime, endTime, c.start_time, c.end_time)) return true;
+          }
+          break;
+
+        case 'range':
+          if (c.start_date && c.end_date && dateStr >= c.start_date && dateStr <= c.end_date) {
+            if (!c.start_time || !c.end_time) return true; // all day
+            if (this.timeOverlaps(startTime, endTime, c.start_time, c.end_time)) return true;
+          }
+          break;
+
+        case 'hours':
+          // Hours closure uses dates, recurring_days, or range to scope when hours apply
+          let dateApplies = false;
+          if (c.dates?.includes(dateStr)) dateApplies = true;
+          if (c.recurring_days?.includes(dayOfWeek)) {
+            if ((!c.start_date || dateStr >= c.start_date) && (!c.end_date || dateStr <= c.end_date)) {
+              dateApplies = true;
+            }
+          }
+          if (c.start_date && c.end_date && dateStr >= c.start_date && dateStr <= c.end_date) dateApplies = true;
+          if (dateApplies && c.start_time && c.end_time) {
+            if (this.timeOverlaps(startTime, endTime, c.start_time, c.end_time)) return true;
+          }
+          break;
+      }
+    }
+    return false;
+  }
+
+  private timeOverlaps(bookingStart: string, bookingEnd: string, closureStart: string, closureEnd: string): boolean {
+    return bookingStart < closureEnd && bookingEnd > closureStart;
+  }
+
+  // =====================================================
   // LEAGUE MODE
   // =====================================================
 

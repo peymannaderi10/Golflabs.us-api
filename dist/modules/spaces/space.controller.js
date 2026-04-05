@@ -107,6 +107,123 @@ class SpaceController {
             }
         });
         // =====================================================
+        // SPACE CLOSURES
+        // =====================================================
+        // Public endpoint — no auth, returns closures for a location (used by customer booking grid)
+        this.getActiveClosures = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            try {
+                const locationId = req.query.locationId;
+                if (!locationId) {
+                    return res.status(400).json({ error: 'locationId is required' });
+                }
+                const closures = yield this.spaceService.getClosuresByLocation(locationId);
+                res.json({ success: true, data: closures });
+            }
+            catch (error) {
+                res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
+            }
+        });
+        // Employee endpoint — location-scoped
+        this.getClosures = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            var _a, _b;
+            try {
+                const { spaceId } = req.params;
+                const locationId = req.query.locationId;
+                if (spaceId) {
+                    const spaceLocationId = yield this.spaceService.getSpaceLocationId(spaceId);
+                    if (!spaceLocationId)
+                        return res.status(404).json({ error: 'Space not found' });
+                    if (spaceLocationId !== ((_a = req.employeeProfile) === null || _a === void 0 ? void 0 : _a.location_id)) {
+                        return res.status(403).json({ error: 'Access denied: space belongs to a different location' });
+                    }
+                    const closures = yield this.spaceService.getClosures(spaceId);
+                    return res.json({ success: true, data: closures });
+                }
+                if (locationId) {
+                    if (locationId !== ((_b = req.employeeProfile) === null || _b === void 0 ? void 0 : _b.location_id)) {
+                        return res.status(403).json({ error: 'Access denied: location mismatch' });
+                    }
+                    const closures = yield this.spaceService.getClosuresByLocation(locationId);
+                    return res.json({ success: true, data: closures });
+                }
+                res.status(400).json({ error: 'spaceId or locationId is required' });
+            }
+            catch (error) {
+                res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
+            }
+        });
+        this.createClosure = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            var _a, _b;
+            try {
+                const { spaceId } = req.params;
+                const { closureType, dates, recurringDays, startDate, endDate, startTime, endTime, reason } = req.body;
+                if (!spaceId || !closureType) {
+                    return res.status(400).json({ error: 'spaceId and closureType are required' });
+                }
+                const VALID_CLOSURE_TYPES = ['indefinite', 'dates', 'recurring', 'range', 'hours'];
+                if (!VALID_CLOSURE_TYPES.includes(closureType)) {
+                    return res.status(400).json({ error: 'closureType must be one of: indefinite, dates, recurring, range, hours' });
+                }
+                const spaceLocationId = yield this.spaceService.getSpaceLocationId(spaceId);
+                if (!spaceLocationId)
+                    return res.status(404).json({ error: 'Space not found' });
+                if (spaceLocationId !== ((_a = req.employeeProfile) === null || _a === void 0 ? void 0 : _a.location_id)) {
+                    return res.status(403).json({ error: 'Access denied' });
+                }
+                const closure = yield this.spaceService.createClosure({
+                    spaceId,
+                    locationId: spaceLocationId,
+                    closureType,
+                    dates,
+                    recurringDays,
+                    startDate,
+                    endDate,
+                    startTime,
+                    endTime,
+                    reason,
+                    createdBy: ((_b = req.user) === null || _b === void 0 ? void 0 : _b.id) || '',
+                });
+                // Broadcast update
+                if (this.socketService) {
+                    this.socketService.broadcastToLocation(spaceLocationId, 'closures_updated', { spaceId });
+                }
+                res.status(201).json({ success: true, data: closure });
+            }
+            catch (error) {
+                res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
+            }
+        });
+        this.deleteClosure = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            var _a;
+            try {
+                const { closureId } = req.params;
+                if (!closureId) {
+                    return res.status(400).json({ error: 'closureId is required' });
+                }
+                // Verify the closure belongs to the employee's location
+                const closure = yield this.spaceService.getClosureById(closureId);
+                if (!closure) {
+                    return res.status(404).json({ error: 'Closure not found' });
+                }
+                const closureLocationId = yield this.spaceService.getSpaceLocationId(closure.space_id);
+                if (!closureLocationId || closureLocationId !== ((_a = req.employeeProfile) === null || _a === void 0 ? void 0 : _a.location_id)) {
+                    return res.status(403).json({ error: 'Access denied: closure belongs to a different location' });
+                }
+                const result = yield this.spaceService.deleteClosure(closureId);
+                // Broadcast update
+                if (this.socketService) {
+                    const spaceLocationId = yield this.spaceService.getSpaceLocationId(result.spaceId);
+                    if (spaceLocationId) {
+                        this.socketService.broadcastToLocation(spaceLocationId, 'closures_updated', { spaceId: result.spaceId });
+                    }
+                }
+                res.json({ success: true });
+            }
+            catch (error) {
+                res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
+            }
+        });
+        // =====================================================
         // LEAGUE MODE
         // =====================================================
         this.activateLeagueMode = (req, res) => __awaiter(this, void 0, void 0, function* () {

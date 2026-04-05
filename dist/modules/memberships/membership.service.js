@@ -656,14 +656,14 @@ class MembershipService {
     // =====================================================
     getLocationMembershipSettings(locationId) {
         return __awaiter(this, void 0, void 0, function* () {
-            var _a, _b, _c, _d, _e, _f, _g, _h;
+            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l;
             const { data, error } = yield database_1.supabase
                 .from('location_settings')
-                .select('memberships_enabled, leagues_enabled, marketing_enabled, promotions_enabled, door_lock_type, default_booking_window_days, default_booking_hours_start, default_booking_hours_end, booking_buffer_minutes, booking_grace_period_before_minutes, booking_grace_period_after_minutes, reservation_timeout_minutes, cancellation_policy_hours')
+                .select('memberships_enabled, leagues_enabled, marketing_enabled, promotions_enabled, door_lock_type, default_booking_window_days, default_booking_hours_start, default_booking_hours_end, booking_buffer_minutes, booking_grace_period_before_minutes, booking_grace_period_after_minutes, reservation_timeout_minutes, cancellation_policy_hours, brand_primary_color, brand_logo_url, custom_domain')
                 .eq('location_id', locationId)
                 .single();
             if (error || !data) {
-                return { membershipsEnabled: false, leaguesEnabled: true, marketingEnabled: false, promotionsEnabled: false, doorLockType: 'shelly', defaultBookingWindowDays: 7, defaultBookingHours: null, bookingBufferMinutes: 0, bookingGracePeriodBeforeMinutes: 0, bookingGracePeriodAfterMinutes: 0, reservationTimeoutMinutes: null, cancellationPolicyHours: 24 };
+                return { membershipsEnabled: false, leaguesEnabled: true, marketingEnabled: false, promotionsEnabled: false, doorLockType: 'shelly', defaultBookingWindowDays: 7, defaultBookingHours: null, bookingBufferMinutes: 0, bookingGracePeriodBeforeMinutes: 0, bookingGracePeriodAfterMinutes: 0, reservationTimeoutMinutes: null, cancellationPolicyHours: 24, brandPrimaryColor: '158 100% 33%', brandLogoUrl: null, customDomain: null };
             }
             return {
                 membershipsEnabled: data.memberships_enabled,
@@ -680,6 +680,9 @@ class MembershipService {
                 bookingGracePeriodAfterMinutes: (_f = data.booking_grace_period_after_minutes) !== null && _f !== void 0 ? _f : 0,
                 reservationTimeoutMinutes: (_g = data.reservation_timeout_minutes) !== null && _g !== void 0 ? _g : null,
                 cancellationPolicyHours: (_h = data.cancellation_policy_hours) !== null && _h !== void 0 ? _h : 24,
+                brandPrimaryColor: (_j = data.brand_primary_color) !== null && _j !== void 0 ? _j : '158 100% 33%',
+                brandLogoUrl: (_k = data.brand_logo_url) !== null && _k !== void 0 ? _k : null,
+                customDomain: (_l = data.custom_domain) !== null && _l !== void 0 ? _l : null,
             };
         });
     }
@@ -754,6 +757,22 @@ class MembershipService {
                     throw new Error('Cancellation policy must be between 0 and 168 hours (7 days)');
                 }
                 updateFields.cancellation_policy_hours = updates.cancellationPolicyHours;
+            }
+            if (updates.brandPrimaryColor !== undefined) {
+                const hslMatch = /^(\d{1,3})\s(\d{1,3})%\s(\d{1,3})%$/.exec(updates.brandPrimaryColor);
+                if (!hslMatch || Number(hslMatch[1]) > 360 || Number(hslMatch[2]) > 100 || Number(hslMatch[3]) > 100) {
+                    throw new Error('Brand color must be a valid HSL string (e.g. 158 100% 33%)');
+                }
+                updateFields.brand_primary_color = updates.brandPrimaryColor;
+            }
+            if (updates.brandLogoUrl !== undefined) {
+                if (updates.brandLogoUrl && !updates.brandLogoUrl.startsWith('https://')) {
+                    throw new Error('Logo URL must use HTTPS');
+                }
+                updateFields.brand_logo_url = updates.brandLogoUrl || null;
+            }
+            if (updates.customDomain !== undefined) {
+                updateFields.custom_domain = updates.customDomain || null;
             }
             const { error } = yield database_1.supabase
                 .from('location_settings')

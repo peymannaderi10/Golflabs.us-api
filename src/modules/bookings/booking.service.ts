@@ -10,6 +10,7 @@ import { logger } from '../../shared/utils/logger';
 import { BookingCancelService } from './booking-cancel.service';
 import { BookingEmployeeService } from './booking-employee.service';
 import { BookingExtensionService } from './booking-extension.service';
+import { SpaceService } from '../spaces/space.service';
 
 export class BookingService {
   private capacityHoldService = new CapacityHoldService();
@@ -163,6 +164,13 @@ export class BookingService {
     if (holdConflict) {
       const leagueName = holdConflict.league_name || 'League Night';
       throw new Error(`This time is reserved for ${leagueName}. Please choose a different time.`);
+    }
+
+    // Check space closures
+    const spaceService = new SpaceService();
+    const isClosed = await spaceService.getActiveClosuresForSlot(spaceId, date, start24, end24);
+    if (isClosed) {
+      throw new Error('This space is closed during the selected time. Please choose a different space or time.');
     }
 
     // Check if reservation holds are enabled for this location

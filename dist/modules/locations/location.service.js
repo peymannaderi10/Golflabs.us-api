@@ -29,7 +29,7 @@ function formatSettings(ls) {
         bookingGracePeriodBeforeMinutes: (_l = ls.booking_grace_period_before_minutes) !== null && _l !== void 0 ? _l : 0,
         bookingGracePeriodAfterMinutes: (_m = ls.booking_grace_period_after_minutes) !== null && _m !== void 0 ? _m : 0,
         reservationTimeoutMinutes: (_o = ls.reservation_timeout_minutes) !== null && _o !== void 0 ? _o : null,
-        brandPrimaryColor: (_p = ls.brand_primary_color) !== null && _p !== void 0 ? _p : '#00A36C',
+        brandPrimaryColor: (_p = ls.brand_primary_color) !== null && _p !== void 0 ? _p : '158 100% 33%',
         brandLogoUrl: (_q = ls.brand_logo_url) !== null && _q !== void 0 ? _q : null,
         customDomain: (_r = ls.custom_domain) !== null && _r !== void 0 ? _r : null,
     };

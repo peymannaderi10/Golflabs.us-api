@@ -39,7 +39,7 @@ function formatSettings(ls: Partial<LocationSettingsRow>) {
     bookingGracePeriodBeforeMinutes: ls.booking_grace_period_before_minutes ?? 0,
     bookingGracePeriodAfterMinutes: ls.booking_grace_period_after_minutes ?? 0,
     reservationTimeoutMinutes: ls.reservation_timeout_minutes ?? null,
-    brandPrimaryColor: ls.brand_primary_color ?? '#00A36C',
+    brandPrimaryColor: ls.brand_primary_color ?? '158 100% 33%',
     brandLogoUrl: ls.brand_logo_url ?? null,
     customDomain: ls.custom_domain ?? null,
   };

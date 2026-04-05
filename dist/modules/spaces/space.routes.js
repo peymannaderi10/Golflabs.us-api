@@ -8,11 +8,17 @@ const createSpaceRoutes = (socketService) => {
     const spaceRoutes = (0, express_1.Router)();
     const controller = new space_controller_1.SpaceController(socketService);
     spaceRoutes.get('/', controller.getSpaces);
+    spaceRoutes.get('/closures/active', controller.getActiveClosures); // Public: customer-facing slot availability
     spaceRoutes.post('/', auth_1.authenticateEmployee, (0, auth_1.validateLocationAccess)('body'), controller.createSpace);
     spaceRoutes.delete('/:spaceId', auth_1.authenticateEmployee, controller.deleteSpace);
     spaceRoutes.post('/:spaceId/heartbeat', auth_1.authenticateKiosk, controller.updateHeartbeat);
     // Employee-only: update space status
     spaceRoutes.put('/:spaceId/status', auth_1.authenticateEmployee, controller.updateSpaceStatus);
+    // Employee-only: space closures
+    spaceRoutes.get('/closures', auth_1.authenticateEmployee, controller.getClosures);
+    spaceRoutes.get('/:spaceId/closures', auth_1.authenticateEmployee, controller.getClosures);
+    spaceRoutes.post('/:spaceId/closures', auth_1.authenticateEmployee, controller.createClosure);
+    spaceRoutes.delete('/closures/:closureId', auth_1.authenticateEmployee, controller.deleteClosure);
     // Employee-only: league mode controls
     spaceRoutes.put('/league-mode/activate', auth_1.authenticateEmployee, (0, auth_1.validateLocationAccess)('body'), controller.activateLeagueMode);
     spaceRoutes.put('/league-mode/deactivate', auth_1.authenticateEmployee, (0, auth_1.validateLocationAccess)('body'), controller.deactivateLeagueMode);

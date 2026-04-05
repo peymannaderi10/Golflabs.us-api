@@ -119,6 +119,130 @@ export class SpaceController {
   };
 
   // =====================================================
+  // SPACE CLOSURES
+  // =====================================================
+
+  // Public endpoint — no auth, returns closures for a location (used by customer booking grid)
+  getActiveClosures = async (req: Request, res: Response) => {
+    try {
+      const locationId = req.query.locationId as string;
+      if (!locationId) {
+        return res.status(400).json({ error: 'locationId is required' });
+      }
+      const closures = await this.spaceService.getClosuresByLocation(locationId);
+      res.json({ success: true, data: closures });
+    } catch (error: any) {
+      res.status(500).json({ error: sanitizeError(error) });
+    }
+  };
+
+  // Employee endpoint — location-scoped
+  getClosures = async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { spaceId } = req.params;
+      const locationId = req.query.locationId as string;
+
+      if (spaceId) {
+        const spaceLocationId = await this.spaceService.getSpaceLocationId(spaceId);
+        if (!spaceLocationId) return res.status(404).json({ error: 'Space not found' });
+        if (spaceLocationId !== req.employeeProfile?.location_id) {
+          return res.status(403).json({ error: 'Access denied: space belongs to a different location' });
+        }
+        const closures = await this.spaceService.getClosures(spaceId);
+        return res.json({ success: true, data: closures });
+      }
+      if (locationId) {
+        if (locationId !== req.employeeProfile?.location_id) {
+          return res.status(403).json({ error: 'Access denied: location mismatch' });
+        }
+        const closures = await this.spaceService.getClosuresByLocation(locationId);
+        return res.json({ success: true, data: closures });
+      }
+      res.status(400).json({ error: 'spaceId or locationId is required' });
+    } catch (error: any) {
+      res.status(500).json({ error: sanitizeError(error) });
+    }
+  };
+
+  createClosure = async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { spaceId } = req.params;
+      const { closureType, dates, recurringDays, startDate, endDate, startTime, endTime, reason } = req.body;
+
+      if (!spaceId || !closureType) {
+        return res.status(400).json({ error: 'spaceId and closureType are required' });
+      }
+
+      const VALID_CLOSURE_TYPES = ['indefinite', 'dates', 'recurring', 'range', 'hours'];
+      if (!VALID_CLOSURE_TYPES.includes(closureType)) {
+        return res.status(400).json({ error: 'closureType must be one of: indefinite, dates, recurring, range, hours' });
+      }
+
+      const spaceLocationId = await this.spaceService.getSpaceLocationId(spaceId);
+      if (!spaceLocationId) return res.status(404).json({ error: 'Space not found' });
+      if (spaceLocationId !== req.employeeProfile?.location_id) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
+      const closure = await this.spaceService.createClosure({
+        spaceId,
+        locationId: spaceLocationId,
+        closureType,
+        dates,
+        recurringDays,
+        startDate,
+        endDate,
+        startTime,
+        endTime,
+        reason,
+        createdBy: req.user?.id || '',
+      });
+
+      // Broadcast update
+      if (this.socketService) {
+        this.socketService.broadcastToLocation(spaceLocationId, 'closures_updated', { spaceId });
+      }
+
+      res.status(201).json({ success: true, data: closure });
+    } catch (error: any) {
+      res.status(500).json({ error: sanitizeError(error) });
+    }
+  };
+
+  deleteClosure = async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { closureId } = req.params;
+      if (!closureId) {
+        return res.status(400).json({ error: 'closureId is required' });
+      }
+
+      // Verify the closure belongs to the employee's location
+      const closure = await this.spaceService.getClosureById(closureId);
+      if (!closure) {
+        return res.status(404).json({ error: 'Closure not found' });
+      }
+      const closureLocationId = await this.spaceService.getSpaceLocationId(closure.space_id);
+      if (!closureLocationId || closureLocationId !== req.employeeProfile?.location_id) {
+        return res.status(403).json({ error: 'Access denied: closure belongs to a different location' });
+      }
+
+      const result = await this.spaceService.deleteClosure(closureId);
+
+      // Broadcast update
+      if (this.socketService) {
+        const spaceLocationId = await this.spaceService.getSpaceLocationId(result.spaceId);
+        if (spaceLocationId) {
+          this.socketService.broadcastToLocation(spaceLocationId, 'closures_updated', { spaceId: result.spaceId });
+        }
+      }
+
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: sanitizeError(error) });
+    }
+  };
+
+  // =====================================================
   // LEAGUE MODE
   // =====================================================
 

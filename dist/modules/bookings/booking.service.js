@@ -20,6 +20,7 @@ const logger_1 = require("../../shared/utils/logger");
 const booking_cancel_service_1 = require("./booking-cancel.service");
 const booking_employee_service_1 = require("./booking-employee.service");
 const booking_extension_service_1 = require("./booking-extension.service");
+const space_service_1 = require("../spaces/space.service");
 class BookingService {
     constructor() {
         this.capacityHoldService = new capacity_hold_service_1.CapacityHoldService();
@@ -145,6 +146,12 @@ class BookingService {
             if (holdConflict) {
                 const leagueName = holdConflict.league_name || 'League Night';
                 throw new Error(`This time is reserved for ${leagueName}. Please choose a different time.`);
+            }
+            // Check space closures
+            const spaceService = new space_service_1.SpaceService();
+            const isClosed = yield spaceService.getActiveClosuresForSlot(spaceId, date, start24, end24);
+            if (isClosed) {
+                throw new Error('This space is closed during the selected time. Please choose a different space or time.');
             }
             // Check if reservation holds are enabled for this location
             const reservationTimeoutMinutes = locationSettings.reservationTimeoutMinutes;
