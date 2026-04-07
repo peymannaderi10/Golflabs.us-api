@@ -392,7 +392,7 @@ const RESOURCE_TABLE_MAP = {
   user_types:         { column: 'location_id', softDelete: false },
   spaces:             { column: 'location_id', softDelete: true  },
   space_closures:     { column: 'location_id', softDelete: false },
-  bookings:           { column: 'location_id', softDelete: true  },
+  bookings:           { column: 'location_id', softDelete: false },
   promotions:         { column: 'location_id', softDelete: false },
   marketing_campaigns:{ column: 'location_id', softDelete: false },
   email_templates:    { column: 'location_id', softDelete: false },
