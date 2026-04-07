@@ -298,60 +298,75 @@ export class SpaceService {
 
     if (!closures || closures.length === 0) return false;
 
-    const date = new Date(bookingDate);
-    const dayOfWeek = date.getDay(); // 0=Sunday
     const dateStr = bookingDate.split('T')[0]; // YYYY-MM-DD
+    const { prevDateStr, todayDow, prevDow } = this.getDateContext(dateStr);
 
     for (const c of closures) {
-      switch (c.closure_type) {
-        case 'indefinite':
-          return true;
+      if (c.closure_type === 'indefinite') return true;
 
-        case 'dates':
-          if (c.dates?.includes(dateStr)) {
-            if (!c.start_time || !c.end_time) return true; // all day
-            if (this.timeOverlaps(startTime, endTime, c.start_time, c.end_time)) return true;
-          }
-          break;
+      // 1) Does the closure apply natively on the booking's date?
+      if (this.closureAppliesOnDate(c, dateStr, todayDow)) {
+        if (!c.start_time || !c.end_time) return true; // all-day closure
+        // Overnight closures: on the native day, only the head [start_time, 24:00) applies
+        const windowEnd = c.end_time < c.start_time ? '24:00' : c.end_time;
+        if (startTime < windowEnd && endTime > c.start_time) return true;
+      }
 
-        case 'recurring':
-          if (c.recurring_days?.includes(dayOfWeek)) {
-            // Check optional date scope
-            if (c.start_date && dateStr < c.start_date) break;
-            if (c.end_date && dateStr > c.end_date) break;
-            if (!c.start_time || !c.end_time) return true; // all day
-            if (this.timeOverlaps(startTime, endTime, c.start_time, c.end_time)) return true;
-          }
-          break;
-
-        case 'range':
-          if (c.start_date && c.end_date && dateStr >= c.start_date && dateStr <= c.end_date) {
-            if (!c.start_time || !c.end_time) return true; // all day
-            if (this.timeOverlaps(startTime, endTime, c.start_time, c.end_time)) return true;
-          }
-          break;
-
-        case 'hours':
-          // Hours closure uses dates, recurring_days, or range to scope when hours apply
-          let dateApplies = false;
-          if (c.dates?.includes(dateStr)) dateApplies = true;
-          if (c.recurring_days?.includes(dayOfWeek)) {
-            if ((!c.start_date || dateStr >= c.start_date) && (!c.end_date || dateStr <= c.end_date)) {
-              dateApplies = true;
-            }
-          }
-          if (c.start_date && c.end_date && dateStr >= c.start_date && dateStr <= c.end_date) dateApplies = true;
-          if (dateApplies && c.start_time && c.end_time) {
-            if (this.timeOverlaps(startTime, endTime, c.start_time, c.end_time)) return true;
-          }
-          break;
+      // 2) Overnight tail from the previous day leaking into the booking's date
+      //    Only closures with a timed window where end_time < start_time produce a tail
+      if (c.start_time && c.end_time && c.end_time < c.start_time) {
+        if (this.closureAppliesOnDate(c, prevDateStr, prevDow)) {
+          // Tail window on today is [00:00, c.end_time)
+          if (startTime < c.end_time) return true;
+        }
       }
     }
     return false;
   }
 
-  private timeOverlaps(bookingStart: string, bookingEnd: string, closureStart: string, closureEnd: string): boolean {
-    return bookingStart < closureEnd && bookingEnd > closureStart;
+  /**
+   * Returns whether a closure row is natively active on the given calendar date.
+   * "Natively" means this is the day the closure's start_time is anchored to —
+   * overnight tails are handled separately by the caller.
+   */
+  private closureAppliesOnDate(
+    c: { closure_type: string; dates?: string[] | null; recurring_days?: number[] | null; start_date?: string | null; end_date?: string | null },
+    dateStr: string,
+    dayOfWeek: number
+  ): boolean {
+    switch (c.closure_type) {
+      case 'indefinite':
+        return true;
+      case 'dates':
+        return !!c.dates?.includes(dateStr);
+      case 'recurring':
+        if (!c.recurring_days?.includes(dayOfWeek)) return false;
+        if (c.start_date && dateStr < c.start_date) return false;
+        if (c.end_date && dateStr > c.end_date) return false;
+        return true;
+      case 'range':
+        return !!(c.start_date && c.end_date && dateStr >= c.start_date && dateStr <= c.end_date);
+      case 'hours': {
+        if (c.dates?.includes(dateStr)) return true;
+        if (c.recurring_days?.includes(dayOfWeek)) {
+          if ((!c.start_date || dateStr >= c.start_date) && (!c.end_date || dateStr <= c.end_date)) return true;
+        }
+        if (c.start_date && c.end_date && dateStr >= c.start_date && dateStr <= c.end_date) return true;
+        return false;
+      }
+      default:
+        return false;
+    }
+  }
+
+  private getDateContext(dateStr: string): { prevDateStr: string; todayDow: number; prevDow: number } {
+    // Parse as UTC noon to avoid DST / timezone edge cases when stepping back a day
+    const today = new Date(`${dateStr}T12:00:00Z`);
+    const todayDow = today.getUTCDay();
+    const prev = new Date(today.getTime() - 24 * 60 * 60 * 1000);
+    const prevDateStr = prev.toISOString().split('T')[0];
+    const prevDow = prev.getUTCDay();
+    return { prevDateStr, todayDow, prevDow };
   }
 
   // =====================================================
