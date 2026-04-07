@@ -1,41 +1,29 @@
 "use strict";
-var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
-    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
-    return new (P || (P = Promise))(function (resolve, reject) {
-        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
-        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
-        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
-        step((generator = generator.apply(thisArg, _arguments || [])).next());
-    });
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.validateLeagueAccess = void 0;
-const database_1 = require("../../config/database");
+const auth_middleware_1 = require("../auth/auth.middleware");
 /**
- * Middleware that verifies the league identified by :leagueId belongs to the
- * authenticated employee's location. Must be used AFTER authenticateEmployee.
+ * League-specific tenant gate. Composes the generic `resolveResourceLocation`
+ * + `enforceLocationScope` pipeline so leagues share the same security
+ * posture as every other resource-param route:
+ *
+ *   - soft-deleted leagues → 404
+ *   - cross-tenant access → 404 (no enumeration oracle)
+ *   - whitelisted table lookup, no arbitrary string query construction
+ *
+ * Exposed as a single middleware (not a chain) so existing route call
+ * sites `router.put('/:leagueId', authenticateEmployee, validateLeagueAccess, ...)`
+ * keep working. Must run AFTER `authenticateEmployee`.
  */
-const validateLeagueAccess = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
-    var _a;
-    const accessibleIds = (_a = req.employeeProfile) === null || _a === void 0 ? void 0 : _a.accessibleLocationIds;
-    if (!accessibleIds || accessibleIds.length === 0) {
-        return res.status(403).json({ error: 'Employee profile missing location access' });
-    }
-    const { leagueId } = req.params;
-    if (!leagueId) {
-        return res.status(400).json({ error: 'leagueId is required' });
-    }
-    const { data } = yield database_1.supabase
-        .from('leagues')
-        .select('location_id')
-        .eq('id', leagueId)
-        .single();
-    if (!data) {
-        return res.status(404).json({ error: 'League not found' });
-    }
-    if (!accessibleIds.includes(data.location_id)) {
-        return res.status(403).json({ error: 'Access denied: league belongs to a different location' });
-    }
-    next();
-});
+const resolveLeague = (0, auth_middleware_1.resolveResourceLocation)('leagues', 'leagueId');
+const validateLeagueAccess = (req, res, next) => {
+    // Chain the two steps manually: resolver → enforce.
+    resolveLeague(req, res, (err) => {
+        if (err)
+            return next(err);
+        if (res.headersSent)
+            return;
+        (0, auth_middleware_1.enforceLocationScope)(req, res, next);
+    });
+};
 exports.validateLeagueAccess = validateLeagueAccess;

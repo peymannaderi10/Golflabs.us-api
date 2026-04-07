@@ -8,6 +8,17 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
+var __rest = (this && this.__rest) || function (s, e) {
+    var t = {};
+    for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p) && e.indexOf(p) < 0)
+        t[p] = s[p];
+    if (s != null && typeof Object.getOwnPropertySymbols === "function")
+        for (var i = 0, p = Object.getOwnPropertySymbols(s); i < p.length; i++) {
+            if (e.indexOf(p[i]) < 0 && Object.prototype.propertyIsEnumerable.call(s, p[i]))
+                t[p[i]] = s[p[i]];
+        }
+    return t;
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.BookingController = void 0;
 const booking_service_1 = require("./booking.service");
@@ -59,7 +70,17 @@ class BookingController {
                     return res.status(400).json({ error: 'locationId and date are required query parameters' });
                 }
                 const bookings = yield this.bookingService.getBookings(locationId, date, startTime);
-                res.json(bookings);
+                // This route is unauthenticated — it powers the customer-facing
+                // availability grid which must work for guests. Scrub `user_id`
+                // so anonymous callers cannot graph which customer occupies which
+                // slot. Employees use `/bookings/employee` for full booking data.
+                const scrubbed = Array.isArray(bookings)
+                    ? bookings.map((_a) => {
+                        var { user_id: _user } = _a, rest = __rest(_a, ["user_id"]);
+                        return rest;
+                    })
+                    : bookings;
+                res.json(scrubbed);
             }
             catch (error) {
                 logger_1.logger.error({ err: error }, 'Error in /bookings endpoint');

@@ -1,15 +1,18 @@
 import { Router, Request, Response } from 'express';
 import { promotionController } from './promotion.controller';
-import { authenticateUser, authenticateEmployee, validateLocationAccess } from '../auth';
+import { authenticateUser, authenticateEmployee, enforceLocationScope, resolveResourceLocation } from '../auth';
 import { body, param } from 'express-validator';
 import { handleValidationErrors } from '../../shared/middleware/validation';
 
 const router = Router();
 
+// Resolve a promotion's owning location from the row.
+const scopePromotion = [resolveResourceLocation('promotions', 'id'), enforceLocationScope];
+
 // --- Employee CRUD routes ---
 
 // Create a new promotion (employee, location-scoped)
-router.post('/', authenticateEmployee, validateLocationAccess('body'), [
+router.post('/', authenticateEmployee, enforceLocationScope, [
   body('locationId').isUUID().withMessage('locationId must be a valid UUID'),
   body('name').isString().trim().notEmpty().withMessage('name is required'),
   body('discountType').isIn(['fixed', 'percentage', 'free_minutes']).withMessage('discountType must be fixed, percentage, or free_minutes'),
@@ -27,7 +30,7 @@ router.post('/', authenticateEmployee, validateLocationAccess('body'), [
 ], (req: Request, res: Response) => promotionController.createPromotion(req, res));
 
 // Update a promotion (employee)
-router.put('/:id', authenticateEmployee, [
+router.put('/:id', authenticateEmployee, ...scopePromotion, [
   param('id').isUUID().withMessage('id must be a valid UUID'),
   body('name').optional().isString().trim().notEmpty(),
   body('discountType').optional().isIn(['fixed', 'percentage', 'free_minutes']),
@@ -46,13 +49,13 @@ router.put('/:id', authenticateEmployee, [
 ], (req: Request, res: Response) => promotionController.updatePromotion(req, res));
 
 // Deactivate a promotion (soft-delete)
-router.delete('/:id', authenticateEmployee, [
+router.delete('/:id', authenticateEmployee, ...scopePromotion, [
   param('id').isUUID().withMessage('id must be a valid UUID'),
   handleValidationErrors,
 ], (req: Request, res: Response) => promotionController.deletePromotion(req, res));
 
 // Get usage stats for a promotion
-router.get('/:id/usage', authenticateEmployee, [
+router.get('/:id/usage', authenticateEmployee, ...scopePromotion, [
   param('id').isUUID().withMessage('id must be a valid UUID'),
   handleValidationErrors,
 ], (req: Request, res: Response) => promotionController.getUsageStats(req, res));
@@ -60,7 +63,7 @@ router.get('/:id/usage', authenticateEmployee, [
 // --- Existing routes ---
 
 // Get all promotions (employee, scoped to their location)
-router.get('/', authenticateEmployee, validateLocationAccess('query'), (req, res) => promotionController.getAllPromotions(req, res));
+router.get('/', authenticateEmployee, enforceLocationScope, (req, res) => promotionController.getAllPromotions(req, res));
 
 // Get all available promotions for a user
 router.get('/user/:userId', authenticateUser, (req, res) => promotionController.getUserPromotions(req, res));

@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { query, body } from 'express-validator';
 import { documentController } from './document.controller';
-import { authenticateEmployee, validateLocationAccess } from '../auth';
+import { authenticateEmployee, enforceLocationScope } from '../auth';
 import { handleValidationErrors } from '../../shared/middleware/validation';
 
 const router = Router();
@@ -18,7 +18,7 @@ router.get(
 router.get(
   '/history',
   authenticateEmployee,
-  validateLocationAccess('query'),
+  enforceLocationScope,
   query('locationId').isUUID(),
   query('documentType').isString().notEmpty(),
   handleValidationErrors,
@@ -29,7 +29,7 @@ router.get(
 router.post(
   '/publish',
   authenticateEmployee,
-  validateLocationAccess('body'),
+  enforceLocationScope,
   body('locationId').isUUID(),
   body('documentType').isString().notEmpty(),
   body('title').isString().notEmpty(),

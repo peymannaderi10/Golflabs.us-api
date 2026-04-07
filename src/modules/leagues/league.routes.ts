@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { LeagueController } from './league.controller';
 import { SocketService } from '../sockets/socket.service';
-import { authenticateEmployee, authenticateUser, authenticateKiosk, authenticateKioskOrEmployee, validateLocationAccess } from '../auth';
+import { authenticateEmployee, authenticateUser, authenticateKiosk, authenticateKioskOrEmployee, enforceLocationScope } from '../auth';
 import { body, param, query } from 'express-validator';
 import { handleValidationErrors } from '../../shared/middleware/validation';
 import { validateLeagueAccess } from './league.middleware';
@@ -17,7 +17,7 @@ export const createLeagueRoutes = (socketService: SocketService): Router => {
   router.get('/course-catalog', controller.getCourseCatalog);
 
   // --- League CRUD (employee-only for create/update/activate) ---
-  router.post('/', authenticateEmployee, validateLocationAccess('body'), [
+  router.post('/', authenticateEmployee, enforceLocationScope, [
     body('locationId').isUUID().withMessage('locationId must be a valid UUID'),
     body('name').isString().notEmpty().withMessage('name is required'),
     body('scheduleConfig').isObject().withMessage('scheduleConfig is required'),

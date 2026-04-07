@@ -65,7 +65,14 @@ export class BookingController {
       }
 
       const bookings = await this.bookingService.getBookings(locationId as string, date as string, startTime as string | undefined);
-      res.json(bookings);
+      // This route is unauthenticated — it powers the customer-facing
+      // availability grid which must work for guests. Scrub `user_id`
+      // so anonymous callers cannot graph which customer occupies which
+      // slot. Employees use `/bookings/employee` for full booking data.
+      const scrubbed = Array.isArray(bookings)
+        ? bookings.map(({ user_id: _user, ...rest }: any) => rest)
+        : bookings;
+      res.json(scrubbed);
     } catch (error: any) {
       logger.error({ err: error }, 'Error in /bookings endpoint');
       res.status(500).json({ error: 'An unexpected error occurred' });

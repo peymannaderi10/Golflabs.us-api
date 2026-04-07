@@ -15,7 +15,7 @@ const createLeagueRoutes = (socketService) => {
     // --- Course Catalog (no auth — public read) ---
     router.get('/course-catalog', controller.getCourseCatalog);
     // --- League CRUD (employee-only for create/update/activate) ---
-    router.post('/', auth_1.authenticateEmployee, (0, auth_1.validateLocationAccess)('body'), [
+    router.post('/', auth_1.authenticateEmployee, auth_1.enforceLocationScope, [
         (0, express_validator_1.body)('locationId').isUUID().withMessage('locationId must be a valid UUID'),
         (0, express_validator_1.body)('name').isString().notEmpty().withMessage('name is required'),
         (0, express_validator_1.body)('scheduleConfig').isObject().withMessage('scheduleConfig is required'),

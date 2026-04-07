@@ -6,9 +6,11 @@ const auth_1 = require("../auth");
 const express_validator_1 = require("express-validator");
 const validation_1 = require("../../shared/middleware/validation");
 const router = (0, express_1.Router)();
+// Resolve a promotion's owning location from the row.
+const scopePromotion = [(0, auth_1.resolveResourceLocation)('promotions', 'id'), auth_1.enforceLocationScope];
 // --- Employee CRUD routes ---
 // Create a new promotion (employee, location-scoped)
-router.post('/', auth_1.authenticateEmployee, (0, auth_1.validateLocationAccess)('body'), [
+router.post('/', auth_1.authenticateEmployee, auth_1.enforceLocationScope, [
     (0, express_validator_1.body)('locationId').isUUID().withMessage('locationId must be a valid UUID'),
     (0, express_validator_1.body)('name').isString().trim().notEmpty().withMessage('name is required'),
     (0, express_validator_1.body)('discountType').isIn(['fixed', 'percentage', 'free_minutes']).withMessage('discountType must be fixed, percentage, or free_minutes'),
@@ -25,7 +27,7 @@ router.post('/', auth_1.authenticateEmployee, (0, auth_1.validateLocationAccess)
     validation_1.handleValidationErrors,
 ], (req, res) => promotion_controller_1.promotionController.createPromotion(req, res));
 // Update a promotion (employee)
-router.put('/:id', auth_1.authenticateEmployee, [
+router.put('/:id', auth_1.authenticateEmployee, ...scopePromotion, [
     (0, express_validator_1.param)('id').isUUID().withMessage('id must be a valid UUID'),
     (0, express_validator_1.body)('name').optional().isString().trim().notEmpty(),
     (0, express_validator_1.body)('discountType').optional().isIn(['fixed', 'percentage', 'free_minutes']),
@@ -43,18 +45,18 @@ router.put('/:id', auth_1.authenticateEmployee, [
     validation_1.handleValidationErrors,
 ], (req, res) => promotion_controller_1.promotionController.updatePromotion(req, res));
 // Deactivate a promotion (soft-delete)
-router.delete('/:id', auth_1.authenticateEmployee, [
+router.delete('/:id', auth_1.authenticateEmployee, ...scopePromotion, [
     (0, express_validator_1.param)('id').isUUID().withMessage('id must be a valid UUID'),
     validation_1.handleValidationErrors,
 ], (req, res) => promotion_controller_1.promotionController.deletePromotion(req, res));
 // Get usage stats for a promotion
-router.get('/:id/usage', auth_1.authenticateEmployee, [
+router.get('/:id/usage', auth_1.authenticateEmployee, ...scopePromotion, [
     (0, express_validator_1.param)('id').isUUID().withMessage('id must be a valid UUID'),
     validation_1.handleValidationErrors,
 ], (req, res) => promotion_controller_1.promotionController.getUsageStats(req, res));
 // --- Existing routes ---
 // Get all promotions (employee, scoped to their location)
-router.get('/', auth_1.authenticateEmployee, (0, auth_1.validateLocationAccess)('query'), (req, res) => promotion_controller_1.promotionController.getAllPromotions(req, res));
+router.get('/', auth_1.authenticateEmployee, auth_1.enforceLocationScope, (req, res) => promotion_controller_1.promotionController.getAllPromotions(req, res));
 // Get all available promotions for a user
 router.get('/user/:userId', auth_1.authenticateUser, (req, res) => promotion_controller_1.promotionController.getUserPromotions(req, res));
 // Check if user has first booking free promotion

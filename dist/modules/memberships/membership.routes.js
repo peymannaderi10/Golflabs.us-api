@@ -8,6 +8,9 @@ const auth_middleware_1 = require("../auth/auth.middleware");
 const validation_1 = require("../../shared/middleware/validation");
 exports.membershipRoutes = (0, express_1.Router)();
 const controller = new membership_controller_1.MembershipController();
+// Resource-param resolvers for routes identifying a row by its own id.
+const scopePlan = [(0, auth_middleware_1.resolveResourceLocation)('membership_plans', 'planId'), auth_middleware_1.enforceLocationScope];
+const scopeMembership = [(0, auth_middleware_1.resolveResourceLocation)('memberships', 'membershipId'), auth_middleware_1.enforceLocationScope];
 // Public: list plans for a location
 exports.membershipRoutes.get('/plans', controller.getPlans);
 // Customer: own membership
@@ -27,8 +30,9 @@ exports.membershipRoutes.post('/:membershipId/change-plan', auth_middleware_1.au
     (0, express_validator_1.body)('newPlanId').isUUID().withMessage('newPlanId must be a valid UUID'),
     validation_1.handleValidationErrors,
 ], controller.changePlan);
-// Employee: plan management
-exports.membershipRoutes.post('/plans', auth_middleware_1.authenticateEmployee, [
+// Employee: plan management — every route is authenticated + scoped.
+// Resource-param routes resolve locationId from the row they target.
+exports.membershipRoutes.post('/plans', auth_middleware_1.authenticateEmployee, auth_middleware_1.enforceLocationScope, [
     (0, express_validator_1.body)('locationId').isUUID().withMessage('locationId must be a valid UUID'),
     (0, express_validator_1.body)('name').isString().notEmpty().withMessage('name is required'),
     validation_1.handleValidationErrors,
@@ -36,27 +40,28 @@ exports.membershipRoutes.post('/plans', auth_middleware_1.authenticateEmployee, 
 exports.membershipRoutes.put('/plans/:planId', auth_middleware_1.authenticateEmployee, [
     (0, express_validator_1.param)('planId').isUUID().withMessage('planId must be a valid UUID'),
     validation_1.handleValidationErrors,
-], controller.updatePlan);
+], ...scopePlan, controller.updatePlan);
 exports.membershipRoutes.delete('/plans/:planId', auth_middleware_1.authenticateEmployee, [
     (0, express_validator_1.param)('planId').isUUID().withMessage('planId must be a valid UUID'),
     validation_1.handleValidationErrors,
-], controller.deactivatePlan);
-exports.membershipRoutes.get('/subscribers', auth_middleware_1.authenticateEmployee, controller.getSubscribers);
+], ...scopePlan, controller.deactivatePlan);
+exports.membershipRoutes.get('/subscribers', auth_middleware_1.authenticateEmployee, auth_middleware_1.enforceLocationScope, controller.getSubscribers);
 exports.membershipRoutes.post('/manage/:membershipId/cancel', auth_middleware_1.authenticateEmployee, [
     (0, express_validator_1.param)('membershipId').isUUID().withMessage('membershipId must be a valid UUID'),
     validation_1.handleValidationErrors,
-], controller.employeeCancelMembership);
+], ...scopeMembership, controller.employeeCancelMembership);
 exports.membershipRoutes.post('/manage/:membershipId/change-plan', auth_middleware_1.authenticateEmployee, [
     (0, express_validator_1.param)('membershipId').isUUID().withMessage('membershipId must be a valid UUID'),
     (0, express_validator_1.body)('newPlanId').isUUID().withMessage('newPlanId must be a valid UUID'),
     validation_1.handleValidationErrors,
-], controller.employeeChangePlan);
-// Employee: location membership settings
-exports.membershipRoutes.get('/settings/:locationId', auth_middleware_1.authenticateEmployee, [
+], ...scopeMembership, controller.employeeChangePlan);
+// Employee: location membership settings — `locationId` is a route param,
+// so the generic `enforceLocationScope` reads it from req.params directly.
+exports.membershipRoutes.get('/settings/:locationId', auth_middleware_1.authenticateEmployee, auth_middleware_1.enforceLocationScope, [
     (0, express_validator_1.param)('locationId').isUUID().withMessage('locationId must be a valid UUID'),
     validation_1.handleValidationErrors,
 ], controller.getLocationSettings);
-exports.membershipRoutes.put('/settings/:locationId', auth_middleware_1.authenticateEmployee, [
+exports.membershipRoutes.put('/settings/:locationId', auth_middleware_1.authenticateEmployee, auth_middleware_1.enforceLocationScope, [
     (0, express_validator_1.param)('locationId').isUUID().withMessage('locationId must be a valid UUID'),
     validation_1.handleValidationErrors,
 ], controller.updateLocationSettings);

@@ -3,7 +3,7 @@ import { body, query } from 'express-validator';
 import rateLimit from 'express-rate-limit';
 import { SocketService } from '../sockets/socket.service';
 import { UnlockController } from './unlock.controller';
-import { authenticateEmployee, validateLocationAccess } from '../auth';
+import { authenticateEmployee, enforceLocationScope } from '../auth';
 import { handleValidationErrors } from '../../shared/middleware/validation';
 
 const unlockRateLimit = rateLimit({
@@ -30,7 +30,7 @@ export const unlockRoutes = (socketService: SocketService) => {
     authenticateEmployee,
     body('locationId').isUUID().withMessage('locationId must be a valid UUID'),
     handleValidationErrors,
-    validateLocationAccess('body'),
+    enforceLocationScope,
     unlockController.employeeUnlock,
   );
 

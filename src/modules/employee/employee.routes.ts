@@ -4,134 +4,61 @@ import { LocationController } from '../locations/location.controller';
 import { PricingController } from '../pricing/pricing.controller';
 import { LogController } from '../logs/log.controller';
 import { userTypesController } from '../user-types/user-types.controller';
-import { authenticateEmployee, validateLocationAccess } from '../auth';
+import {
+  authenticateEmployee,
+  enforceLocationScope,
+  enforceLocationScopeOptional,
+  resolveResourceLocation,
+} from '../auth';
 
 const router = Router();
 const locationController = new LocationController();
 const pricingController = new PricingController();
 const logController = new LogController();
 
-/**
- * GET /employee/accessible-locations
- * Returns locations the authenticated employee has access to (from client_members)
- */
-router.get('/accessible-locations', authenticateEmployee, (req, res) => locationController.getAccessibleLocations(req, res));
+// FRONT DOOR: every route authenticates first.
+router.use(authenticateEmployee);
 
-// All routes require locationId, startDate, and endDate query parameters
-// Example: GET /employee/reports/overview?locationId=xxx&startDate=2024-01-01&endDate=2024-01-31
+// Resource-param resolvers (resolves DB row → locationId → req.targetLocationId).
+const scopePricingRule = [resolveResourceLocation('pricing_rules', 'ruleId'), enforceLocationScope];
+const scopeUserType    = [resolveResourceLocation('user_types', 'id'),        enforceLocationScope];
 
-/**
- * GET /employee/reports/overview
- * Combined dashboard summary with key metrics
- */
-router.get('/reports/overview', authenticateEmployee, validateLocationAccess('query'), (req, res) => employeeController.getOverview(req, res));
+/** Self-scoped: identity only, no location dimension. */
+router.get('/accessible-locations', enforceLocationScopeOptional,
+  (req, res) => locationController.getAccessibleLocations(req, res));
 
-/**
- * GET /employee/reports/revenue
- * Detailed revenue statistics with daily breakdown
- */
-router.get('/reports/revenue', authenticateEmployee, validateLocationAccess('query'), (req, res) => employeeController.getRevenueStats(req, res));
+// All routes below are fail-closed: `enforceLocationScope` requires a
+// locationId to be resolvable from params/body/query/targetLocationId.
 
-/**
- * GET /employee/reports/bookings
- * Booking analytics including hourly distribution for heatmap
- */
-router.get('/reports/bookings', authenticateEmployee, validateLocationAccess('query'), (req, res) => employeeController.getBookingStats(req, res));
+// Reports
+router.get('/reports/overview',     enforceLocationScope, (req, res) => employeeController.getOverview(req, res));
+router.get('/reports/revenue',      enforceLocationScope, (req, res) => employeeController.getRevenueStats(req, res));
+router.get('/reports/bookings',     enforceLocationScope, (req, res) => employeeController.getBookingStats(req, res));
+router.get('/reports/spaces',       enforceLocationScope, (req, res) => employeeController.getSpaceStats(req, res));
+router.get('/reports/access-logs',  enforceLocationScope, (req, res) => employeeController.getAccessLogStats(req, res));
+router.get('/reports/export',       enforceLocationScope, (req, res) => employeeController.exportReport(req, res));
 
-/**
- * GET /employee/reports/spaces
- * Space performance and utilization statistics
- */
-router.get('/reports/spaces', authenticateEmployee, validateLocationAccess('query'), (req, res) => employeeController.getSpaceStats(req, res));
+// Customers
+router.get('/customers',            enforceLocationScope, (req, res) => employeeController.getCustomers(req, res));
+router.get('/customers/:id',        enforceLocationScope, (req, res) => employeeController.getCustomerDetails(req, res));
+router.put('/customers/:id',        enforceLocationScope, (req, res) => employeeController.updateCustomer(req, res));
 
-/**
- * GET /employee/reports/access-logs
- * Access log statistics including success rates and common errors
- */
-router.get('/reports/access-logs', authenticateEmployee, validateLocationAccess('query'), (req, res) => employeeController.getAccessLogStats(req, res));
+// Locations (update)
+router.put('/locations/:locationId', enforceLocationScope, (req, res) => locationController.updateLocation(req, res));
 
-/**
- * GET /employee/reports/export
- * Export reports as CSV
- */
-router.get('/reports/export', authenticateEmployee, validateLocationAccess('query'), (req, res) => employeeController.exportReport(req, res));
+// Pricing rules
+router.get('/pricing-rules',                        enforceLocationScope, (req, res) => pricingController.getAllPricingRules(req, res));
+router.post('/locations/:locationId/pricing-rules', enforceLocationScope, (req, res) => pricingController.createPricingRule(req, res));
+router.put('/pricing-rules/:ruleId',    ...scopePricingRule, (req, res) => pricingController.updatePricingRule(req, res));
+router.delete('/pricing-rules/:ruleId', ...scopePricingRule, (req, res) => pricingController.deletePricingRule(req, res));
 
-/**
- * GET /employee/customers
- * List customers (paginated)
- */
-router.get('/customers', authenticateEmployee, validateLocationAccess('query'), (req, res) => employeeController.getCustomers(req, res));
+// Access logs
+router.get('/access-logs', enforceLocationScope, (req, res) => logController.getAccessLogs(req, res));
 
-/**
- * GET /employee/customers/:id
- * Get customer details
- */
-router.get('/customers/:id', authenticateEmployee, validateLocationAccess('query'), (req, res) => employeeController.getCustomerDetails(req, res));
-
-/**
- * PUT /employee/customers/:id
- * Update customer details
- */
-router.put('/customers/:id', authenticateEmployee, validateLocationAccess('body'), (req, res) => employeeController.updateCustomer(req, res));
-
-/**
- * PUT /employee/locations/:locationId
- * Update location settings (requires employee authentication)
- */
-router.put('/locations/:locationId', authenticateEmployee, validateLocationAccess('params'), (req, res) => locationController.updateLocation(req, res));
-
-/**
- * GET /employee/pricing-rules
- * Get all pricing rules for a location (requires employee authentication)
- */
-router.get('/pricing-rules', authenticateEmployee, validateLocationAccess('query'), (req, res) => pricingController.getAllPricingRules(req, res));
-
-/**
- * POST /employee/locations/:locationId/pricing-rules
- * Create a new pricing rule (requires employee authentication)
- */
-router.post('/locations/:locationId/pricing-rules', authenticateEmployee, validateLocationAccess('params'), (req, res) => pricingController.createPricingRule(req, res));
-
-/**
- * PUT /employee/pricing-rules/:ruleId
- * Update a pricing rule (requires employee authentication)
- */
-router.put('/pricing-rules/:ruleId', authenticateEmployee, (req, res) => pricingController.updatePricingRule(req, res));
-
-/**
- * DELETE /employee/pricing-rules/:ruleId
- * Delete a pricing rule (requires employee authentication)
- */
-router.delete('/pricing-rules/:ruleId', authenticateEmployee, (req, res) => pricingController.deletePricingRule(req, res));
-
-/**
- * GET /employee/access-logs
- * Get access logs for a location (requires employee authentication)
- */
-router.get('/access-logs', authenticateEmployee, validateLocationAccess('query'), (req, res) => logController.getAccessLogs(req, res));
-
-/**
- * GET /employee/user-types?locationId=...
- * List user types for a location
- */
-router.get('/user-types', authenticateEmployee, validateLocationAccess('query'), (req, res) => userTypesController.getByLocation(req, res));
-
-/**
- * POST /employee/locations/:locationId/user-types
- * Create a new user type
- */
-router.post('/locations/:locationId/user-types', authenticateEmployee, validateLocationAccess('params'), (req, res) => userTypesController.create(req, res));
-
-/**
- * PUT /employee/user-types/:id
- * Update a user type
- */
-router.put('/user-types/:id', authenticateEmployee, (req, res) => userTypesController.update(req, res));
-
-/**
- * DELETE /employee/user-types/:id
- * Delete a user type
- */
-router.delete('/user-types/:id', authenticateEmployee, (req, res) => userTypesController.delete(req, res));
+// User types
+router.get('/user-types',                            enforceLocationScope, (req, res) => userTypesController.getByLocation(req, res));
+router.post('/locations/:locationId/user-types',     enforceLocationScope, (req, res) => userTypesController.create(req, res));
+router.put('/user-types/:id',    ...scopeUserType, (req, res) => userTypesController.update(req, res));
+router.delete('/user-types/:id', ...scopeUserType, (req, res) => userTypesController.delete(req, res));
 
 export const employeeRoutes = router;

@@ -22,7 +22,7 @@ const unlockRoutes = (socketService) => {
     // Customer unlock via token
     router.post('/unlock', unlockRateLimit, (0, express_validator_1.query)('token').isString().notEmpty().withMessage('token is required'), validation_1.handleValidationErrors, unlockController.unlockDoor);
     // Employee unlock - tries first available bay
-    router.post('/employee-unlock', auth_1.authenticateEmployee, (0, express_validator_1.body)('locationId').isUUID().withMessage('locationId must be a valid UUID'), validation_1.handleValidationErrors, (0, auth_1.validateLocationAccess)('body'), unlockController.employeeUnlock);
+    router.post('/employee-unlock', auth_1.authenticateEmployee, (0, express_validator_1.body)('locationId').isUUID().withMessage('locationId must be a valid UUID'), validation_1.handleValidationErrors, auth_1.enforceLocationScope, unlockController.employeeUnlock);
     return router;
 };
 exports.unlockRoutes = unlockRoutes;

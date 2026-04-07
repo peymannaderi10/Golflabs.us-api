@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { body, param, query } from 'express-validator';
 import { BookingController } from './booking.controller';
 import { SocketService } from '../sockets/socket.service';
-import { authenticateEmployee, authenticateUser, authenticateKiosk, authenticateKioskOrEmployee, validateLocationAccess } from '../auth';
+import { authenticateEmployee, authenticateUser, authenticateKiosk, authenticateKioskOrEmployee, enforceLocationScope, resolveResourceLocation } from '../auth';
 import { handleValidationErrors, validateUUID } from '../../shared/middleware/validation';
 
 export const createBookingRoutes = (socketService: SocketService): Router => {
@@ -42,10 +42,14 @@ export const createBookingRoutes = (socketService: SocketService): Router => {
     controller.extendBooking
   );
 
-  // Employee-only routes
-  bookingRoutes.get('/employee', authenticateEmployee, validateLocationAccess('query'), controller.getEmployeeBookings);
-  bookingRoutes.get('/employee/customers/search', authenticateEmployee, controller.searchCustomers);
-  bookingRoutes.post('/employee/create', authenticateEmployee, validateLocationAccess('body'),
+  // Employee-only routes. Every one goes through authenticate +
+  // enforceLocationScope. Resource-param routes (`:bookingId`) resolve
+  // locationId from the booking row before enforcement.
+  const scopeBooking = [resolveResourceLocation('bookings', 'bookingId'), enforceLocationScope];
+
+  bookingRoutes.get('/employee', authenticateEmployee, enforceLocationScope, controller.getEmployeeBookings);
+  bookingRoutes.get('/employee/customers/search', authenticateEmployee, enforceLocationScope, controller.searchCustomers);
+  bookingRoutes.post('/employee/create', authenticateEmployee, enforceLocationScope,
     validateUUID('locationId', 'body'), validateUUID('spaceId', 'body'),
     body('startTime').notEmpty().withMessage('startTime is required'),
     body('endTime').notEmpty().withMessage('endTime is required'),
@@ -57,11 +61,13 @@ export const createBookingRoutes = (socketService: SocketService): Router => {
     validateUUID('bookingId', 'param'),
     body('extensionMinutes').isInt({ min: 15 }).withMessage('extensionMinutes must be an integer >= 15'),
     handleValidationErrors,
+    ...scopeBooking,
     controller.employeeExtendBooking
   );
   bookingRoutes.post('/employee/:bookingId/cancel', authenticateEmployee,
     validateUUID('bookingId', 'param'),
     handleValidationErrors,
+    ...scopeBooking,
     controller.employeeCancelBooking
   );
   bookingRoutes.post('/employee/:bookingId/reschedule', authenticateEmployee,
@@ -71,6 +77,7 @@ export const createBookingRoutes = (socketService: SocketService): Router => {
     body('locationId').notEmpty().withMessage('locationId is required'),
     body('spaceId').notEmpty().withMessage('spaceId is required'),
     handleValidationErrors,
+    ...scopeBooking,
     controller.employeeRescheduleBooking
   );
 
