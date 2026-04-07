@@ -12,6 +12,11 @@ const router = (0, express_1.Router)();
 const locationController = new location_controller_1.LocationController();
 const pricingController = new pricing_controller_1.PricingController();
 const logController = new log_controller_1.LogController();
+/**
+ * GET /employee/accessible-locations
+ * Returns locations the authenticated employee has access to (from client_members)
+ */
+router.get('/accessible-locations', auth_1.authenticateEmployee, (req, res) => locationController.getAccessibleLocations(req, res));
 // All routes require locationId, startDate, and endDate query parameters
 // Example: GET /employee/reports/overview?locationId=xxx&startDate=2024-01-01&endDate=2024-01-31
 /**

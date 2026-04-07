@@ -106,7 +106,15 @@ class SocketService {
                         socket.emit('auth_error', { message: 'Employee access required' });
                         return;
                     }
-                    if (profile.location_id !== payload.locationId) {
+                    // Check location access via client_members (fallback to profile.location_id)
+                    const { data: memberships } = yield database_1.supabase
+                        .from('client_members')
+                        .select('location_id')
+                        .eq('user_id', user.id);
+                    const accessibleIds = memberships && memberships.length > 0
+                        ? memberships.map(m => m.location_id)
+                        : (profile.location_id ? [profile.location_id] : []);
+                    if (!accessibleIds.includes(payload.locationId)) {
                         socket.emit('auth_error', { message: 'Access denied for this location' });
                         return;
                     }

@@ -461,8 +461,19 @@ export class EmployeeService {
             memberUserIds = (memberRows || []).map(r => r.user_id);
         }
 
+        // Get user IDs associated with this location via user_locations
+        const { data: locationUsers } = await supabase
+            .from('user_locations')
+            .select('user_id')
+            .eq('location_id', locationId);
+        const locationUserIds = (locationUsers || []).map(r => r.user_id);
+
+        if (locationUserIds.length === 0) {
+            return { customers: [], total: 0 };
+        }
+
         let query = supabase.from('user_profiles').select('*', { count: 'exact' })
-            .eq('location_id', locationId)
+            .in('id', locationUserIds)
             .is('deleted_at', null);
 
         if (search) {
@@ -557,32 +568,16 @@ export class EmployeeService {
      * Get detailed customer profile
      */
     async getCustomerDetails(locationId: string, customerId: string): Promise<CustomerDetails> {
-        // Verify the customer has a relationship with this location
-        // Check 1: profile registered at this location
-        const { count: profileCount } = await supabase
-            .from('user_profiles')
-            .select('id', { count: 'exact', head: true })
-            .eq('id', customerId)
-            .eq('location_id', locationId);
+        // Verify the customer is associated with this location
+        const { data: userLoc } = await supabase
+            .from('user_locations')
+            .select('user_id')
+            .eq('user_id', customerId)
+            .eq('location_id', locationId)
+            .maybeSingle();
 
-        if (!profileCount || profileCount === 0) {
-            // Check 2: has bookings at this location
-            const { count: bookingCount } = await supabase
-                .from('bookings')
-                .select('id', { count: 'exact', head: true })
-                .eq('user_id', customerId)
-                .eq('location_id', locationId);
-
-            // Check 3: has memberships at this location
-            const { count: membershipCount } = await supabase
-                .from('memberships')
-                .select('id', { count: 'exact', head: true })
-                .eq('user_id', customerId)
-                .eq('location_id', locationId);
-
-            if ((bookingCount ?? 0) === 0 && (membershipCount ?? 0) === 0) {
-                throw new Error('Customer not found at this location');
-            }
+        if (!userLoc) {
+            throw new Error('Customer not found at this location');
         }
 
         // Fetch profile
@@ -672,28 +667,16 @@ export class EmployeeService {
     }
     async updateCustomer(id: string, updates: { fullName?: string; phone?: string; email?: string; userType?: string }, locationId: string): Promise<void> {
         // Verify the customer has a relationship with this location
-        const { count: profileCount } = await supabase
-            .from('user_profiles')
-            .select('id', { count: 'exact', head: true })
-            .eq('id', id)
-            .eq('location_id', locationId);
+        // Verify customer is associated with this location
+        const { data: userLoc } = await supabase
+            .from('user_locations')
+            .select('user_id')
+            .eq('user_id', id)
+            .eq('location_id', locationId)
+            .maybeSingle();
 
-        if (!profileCount || profileCount === 0) {
-            const { count: bookingCount } = await supabase
-                .from('bookings')
-                .select('id', { count: 'exact', head: true })
-                .eq('user_id', id)
-                .eq('location_id', locationId);
-
-            const { count: membershipCount } = await supabase
-                .from('memberships')
-                .select('id', { count: 'exact', head: true })
-                .eq('user_id', id)
-                .eq('location_id', locationId);
-
-            if ((bookingCount ?? 0) === 0 && (membershipCount ?? 0) === 0) {
-                throw new Error('Customer not found at this location');
-            }
+        if (!userLoc) {
+            throw new Error('Customer not found at this location');
         }
 
         const updateData: Record<string, any> = {

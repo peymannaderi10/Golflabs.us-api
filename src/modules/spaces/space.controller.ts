@@ -54,7 +54,7 @@ export class SpaceController {
 
       const spaceLocationId = await this.spaceService.getSpaceLocationId(spaceId);
       if (!spaceLocationId) return res.status(404).json({ message: 'Space not found' });
-      if (spaceLocationId !== req.employeeProfile?.location_id) {
+      if (!req.employeeProfile?.accessibleLocationIds?.includes(spaceLocationId)) {
         return res.status(403).json({ message: 'Access denied: space belongs to a different location' });
       }
 
@@ -101,7 +101,7 @@ export class SpaceController {
 
       const spaceLocationId = await this.spaceService.getSpaceLocationId(spaceId);
       if (!spaceLocationId) return res.status(404).json({ message: 'Space not found' });
-      if (spaceLocationId !== req.employeeProfile?.location_id) {
+      if (!req.employeeProfile?.accessibleLocationIds?.includes(spaceLocationId)) {
         return res.status(403).json({ message: 'Access denied: space belongs to a different location' });
       }
 
@@ -145,14 +145,14 @@ export class SpaceController {
       if (spaceId) {
         const spaceLocationId = await this.spaceService.getSpaceLocationId(spaceId);
         if (!spaceLocationId) return res.status(404).json({ error: 'Space not found' });
-        if (spaceLocationId !== req.employeeProfile?.location_id) {
+        if (!req.employeeProfile?.accessibleLocationIds?.includes(spaceLocationId)) {
           return res.status(403).json({ error: 'Access denied: space belongs to a different location' });
         }
         const closures = await this.spaceService.getClosures(spaceId);
         return res.json({ success: true, data: closures });
       }
       if (locationId) {
-        if (locationId !== req.employeeProfile?.location_id) {
+        if (!req.employeeProfile?.accessibleLocationIds?.includes(locationId)) {
           return res.status(403).json({ error: 'Access denied: location mismatch' });
         }
         const closures = await this.spaceService.getClosuresByLocation(locationId);
@@ -180,7 +180,7 @@ export class SpaceController {
 
       const spaceLocationId = await this.spaceService.getSpaceLocationId(spaceId);
       if (!spaceLocationId) return res.status(404).json({ error: 'Space not found' });
-      if (spaceLocationId !== req.employeeProfile?.location_id) {
+      if (!req.employeeProfile?.accessibleLocationIds?.includes(spaceLocationId)) {
         return res.status(403).json({ error: 'Access denied' });
       }
 
@@ -222,7 +222,7 @@ export class SpaceController {
         return res.status(404).json({ error: 'Closure not found' });
       }
       const closureLocationId = await this.spaceService.getSpaceLocationId(closure.space_id);
-      if (!closureLocationId || closureLocationId !== req.employeeProfile?.location_id) {
+      if (!closureLocationId || !req.employeeProfile?.accessibleLocationIds?.includes(closureLocationId)) {
         return res.status(403).json({ error: 'Access denied: closure belongs to a different location' });
       }
 
@@ -307,7 +307,7 @@ export class SpaceController {
 
       const spaceLocationId = await this.spaceService.getSpaceLocationId(spaceId);
       if (!spaceLocationId) return res.status(404).json({ message: 'Space not found' });
-      if (spaceLocationId !== req.employeeProfile?.location_id) {
+      if (!req.employeeProfile?.accessibleLocationIds?.includes(spaceLocationId)) {
         return res.status(403).json({ message: 'Access denied: space belongs to a different location' });
       }
 

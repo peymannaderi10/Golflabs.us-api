@@ -62,11 +62,56 @@ const authenticateEmployee = (req, res, next) => __awaiter(void 0, void 0, void 
         if (profileError || !profile) {
             return res.status(401).json({ error: 'User profile not found' });
         }
+        // INVARIANT: user_profiles.role is one of 'customer' | 'employee' | 'admin'.
+        // Business owners have user_profiles.role='admin' and client_members.role='owner'
+        // — ownership-level authorization reads from employeeProfile.clientRole (below),
+        // not user_profiles.role. Never migrate user_profiles.role to include 'owner'
+        // without updating this gate.
         if (!profile || (profile.role !== 'employee' && profile.role !== 'admin')) {
             return res.status(403).json({ error: 'Employee access required' });
         }
+        // Query client_members for multi-location access
+        const { data: memberships } = yield database_1.supabase
+            .from('client_members')
+            .select('client_id, role, location_id')
+            .eq('user_id', user.id);
+        let clientId = '';
+        let clientRole = 'employee';
+        let accessibleLocationIds = [];
+        if (memberships && memberships.length > 0) {
+            const uniqueClients = new Set(memberships.map(m => m.client_id));
+            if (uniqueClients.size > 1) {
+                logger_1.logger.error({ userId: user.id }, 'Employee has memberships across multiple clients');
+                return res.status(403).json({ error: 'Account configuration error — contact support' });
+            }
+            clientId = memberships[0].client_id;
+            // Derive highest role across all memberships
+            const roles = memberships.map(m => m.role);
+            if (roles.includes('owner'))
+                clientRole = 'owner';
+            else if (roles.includes('admin'))
+                clientRole = 'admin';
+            accessibleLocationIds = memberships.map(m => m.location_id);
+        }
+        else {
+            // Backward compat: fallback to user_profiles.location_id
+            if (profile.location_id) {
+                const { data: loc } = yield database_1.supabase.from('locations').select('id').eq('id', profile.location_id).eq('status', 'active').is('deleted_at', null).maybeSingle();
+                if (loc)
+                    accessibleLocationIds = [loc.id];
+            }
+        }
         req.user = user;
-        req.employeeProfile = profile;
+        req.employeeProfile = {
+            id: profile.id,
+            email: profile.email,
+            full_name: profile.full_name,
+            role: profile.role,
+            location_id: profile.location_id,
+            clientId,
+            clientRole,
+            accessibleLocationIds,
+        };
         next();
     }
     catch (error) {
@@ -109,16 +154,16 @@ exports.authenticateKiosk = authenticateKiosk;
 const validateLocationAccess = (source, field = 'locationId') => {
     return (req, res, next) => {
         var _a, _b;
-        const employeeLocationId = (_a = req.employeeProfile) === null || _a === void 0 ? void 0 : _a.location_id;
-        if (!employeeLocationId) {
-            return res.status(403).json({ error: 'Employee profile missing location' });
+        const accessibleIds = (_a = req.employeeProfile) === null || _a === void 0 ? void 0 : _a.accessibleLocationIds;
+        if (!accessibleIds || accessibleIds.length === 0) {
+            return res.status(403).json({ error: 'Employee profile missing location access' });
         }
         const requestedLocationId = (_b = req[source]) === null || _b === void 0 ? void 0 : _b[field];
         if (!requestedLocationId) {
             return res.status(400).json({ error: `${field} is required` });
         }
-        if (requestedLocationId !== employeeLocationId) {
-            return res.status(403).json({ error: 'Access denied: you do not belong to this location' });
+        if (!accessibleIds.includes(requestedLocationId)) {
+            return res.status(403).json({ error: 'Access denied: you do not have access to this location' });
         }
         next();
     };

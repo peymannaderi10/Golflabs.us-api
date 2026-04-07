@@ -55,7 +55,7 @@ class UserTypesController {
                 if (!id) {
                     return res.status(400).json({ error: 'id is required' });
                 }
-                const callerLocationId = (_a = req.employeeProfile) === null || _a === void 0 ? void 0 : _a.location_id;
+                const callerLocationId = (_a = req.employeeProfile) === null || _a === void 0 ? void 0 : _a.accessibleLocationIds;
                 const { slug, label, isDefault } = req.body;
                 const userType = yield user_types_service_1.userTypesService.update(id, { slug, label, isDefault }, callerLocationId);
                 res.json(userType);
@@ -76,7 +76,7 @@ class UserTypesController {
                 if (!id) {
                     return res.status(400).json({ error: 'id is required' });
                 }
-                const callerLocationId = (_a = req.employeeProfile) === null || _a === void 0 ? void 0 : _a.location_id;
+                const callerLocationId = (_a = req.employeeProfile) === null || _a === void 0 ? void 0 : _a.accessibleLocationIds;
                 yield user_types_service_1.userTypesService.delete(id, callerLocationId);
                 res.json({ success: true });
             }

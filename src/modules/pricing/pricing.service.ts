@@ -231,7 +231,7 @@ export class PricingService {
     return mapRow(data);
   }
 
-  async updatePricingRule(ruleId: string, updates: Partial<Omit<PricingRuleFull, 'id' | 'locationId' | 'createdAt' | 'updatedAt'>>, employeeLocationId: string): Promise<PricingRuleFull> {
+  async updatePricingRule(ruleId: string, updates: Partial<Omit<PricingRuleFull, 'id' | 'locationId' | 'createdAt' | 'updatedAt'>>, employeeLocationIds: string[]): Promise<PricingRuleFull> {
     if (!ruleId) {
       throw new Error('Pricing rule ID is required');
     }
@@ -247,8 +247,8 @@ export class PricingService {
       throw new Error('Pricing rule not found');
     }
 
-    // Verify employee owns this location's pricing rule
-    if (current.location_id !== employeeLocationId) {
+    // Verify employee has access to this location's pricing rule
+    if (!employeeLocationIds.includes(current.location_id)) {
       throw new Error('Access denied: pricing rule belongs to a different location');
     }
 
@@ -302,7 +302,7 @@ export class PricingService {
     return mapRow(data);
   }
 
-  async deletePricingRule(ruleId: string, employeeLocationId: string): Promise<void> {
+  async deletePricingRule(ruleId: string, employeeLocationIds: string[]): Promise<void> {
     if (!ruleId) {
       throw new Error('Pricing rule ID is required');
     }
@@ -318,7 +318,7 @@ export class PricingService {
       throw new Error('Pricing rule not found');
     }
 
-    if (rule.location_id !== employeeLocationId) {
+    if (!employeeLocationIds.includes(rule.location_id)) {
       throw new Error('Access denied: pricing rule belongs to a different location');
     }
 

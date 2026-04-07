@@ -255,7 +255,10 @@ class LeagueController {
                 if (!reason || !reason.trim()) {
                     return res.status(400).json({ error: 'Reason is required' });
                 }
-                const issuedBy = (_a = req.employeeProfile) === null || _a === void 0 ? void 0 : _a.id;
+                if (!((_a = req.employeeProfile) === null || _a === void 0 ? void 0 : _a.id)) {
+                    return res.status(403).json({ error: 'Employee authentication required' });
+                }
+                const issuedBy = req.employeeProfile.id;
                 const result = yield this.leagueService.refundWeeklyBuyIn(req.params.leagueId, req.params.playerId, reason.trim(), issuedBy);
                 res.json(result);
             }
@@ -274,7 +277,10 @@ class LeagueController {
                 if (!['full', 'prorated', 'none'].includes(refundType)) {
                     return res.status(400).json({ error: 'refundType must be full, prorated, or none' });
                 }
-                const issuedBy = (_a = req.employeeProfile) === null || _a === void 0 ? void 0 : _a.id;
+                if (!((_a = req.employeeProfile) === null || _a === void 0 ? void 0 : _a.id)) {
+                    return res.status(403).json({ error: 'Employee authentication required' });
+                }
+                const issuedBy = req.employeeProfile.id;
                 const result = yield this.leagueService.removeAndRefund(req.params.leagueId, req.params.playerId, refundType, reason.trim(), issuedBy);
                 res.json(result);
             }

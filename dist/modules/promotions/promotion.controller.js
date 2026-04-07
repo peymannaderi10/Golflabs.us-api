@@ -239,14 +239,14 @@ class PromotionController {
     verifyPromotionOwnership(req, res, promotionId) {
         return __awaiter(this, void 0, void 0, function* () {
             var _a;
-            const employeeLocationId = (_a = req.employeeProfile) === null || _a === void 0 ? void 0 : _a.location_id;
+            const accessibleIds = (_a = req.employeeProfile) === null || _a === void 0 ? void 0 : _a.accessibleLocationIds;
             const promo = yield promotion_service_1.promotionService.getPromotionById(promotionId);
             if (!promo) {
                 res.status(404).json({ error: 'Promotion not found' });
                 return null;
             }
-            if (promo.location_id !== employeeLocationId) {
-                res.status(403).json({ error: 'Access denied: you do not belong to this location' });
+            if (!promo.location_id || !(accessibleIds === null || accessibleIds === void 0 ? void 0 : accessibleIds.includes(promo.location_id))) {
+                res.status(403).json({ error: 'Access denied: you do not have access to this location' });
                 return null;
             }
             return promo;

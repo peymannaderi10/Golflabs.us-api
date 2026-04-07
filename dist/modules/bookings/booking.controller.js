@@ -184,12 +184,19 @@ class BookingController {
             }
         });
         this.searchCustomers = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            var _a, _b;
             try {
-                const { email } = req.query;
+                const { email, locationId } = req.query;
                 if (!email) {
                     return res.status(400).json({ error: 'email is required' });
                 }
-                const customers = yield this.bookingService.searchCustomersByEmail(email);
+                const resolvedLocationId = locationId
+                    || ((_b = (_a = req.employeeProfile) === null || _a === void 0 ? void 0 : _a.accessibleLocationIds) === null || _b === void 0 ? void 0 : _b[0])
+                    || '';
+                if (!resolvedLocationId) {
+                    return res.status(400).json({ error: 'locationId is required' });
+                }
+                const customers = yield this.bookingService.searchCustomersByEmail(email, resolvedLocationId);
                 res.json(customers);
             }
             catch (error) {
@@ -198,6 +205,7 @@ class BookingController {
             }
         });
         this.employeeCancelBooking = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            var _a;
             try {
                 const { bookingId } = req.params;
                 const { reason, skipRefund } = req.body;
@@ -208,7 +216,7 @@ class BookingController {
                 const bookingLocationId = yield this.bookingService.getBookingLocationId(bookingId);
                 if (!bookingLocationId)
                     return res.status(404).json({ error: 'Booking not found' });
-                if (bookingLocationId !== employeeProfile.location_id) {
+                if (!((_a = employeeProfile.accessibleLocationIds) === null || _a === void 0 ? void 0 : _a.includes(bookingLocationId))) {
                     return res.status(403).json({ error: 'Access denied: booking belongs to a different location' });
                 }
                 const result = yield this.bookingService.employeeCancelBooking(bookingId, employeeProfile.id, reason, !!skipRefund);
@@ -301,6 +309,7 @@ class BookingController {
             }
         });
         this.employeeExtendBooking = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            var _a;
             try {
                 const { bookingId } = req.params;
                 const { extensionMinutes, locationId, spaceId, skipPayment } = req.body;
@@ -311,7 +320,7 @@ class BookingController {
                 const bookingLocationId = yield this.bookingService.getBookingLocationId(bookingId);
                 if (!bookingLocationId)
                     return res.status(404).json({ error: 'Booking not found' });
-                if (bookingLocationId !== employeeProfile.location_id) {
+                if (!((_a = employeeProfile.accessibleLocationIds) === null || _a === void 0 ? void 0 : _a.includes(bookingLocationId))) {
                     return res.status(403).json({ error: 'Access denied: booking belongs to a different location' });
                 }
                 if (!extensionMinutes || !locationId || !spaceId) {
@@ -343,6 +352,7 @@ class BookingController {
             }
         });
         this.employeeRescheduleBooking = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            var _a;
             try {
                 const { bookingId } = req.params;
                 const { startTime, endTime, locationId, spaceId, adjustPrice } = req.body;
@@ -353,7 +363,7 @@ class BookingController {
                 const bookingLocationId = yield this.bookingService.getBookingLocationId(bookingId);
                 if (!bookingLocationId)
                     return res.status(404).json({ error: 'Booking not found' });
-                if (bookingLocationId !== employeeProfile.location_id) {
+                if (!((_a = employeeProfile.accessibleLocationIds) === null || _a === void 0 ? void 0 : _a.includes(bookingLocationId))) {
                     return res.status(403).json({ error: 'Access denied: booking belongs to a different location' });
                 }
                 if (!startTime || !endTime || !locationId || !spaceId) {

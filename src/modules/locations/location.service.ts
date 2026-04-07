@@ -1,5 +1,6 @@
 import { supabase } from '../../config/database';
 import { logger } from '../../shared/utils/logger';
+import { isReservedSlug } from '../../shared/constants/reserved-slugs';
 
 export type DoorLockType = 'none' | 'shelly';
 
@@ -192,5 +193,74 @@ export class LocationService {
 
   static isValidDoorLockType(value: string): value is DoorLockType {
     return VALID_DOOR_LOCK_TYPES.includes(value as DoorLockType);
+  }
+
+  async getAccessibleLocations(locationIds: string[]) {
+    if (locationIds.length === 0) return [];
+
+    const { data: locations, error } = await supabase
+      .from('locations')
+      .select('id, name, slug, address, city, state, zip_code, phone, timezone, status, sales_tax_rate')
+      .in('id', locationIds)
+      .eq('status', 'active')
+      .is('deleted_at', null)
+      .order('name', { ascending: true });
+
+    if (error) {
+      logger.error({ err: error }, 'Error fetching accessible locations');
+      throw new Error('Failed to fetch locations');
+    }
+
+    const { data: settingsRows } = await supabase
+      .from('location_settings')
+      .select('*')
+      .in('location_id', locationIds);
+
+    const settingsMap = new Map<string, LocationSettingsRow>();
+    if (settingsRows) {
+      for (const row of settingsRows) {
+        settingsMap.set(row.location_id, row);
+      }
+    }
+
+    return locations.map(location =>
+      formatLocation(location, settingsMap.get(location.id) || {})
+    );
+  }
+
+  async resolveBySubdomain(subdomain: string) {
+    const { data: settingsRow, error: settingsErr } = await supabase
+      .from('location_settings')
+      .select('location_id')
+      .eq('custom_domain', subdomain)
+      .single();
+
+    if (settingsErr || !settingsRow) {
+      return null;
+    }
+
+    return this.getLocationById(settingsRow.location_id);
+  }
+
+  async isSubdomainAvailable(slug: string, excludeLocationId?: string): Promise<{ available: boolean; reason?: string }> {
+    if (isReservedSlug(slug)) {
+      return { available: false, reason: 'This subdomain is reserved' };
+    }
+
+    if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(slug) || slug.length < 3 || slug.length > 40) {
+      return { available: false, reason: 'Must be 3-40 characters, lowercase alphanumeric and hyphens, cannot start or end with a hyphen' };
+    }
+
+    let query = supabase
+      .from('location_settings')
+      .select('location_id')
+      .eq('custom_domain', slug);
+
+    if (excludeLocationId) {
+      query = query.neq('location_id', excludeLocationId);
+    }
+
+    const { data } = await query.maybeSingle();
+    return { available: !data };
   }
 }

@@ -257,12 +257,12 @@ class MembershipController {
             }
         });
     }
-    /** Verify the authenticated employee belongs to the requested location */
+    /** Verify the authenticated employee has access to the requested location */
     validateEmployeeLocation(req, locationId) {
         var _a;
-        const employeeLocationId = (_a = req.employeeProfile) === null || _a === void 0 ? void 0 : _a.location_id;
-        if (!employeeLocationId || employeeLocationId !== locationId) {
-            return 'Access denied: you do not belong to this location';
+        const accessibleIds = (_a = req.employeeProfile) === null || _a === void 0 ? void 0 : _a.accessibleLocationIds;
+        if (!accessibleIds || !accessibleIds.includes(locationId)) {
+            return 'Access denied: you do not have access to this location';
         }
         return null;
     }

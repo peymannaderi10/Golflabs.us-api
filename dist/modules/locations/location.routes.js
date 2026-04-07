@@ -5,6 +5,9 @@ const express_1 = require("express");
 const location_controller_1 = require("./location.controller");
 exports.locationRoutes = (0, express_1.Router)();
 const controller = new location_controller_1.LocationController();
+// Subdomain resolution (public, must be before /:locationId)
+exports.locationRoutes.get('/resolve/:subdomain', controller.resolveSubdomain);
+exports.locationRoutes.get('/check-subdomain/:slug', controller.checkSubdomainAvailability);
 // Location routes
 exports.locationRoutes.get('/', controller.getAllLocations);
 exports.locationRoutes.get('/:locationId', controller.getLocationById);

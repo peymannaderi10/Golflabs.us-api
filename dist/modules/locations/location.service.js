@@ -12,6 +12,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.LocationService = void 0;
 const database_1 = require("../../config/database");
 const logger_1 = require("../../shared/utils/logger");
+const reserved_slugs_1 = require("../../shared/constants/reserved-slugs");
 const VALID_DOOR_LOCK_TYPES = ['none', 'shelly'];
 function formatSettings(ls) {
     var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r;
@@ -161,6 +162,66 @@ class LocationService {
     }
     static isValidDoorLockType(value) {
         return VALID_DOOR_LOCK_TYPES.includes(value);
+    }
+    getAccessibleLocations(locationIds) {
+        return __awaiter(this, void 0, void 0, function* () {
+            if (locationIds.length === 0)
+                return [];
+            const { data: locations, error } = yield database_1.supabase
+                .from('locations')
+                .select('id, name, slug, address, city, state, zip_code, phone, timezone, status, sales_tax_rate')
+                .in('id', locationIds)
+                .eq('status', 'active')
+                .is('deleted_at', null)
+                .order('name', { ascending: true });
+            if (error) {
+                logger_1.logger.error({ err: error }, 'Error fetching accessible locations');
+                throw new Error('Failed to fetch locations');
+            }
+            const { data: settingsRows } = yield database_1.supabase
+                .from('location_settings')
+                .select('*')
+                .in('location_id', locationIds);
+            const settingsMap = new Map();
+            if (settingsRows) {
+                for (const row of settingsRows) {
+                    settingsMap.set(row.location_id, row);
+                }
+            }
+            return locations.map(location => formatLocation(location, settingsMap.get(location.id) || {}));
+        });
+    }
+    resolveBySubdomain(subdomain) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const { data: settingsRow, error: settingsErr } = yield database_1.supabase
+                .from('location_settings')
+                .select('location_id')
+                .eq('custom_domain', subdomain)
+                .single();
+            if (settingsErr || !settingsRow) {
+                return null;
+            }
+            return this.getLocationById(settingsRow.location_id);
+        });
+    }
+    isSubdomainAvailable(slug, excludeLocationId) {
+        return __awaiter(this, void 0, void 0, function* () {
+            if ((0, reserved_slugs_1.isReservedSlug)(slug)) {
+                return { available: false, reason: 'This subdomain is reserved' };
+            }
+            if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(slug) || slug.length < 3 || slug.length > 40) {
+                return { available: false, reason: 'Must be 3-40 characters, lowercase alphanumeric and hyphens, cannot start or end with a hyphen' };
+            }
+            let query = database_1.supabase
+                .from('location_settings')
+                .select('location_id')
+                .eq('custom_domain', slug);
+            if (excludeLocationId) {
+                query = query.neq('location_id', excludeLocationId);
+            }
+            const { data } = yield query.maybeSingle();
+            return { available: !data };
+        });
     }
 }
 exports.LocationService = LocationService;

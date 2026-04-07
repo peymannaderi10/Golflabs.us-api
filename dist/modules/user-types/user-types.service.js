@@ -59,7 +59,7 @@ class UserTypesService {
             return this.mapRow(data);
         });
     }
-    update(id, updates, callerLocationId) {
+    update(id, updates, callerLocationIds) {
         return __awaiter(this, void 0, void 0, function* () {
             const { data: existing, error: fetchErr } = yield database_1.supabase
                 .from('user_types')
@@ -69,7 +69,7 @@ class UserTypesService {
             if (fetchErr || !existing) {
                 throw new Error('User type not found');
             }
-            if (callerLocationId && existing.location_id !== callerLocationId) {
+            if (callerLocationIds && !callerLocationIds.includes(existing.location_id)) {
                 throw new Error('Access denied: user type belongs to a different location');
             }
             const updateData = { updated_at: new Date().toISOString() };
@@ -118,7 +118,7 @@ class UserTypesService {
             return this.mapRow(data);
         });
     }
-    delete(id, callerLocationId) {
+    delete(id, callerLocationIds) {
         return __awaiter(this, void 0, void 0, function* () {
             const { data: existing, error: fetchErr } = yield database_1.supabase
                 .from('user_types')
@@ -128,7 +128,7 @@ class UserTypesService {
             if (fetchErr || !existing) {
                 throw new Error('User type not found');
             }
-            if (callerLocationId && existing.location_id !== callerLocationId) {
+            if (callerLocationIds && !callerLocationIds.includes(existing.location_id)) {
                 throw new Error('Access denied: user type belongs to a different location');
             }
             if (existing.is_default) {

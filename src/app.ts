@@ -22,6 +22,7 @@ import agreementRoutes from './modules/agreements/agreement.routes';
 import documentRoutes from './modules/documents/document.routes';
 import { membershipRoutes } from './modules/memberships/membership.routes';
 import { marketingRoutes } from './modules/marketing/marketing.routes';
+import { businessRoutes } from './modules/business';
 import { marketingController } from './modules/marketing/marketing.controller';
 import { BookingController } from './modules/bookings/booking.controller';
 import { SocketService } from './modules/sockets/socket.service';
@@ -34,19 +35,30 @@ export const httpServer = createServer(app);
 
 app.set('trust proxy', 1);
 
-const ALLOWED_ORIGINS = [
+const STATIC_ORIGINS = [
   process.env.FRONTEND_URL?.replace(/\/$/, ''),
   'https://www.golflabs.us',
   'https://golflabs.us',
-  'https://app.golflabs.us',
-  'https://www.app.golflabs.us',
   'https://golflabs-landing.vercel.app',
   ...(process.env.NODE_ENV !== 'production' ? ['http://localhost:5173', 'http://localhost:3000', 'http://localhost:8080', 'http://localhost:3001'] : []),
 ].filter(Boolean) as string[];
 
+function isAllowedOrigin(origin: string | undefined): boolean {
+  if (!origin) return true;
+  if (STATIC_ORIGINS.includes(origin)) return true;
+  if (/^https:\/\/[a-z0-9-]+\.golflabs\.us$/.test(origin)) return true;
+  return false;
+}
+
 const io = new Server(httpServer, {
   cors: {
-    origin: ALLOWED_ORIGINS,
+    origin: (origin, callback) => {
+      if (isAllowedOrigin(origin as string | undefined)) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
     methods: ["GET", "POST"]
   }
 });
@@ -81,7 +93,13 @@ app.use(helmet({
 }));
 
 app.use(cors({
-  origin: ALLOWED_ORIGINS,
+  origin: (origin, callback) => {
+    if (isAllowedOrigin(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
 }));
 
@@ -231,6 +249,7 @@ app.use('/bookings', createBookingRoutes(socketService));
 app.use('/', paymentRoutes); // Payment routes are at root level for backwards compatibility
 app.use('/', pricingRoutes); // Pricing routes are at root level for backwards compatibility
 app.use('/locations', locationRoutes);
+app.use('/business', businessRoutes);
 app.use('/spaces', createSpaceRoutes(socketService));
 app.use('/logs', logRoutes);
 app.use('/', unlockRoutes(socketService)); // Unlock routes at root level

@@ -204,13 +204,21 @@ export class BookingController {
 
   searchCustomers = async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const { email } = req.query;
+      const { email, locationId } = req.query;
 
       if (!email) {
         return res.status(400).json({ error: 'email is required' });
       }
 
-      const customers = await this.bookingService.searchCustomersByEmail(email as string);
+      const resolvedLocationId = (locationId as string | undefined)
+        || req.employeeProfile?.accessibleLocationIds?.[0]
+        || '';
+
+      if (!resolvedLocationId) {
+        return res.status(400).json({ error: 'locationId is required' });
+      }
+
+      const customers = await this.bookingService.searchCustomersByEmail(email as string, resolvedLocationId);
       res.json(customers);
     } catch (error: any) {
       logger.error({ err: error }, 'Error in customer search endpoint');
@@ -230,7 +238,7 @@ export class BookingController {
 
       const bookingLocationId = await this.bookingService.getBookingLocationId(bookingId);
       if (!bookingLocationId) return res.status(404).json({ error: 'Booking not found' });
-      if (bookingLocationId !== employeeProfile.location_id) {
+      if (!employeeProfile.accessibleLocationIds?.includes(bookingLocationId)) {
         return res.status(403).json({ error: 'Access denied: booking belongs to a different location' });
       }
 
@@ -337,7 +345,7 @@ export class BookingController {
 
       const bookingLocationId = await this.bookingService.getBookingLocationId(bookingId);
       if (!bookingLocationId) return res.status(404).json({ error: 'Booking not found' });
-      if (bookingLocationId !== employeeProfile.location_id) {
+      if (!employeeProfile.accessibleLocationIds?.includes(bookingLocationId)) {
         return res.status(403).json({ error: 'Access denied: booking belongs to a different location' });
       }
 
@@ -389,7 +397,7 @@ export class BookingController {
 
       const bookingLocationId = await this.bookingService.getBookingLocationId(bookingId);
       if (!bookingLocationId) return res.status(404).json({ error: 'Booking not found' });
-      if (bookingLocationId !== employeeProfile.location_id) {
+      if (!employeeProfile.accessibleLocationIds?.includes(bookingLocationId)) {
         return res.status(403).json({ error: 'Access denied: booking belongs to a different location' });
       }
 

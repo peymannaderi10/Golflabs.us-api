@@ -186,6 +186,14 @@ class BookingService {
             // Use the authoritative expires_at from the DB (avoids clock skew with client-side computation)
             const expiresAt = (_g = data.expires_at) !== null && _g !== void 0 ? _g : null;
             logger_1.logger.info({ bookingId: data.booking_id, spaceId, p_start_time, p_end_time, reservationsEnabled, expiresAt }, 'Created new booking');
+            // Auto-associate user with this location (idempotent upsert)
+            yield database_1.supabase
+                .from('user_locations')
+                .upsert({ user_id: userId, location_id: locationId }, { onConflict: 'user_id,location_id' })
+                .then(({ error: ulErr }) => {
+                if (ulErr)
+                    logger_1.logger.warn({ err: ulErr, userId, locationId }, 'Failed to upsert user_locations (non-critical)');
+            });
             return {
                 bookingId: data.booking_id,
                 expiresAt,
@@ -510,9 +518,9 @@ class BookingService {
             return this.employeeService.getAllBookingsForEmployee(locationId, startDate, endDate, spaceId, customerEmail);
         });
     }
-    searchCustomersByEmail(email) {
+    searchCustomersByEmail(email, locationId) {
         return __awaiter(this, void 0, void 0, function* () {
-            return this.employeeService.searchCustomersByEmail(email);
+            return this.employeeService.searchCustomersByEmail(email, locationId);
         });
     }
     createEmployeeBooking(bookingData, employeeId) {

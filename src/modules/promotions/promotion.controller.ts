@@ -241,14 +241,14 @@ export class PromotionController {
    * Returns the promotion if authorized, or sends a 403/404 and returns null.
    */
   private async verifyPromotionOwnership(req: Request, res: Response, promotionId: string): Promise<any | null> {
-    const employeeLocationId = (req as AuthenticatedRequest).employeeProfile?.location_id;
+    const accessibleIds = (req as AuthenticatedRequest).employeeProfile?.accessibleLocationIds;
     const promo = await promotionService.getPromotionById(promotionId);
     if (!promo) {
       res.status(404).json({ error: 'Promotion not found' });
       return null;
     }
-    if (promo.location_id !== employeeLocationId) {
-      res.status(403).json({ error: 'Access denied: you do not belong to this location' });
+    if (!promo.location_id || !accessibleIds?.includes(promo.location_id)) {
+      res.status(403).json({ error: 'Access denied: you do not have access to this location' });
       return null;
     }
     return promo;

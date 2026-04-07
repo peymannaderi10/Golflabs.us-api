@@ -38,6 +38,7 @@ const agreement_routes_1 = __importDefault(require("./modules/agreements/agreeme
 const document_routes_1 = __importDefault(require("./modules/documents/document.routes"));
 const membership_routes_1 = require("./modules/memberships/membership.routes");
 const marketing_routes_1 = require("./modules/marketing/marketing.routes");
+const business_1 = require("./modules/business");
 const marketing_controller_1 = require("./modules/marketing/marketing.controller");
 const booking_controller_1 = require("./modules/bookings/booking.controller");
 const socket_service_1 = require("./modules/sockets/socket.service");
@@ -47,18 +48,32 @@ const breach_monitor_1 = require("./shared/middleware/breach-monitor");
 exports.app = (0, express_1.default)();
 exports.httpServer = (0, http_1.createServer)(exports.app);
 exports.app.set('trust proxy', 1);
-const ALLOWED_ORIGINS = [
+const STATIC_ORIGINS = [
     (_a = process.env.FRONTEND_URL) === null || _a === void 0 ? void 0 : _a.replace(/\/$/, ''),
     'https://www.golflabs.us',
     'https://golflabs.us',
-    'https://app.golflabs.us',
-    'https://www.app.golflabs.us',
     'https://golflabs-landing.vercel.app',
     ...(process.env.NODE_ENV !== 'production' ? ['http://localhost:5173', 'http://localhost:3000', 'http://localhost:8080', 'http://localhost:3001'] : []),
 ].filter(Boolean);
+function isAllowedOrigin(origin) {
+    if (!origin)
+        return true;
+    if (STATIC_ORIGINS.includes(origin))
+        return true;
+    if (/^https:\/\/[a-z0-9-]+\.golflabs\.us$/.test(origin))
+        return true;
+    return false;
+}
 const io = new socket_io_1.Server(exports.httpServer, {
     cors: {
-        origin: ALLOWED_ORIGINS,
+        origin: (origin, callback) => {
+            if (isAllowedOrigin(origin)) {
+                callback(null, true);
+            }
+            else {
+                callback(new Error('Not allowed by CORS'));
+            }
+        },
         methods: ["GET", "POST"]
     }
 });
@@ -89,7 +104,14 @@ exports.app.use((0, helmet_1.default)({
     }
 }));
 exports.app.use((0, cors_1.default)({
-    origin: ALLOWED_ORIGINS,
+    origin: (origin, callback) => {
+        if (isAllowedOrigin(origin)) {
+            callback(null, true);
+        }
+        else {
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
     credentials: true,
 }));
 // Webhook rate limiting - separate from payment endpoints
@@ -215,6 +237,7 @@ exports.app.use('/bookings', (0, booking_routes_1.createBookingRoutes)(socketSer
 exports.app.use('/', payment_routes_1.paymentRoutes); // Payment routes are at root level for backwards compatibility
 exports.app.use('/', pricing_routes_1.pricingRoutes); // Pricing routes are at root level for backwards compatibility
 exports.app.use('/locations', location_routes_1.locationRoutes);
+exports.app.use('/business', business_1.businessRoutes);
 exports.app.use('/spaces', (0, space_routes_1.createSpaceRoutes)(socketService));
 exports.app.use('/logs', log_routes_1.logRoutes);
 exports.app.use('/', (0, unlock_routes_1.unlockRoutes)(socketService)); // Unlock routes at root level

@@ -213,6 +213,14 @@ export class BookingService {
 
     logger.info({ bookingId: data.booking_id, spaceId, p_start_time, p_end_time, reservationsEnabled, expiresAt }, 'Created new booking');
 
+    // Auto-associate user with this location (idempotent upsert)
+    await supabase
+      .from('user_locations')
+      .upsert({ user_id: userId, location_id: locationId }, { onConflict: 'user_id,location_id' })
+      .then(({ error: ulErr }) => {
+        if (ulErr) logger.warn({ err: ulErr, userId, locationId }, 'Failed to upsert user_locations (non-critical)');
+      });
+
     return {
       bookingId: data.booking_id,
       expiresAt,
@@ -583,8 +591,8 @@ export class BookingService {
     return this.employeeService.getAllBookingsForEmployee(locationId, startDate, endDate, spaceId, customerEmail);
   }
 
-  async searchCustomersByEmail(email: string) {
-    return this.employeeService.searchCustomersByEmail(email);
+  async searchCustomersByEmail(email: string, locationId: string) {
+    return this.employeeService.searchCustomersByEmail(email, locationId);
   }
 
   async createEmployeeBooking(bookingData: Parameters<BookingEmployeeService['createEmployeeBooking']>[0], employeeId: string) {

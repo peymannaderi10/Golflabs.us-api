@@ -65,11 +65,11 @@ class PricingController {
             try {
                 const { ruleId } = req.params;
                 const updates = req.body;
-                const employeeLocationId = (_a = req.employeeProfile) === null || _a === void 0 ? void 0 : _a.location_id;
-                if (!employeeLocationId) {
-                    return res.status(403).json({ error: 'Employee profile missing location' });
+                const employeeLocationIds = (_a = req.employeeProfile) === null || _a === void 0 ? void 0 : _a.accessibleLocationIds;
+                if (!employeeLocationIds || employeeLocationIds.length === 0) {
+                    return res.status(403).json({ error: 'Employee profile missing location access' });
                 }
-                const pricingRule = yield this.pricingService.updatePricingRule(ruleId, updates, employeeLocationId);
+                const pricingRule = yield this.pricingService.updatePricingRule(ruleId, updates, employeeLocationIds);
                 res.json(pricingRule);
             }
             catch (error) {
@@ -87,11 +87,11 @@ class PricingController {
             var _a;
             try {
                 const { ruleId } = req.params;
-                const employeeLocationId = (_a = req.employeeProfile) === null || _a === void 0 ? void 0 : _a.location_id;
-                if (!employeeLocationId) {
-                    return res.status(403).json({ error: 'Employee profile missing location' });
+                const employeeLocationIds = (_a = req.employeeProfile) === null || _a === void 0 ? void 0 : _a.accessibleLocationIds;
+                if (!employeeLocationIds || employeeLocationIds.length === 0) {
+                    return res.status(403).json({ error: 'Employee profile missing location access' });
                 }
-                yield this.pricingService.deletePricingRule(ruleId, employeeLocationId);
+                yield this.pricingService.deletePricingRule(ruleId, employeeLocationIds);
                 res.json({ success: true });
             }
             catch (error) {

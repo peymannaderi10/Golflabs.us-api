@@ -12,10 +12,10 @@ const VALID_ACTIONS: CampaignAction[] = ['draft', 'schedule', 'send'];
 
 export class MarketingController {
 
-  private assertEmployeeLocation(req: AuthenticatedRequest): string {
-    const loc = req.employeeProfile?.location_id;
-    if (!loc) throw Object.assign(new Error('Employee profile required'), { status: 403 });
-    return loc;
+  private assertEmployeeLocationAccess(req: AuthenticatedRequest): string[] {
+    const locs = req.employeeProfile?.accessibleLocationIds;
+    if (!locs || locs.length === 0) throw Object.assign(new Error('Employee profile required'), { status: 403 });
+    return locs;
   }
 
   async getCampaigns(req: AuthenticatedRequest, res: Response) {
@@ -43,11 +43,11 @@ export class MarketingController {
         return res.status(404).json({ error: 'Campaign not found' });
       }
 
-      const employeeLocationId = req.employeeProfile?.location_id;
-      if (!employeeLocationId) {
+      const accessibleIds = req.employeeProfile?.accessibleLocationIds;
+      if (!accessibleIds || accessibleIds.length === 0) {
         return res.status(403).json({ error: 'Employee profile required' });
       }
-      if (detail.location_id !== employeeLocationId) {
+      if (!accessibleIds.includes(detail.location_id)) {
         return res.status(403).json({ error: 'Access denied: campaign belongs to a different location' });
       }
 
@@ -104,11 +104,11 @@ export class MarketingController {
   async updateCampaign(req: AuthenticatedRequest, res: Response) {
     try {
       const { id } = req.params;
-      const employeeLocationId = this.assertEmployeeLocation(req);
+      const accessibleIds = this.assertEmployeeLocationAccess(req);
 
       const campaignLocationId = await MarketingService.getCampaignLocationId(id);
       if (!campaignLocationId) return res.status(404).json({ error: 'Campaign not found' });
-      if (campaignLocationId !== employeeLocationId) {
+      if (!accessibleIds.includes(campaignLocationId)) {
         return res.status(403).json({ error: 'Access denied: campaign belongs to a different location' });
       }
 
@@ -134,11 +134,11 @@ export class MarketingController {
   async sendCampaign(req: AuthenticatedRequest, res: Response) {
     try {
       const { id } = req.params;
-      const employeeLocationId = this.assertEmployeeLocation(req);
+      const accessibleIds = this.assertEmployeeLocationAccess(req);
 
       const campaignLocationId = await MarketingService.getCampaignLocationId(id);
       if (!campaignLocationId) return res.status(404).json({ error: 'Campaign not found' });
-      if (campaignLocationId !== employeeLocationId) {
+      if (!accessibleIds.includes(campaignLocationId)) {
         return res.status(403).json({ error: 'Access denied: campaign belongs to a different location' });
       }
 
@@ -154,11 +154,11 @@ export class MarketingController {
   async deleteCampaign(req: AuthenticatedRequest, res: Response) {
     try {
       const { id } = req.params;
-      const employeeLocationId = this.assertEmployeeLocation(req);
+      const accessibleIds = this.assertEmployeeLocationAccess(req);
 
       const campaignLocationId = await MarketingService.getCampaignLocationId(id);
       if (!campaignLocationId) return res.status(404).json({ error: 'Campaign not found' });
-      if (campaignLocationId !== employeeLocationId) {
+      if (!accessibleIds.includes(campaignLocationId)) {
         return res.status(403).json({ error: 'Access denied: campaign belongs to a different location' });
       }
 
@@ -226,11 +226,11 @@ export class MarketingController {
       const { id } = req.params;
       const template = await MarketingService.getMarketingTemplate(id);
 
-      const employeeLocationId = req.employeeProfile?.location_id;
-      if (!employeeLocationId) {
+      const accessibleIds = req.employeeProfile?.accessibleLocationIds;
+      if (!accessibleIds || accessibleIds.length === 0) {
         return res.status(403).json({ error: 'Employee profile required' });
       }
-      if (template.location_id !== employeeLocationId) {
+      if (!accessibleIds.includes(template.location_id)) {
         return res.status(403).json({ error: 'Access denied: template belongs to a different location' });
       }
 
@@ -259,11 +259,11 @@ export class MarketingController {
   async updateTemplate(req: AuthenticatedRequest, res: Response) {
     try {
       const { id } = req.params;
-      const employeeLocationId = this.assertEmployeeLocation(req);
+      const accessibleIds = this.assertEmployeeLocationAccess(req);
 
       const templateLocationId = await MarketingService.getTemplateLocationId(id);
       if (!templateLocationId) return res.status(404).json({ error: 'Template not found' });
-      if (templateLocationId !== employeeLocationId) {
+      if (!accessibleIds.includes(templateLocationId)) {
         return res.status(403).json({ error: 'Access denied: template belongs to a different location' });
       }
 
@@ -282,11 +282,11 @@ export class MarketingController {
   async deleteTemplate(req: AuthenticatedRequest, res: Response) {
     try {
       const { id } = req.params;
-      const employeeLocationId = this.assertEmployeeLocation(req);
+      const accessibleIds = this.assertEmployeeLocationAccess(req);
 
       const templateLocationId = await MarketingService.getTemplateLocationId(id);
       if (!templateLocationId) return res.status(404).json({ error: 'Template not found' });
-      if (templateLocationId !== employeeLocationId) {
+      if (!accessibleIds.includes(templateLocationId)) {
         return res.status(403).json({ error: 'Access denied: template belongs to a different location' });
       }
 

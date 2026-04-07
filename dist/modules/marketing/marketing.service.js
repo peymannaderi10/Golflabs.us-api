@@ -253,12 +253,21 @@ class MarketingService {
     }
     static getAllUserIds(locationId) {
         return __awaiter(this, void 0, void 0, function* () {
-            const { data } = yield database_1.supabase
+            // Get all customer user IDs associated with this location via user_locations
+            const { data: locationUsers } = yield database_1.supabase
+                .from('user_locations')
+                .select('user_id')
+                .eq('location_id', locationId);
+            const userIds = (locationUsers || []).map(u => u.user_id);
+            if (userIds.length === 0)
+                return [];
+            // Filter to customers only (exclude employees/admins)
+            const { data: profiles } = yield database_1.supabase
                 .from('user_profiles')
                 .select('id')
-                .eq('location_id', locationId)
+                .in('id', userIds)
                 .eq('role', 'customer');
-            return (data || []).map(u => u.id);
+            return (profiles || []).map(u => u.id);
         });
     }
     static getNoBookingUserIds(locationId) {

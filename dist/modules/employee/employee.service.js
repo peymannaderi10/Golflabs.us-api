@@ -417,8 +417,17 @@ class EmployeeService {
                     .in('status', ['active', 'trialing', 'past_due']);
                 memberUserIds = (memberRows || []).map(r => r.user_id);
             }
+            // Get user IDs associated with this location via user_locations
+            const { data: locationUsers } = yield database_1.supabase
+                .from('user_locations')
+                .select('user_id')
+                .eq('location_id', locationId);
+            const locationUserIds = (locationUsers || []).map(r => r.user_id);
+            if (locationUserIds.length === 0) {
+                return { customers: [], total: 0 };
+            }
             let query = database_1.supabase.from('user_profiles').select('*', { count: 'exact' })
-                .eq('location_id', locationId)
+                .in('id', locationUserIds)
                 .is('deleted_at', null);
             if (search) {
                 query = query.or(`email.ilike.%${search}%,full_name.ilike.%${search}%`);
@@ -505,29 +514,15 @@ class EmployeeService {
      */
     getCustomerDetails(locationId, customerId) {
         return __awaiter(this, void 0, void 0, function* () {
-            // Verify the customer has a relationship with this location
-            // Check 1: profile registered at this location
-            const { count: profileCount } = yield database_1.supabase
-                .from('user_profiles')
-                .select('id', { count: 'exact', head: true })
-                .eq('id', customerId)
-                .eq('location_id', locationId);
-            if (!profileCount || profileCount === 0) {
-                // Check 2: has bookings at this location
-                const { count: bookingCount } = yield database_1.supabase
-                    .from('bookings')
-                    .select('id', { count: 'exact', head: true })
-                    .eq('user_id', customerId)
-                    .eq('location_id', locationId);
-                // Check 3: has memberships at this location
-                const { count: membershipCount } = yield database_1.supabase
-                    .from('memberships')
-                    .select('id', { count: 'exact', head: true })
-                    .eq('user_id', customerId)
-                    .eq('location_id', locationId);
-                if ((bookingCount !== null && bookingCount !== void 0 ? bookingCount : 0) === 0 && (membershipCount !== null && membershipCount !== void 0 ? membershipCount : 0) === 0) {
-                    throw new Error('Customer not found at this location');
-                }
+            // Verify the customer is associated with this location
+            const { data: userLoc } = yield database_1.supabase
+                .from('user_locations')
+                .select('user_id')
+                .eq('user_id', customerId)
+                .eq('location_id', locationId)
+                .maybeSingle();
+            if (!userLoc) {
+                throw new Error('Customer not found at this location');
             }
             // Fetch profile
             const { data: profile, error: profileError } = yield database_1.supabase
@@ -613,25 +608,15 @@ class EmployeeService {
     updateCustomer(id, updates, locationId) {
         return __awaiter(this, void 0, void 0, function* () {
             // Verify the customer has a relationship with this location
-            const { count: profileCount } = yield database_1.supabase
-                .from('user_profiles')
-                .select('id', { count: 'exact', head: true })
-                .eq('id', id)
-                .eq('location_id', locationId);
-            if (!profileCount || profileCount === 0) {
-                const { count: bookingCount } = yield database_1.supabase
-                    .from('bookings')
-                    .select('id', { count: 'exact', head: true })
-                    .eq('user_id', id)
-                    .eq('location_id', locationId);
-                const { count: membershipCount } = yield database_1.supabase
-                    .from('memberships')
-                    .select('id', { count: 'exact', head: true })
-                    .eq('user_id', id)
-                    .eq('location_id', locationId);
-                if ((bookingCount !== null && bookingCount !== void 0 ? bookingCount : 0) === 0 && (membershipCount !== null && membershipCount !== void 0 ? membershipCount : 0) === 0) {
-                    throw new Error('Customer not found at this location');
-                }
+            // Verify customer is associated with this location
+            const { data: userLoc } = yield database_1.supabase
+                .from('user_locations')
+                .select('user_id')
+                .eq('user_id', id)
+                .eq('location_id', locationId)
+                .maybeSingle();
+            if (!userLoc) {
+                throw new Error('Customer not found at this location');
             }
             const updateData = {
                 full_name: updates.fullName,

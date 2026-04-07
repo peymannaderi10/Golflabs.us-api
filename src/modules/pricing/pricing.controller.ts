@@ -60,11 +60,11 @@ export class PricingController {
     try {
       const { ruleId } = req.params;
       const updates = req.body;
-      const employeeLocationId = req.employeeProfile?.location_id;
-      if (!employeeLocationId) {
-        return res.status(403).json({ error: 'Employee profile missing location' });
+      const employeeLocationIds = req.employeeProfile?.accessibleLocationIds;
+      if (!employeeLocationIds || employeeLocationIds.length === 0) {
+        return res.status(403).json({ error: 'Employee profile missing location access' });
       }
-      const pricingRule = await this.pricingService.updatePricingRule(ruleId, updates, employeeLocationId);
+      const pricingRule = await this.pricingService.updatePricingRule(ruleId, updates, employeeLocationIds);
       res.json(pricingRule);
     } catch (error: any) {
       logger.error({ err: error }, 'Error in updatePricingRule endpoint');
@@ -81,11 +81,11 @@ export class PricingController {
   deletePricingRule = async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { ruleId } = req.params;
-      const employeeLocationId = req.employeeProfile?.location_id;
-      if (!employeeLocationId) {
-        return res.status(403).json({ error: 'Employee profile missing location' });
+      const employeeLocationIds = req.employeeProfile?.accessibleLocationIds;
+      if (!employeeLocationIds || employeeLocationIds.length === 0) {
+        return res.status(403).json({ error: 'Employee profile missing location access' });
       }
-      await this.pricingService.deletePricingRule(ruleId, employeeLocationId);
+      await this.pricingService.deletePricingRule(ruleId, employeeLocationIds);
       res.json({ success: true });
     } catch (error: any) {
       logger.error({ err: error }, 'Error in deletePricingRule endpoint');

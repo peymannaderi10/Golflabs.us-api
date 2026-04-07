@@ -44,7 +44,7 @@ export class UserTypesController {
       if (!id) {
         return res.status(400).json({ error: 'id is required' });
       }
-      const callerLocationId = req.employeeProfile?.location_id;
+      const callerLocationId = req.employeeProfile?.accessibleLocationIds;
       const { slug, label, isDefault } = req.body;
       const userType = await userTypesService.update(id, { slug, label, isDefault }, callerLocationId);
       res.json(userType);
@@ -64,7 +64,7 @@ export class UserTypesController {
       if (!id) {
         return res.status(400).json({ error: 'id is required' });
       }
-      const callerLocationId = (req as AuthenticatedRequest).employeeProfile?.location_id;
+      const callerLocationId = (req as AuthenticatedRequest).employeeProfile?.accessibleLocationIds;
       await userTypesService.delete(id, callerLocationId);
       res.json({ success: true });
     } catch (error: any) {

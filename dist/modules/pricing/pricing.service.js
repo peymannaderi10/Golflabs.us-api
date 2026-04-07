@@ -205,7 +205,7 @@ class PricingService {
             return mapRow(data);
         });
     }
-    updatePricingRule(ruleId, updates, employeeLocationId) {
+    updatePricingRule(ruleId, updates, employeeLocationIds) {
         return __awaiter(this, void 0, void 0, function* () {
             if (!ruleId) {
                 throw new Error('Pricing rule ID is required');
@@ -219,8 +219,8 @@ class PricingService {
             if (fetchErr || !current) {
                 throw new Error('Pricing rule not found');
             }
-            // Verify employee owns this location's pricing rule
-            if (current.location_id !== employeeLocationId) {
+            // Verify employee has access to this location's pricing rule
+            if (!employeeLocationIds.includes(current.location_id)) {
                 throw new Error('Access denied: pricing rule belongs to a different location');
             }
             const mergedUserType = updates.userType !== undefined ? updates.userType : current.user_type;
@@ -272,7 +272,7 @@ class PricingService {
             return mapRow(data);
         });
     }
-    deletePricingRule(ruleId, employeeLocationId) {
+    deletePricingRule(ruleId, employeeLocationIds) {
         return __awaiter(this, void 0, void 0, function* () {
             if (!ruleId) {
                 throw new Error('Pricing rule ID is required');
@@ -286,7 +286,7 @@ class PricingService {
             if (fetchErr || !rule) {
                 throw new Error('Pricing rule not found');
             }
-            if (rule.location_id !== employeeLocationId) {
+            if (!employeeLocationIds.includes(rule.location_id)) {
                 throw new Error('Access denied: pricing rule belongs to a different location');
             }
             const { error } = yield database_1.supabase

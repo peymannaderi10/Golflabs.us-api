@@ -61,7 +61,7 @@ export class UserTypesService {
     return this.mapRow(data);
   }
 
-  async update(id: string, updates: { slug?: string; label?: string; isDefault?: boolean }, callerLocationId?: string): Promise<UserTypeRecord> {
+  async update(id: string, updates: { slug?: string; label?: string; isDefault?: boolean }, callerLocationIds?: string[]): Promise<UserTypeRecord> {
     const { data: existing, error: fetchErr } = await supabase
       .from('user_types')
       .select('*')
@@ -72,7 +72,7 @@ export class UserTypesService {
       throw new Error('User type not found');
     }
 
-    if (callerLocationId && existing.location_id !== callerLocationId) {
+    if (callerLocationIds && !callerLocationIds.includes(existing.location_id)) {
       throw new Error('Access denied: user type belongs to a different location');
     }
 
@@ -130,7 +130,7 @@ export class UserTypesService {
     return this.mapRow(data);
   }
 
-  async delete(id: string, callerLocationId?: string): Promise<void> {
+  async delete(id: string, callerLocationIds?: string[]): Promise<void> {
     const { data: existing, error: fetchErr } = await supabase
       .from('user_types')
       .select('*')
@@ -141,7 +141,7 @@ export class UserTypesService {
       throw new Error('User type not found');
     }
 
-    if (callerLocationId && existing.location_id !== callerLocationId) {
+    if (callerLocationIds && !callerLocationIds.includes(existing.location_id)) {
       throw new Error('Access denied: user type belongs to a different location');
     }
 

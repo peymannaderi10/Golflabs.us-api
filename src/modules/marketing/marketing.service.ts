@@ -292,13 +292,23 @@ export class MarketingService {
   }
 
   private static async getAllUserIds(locationId: string): Promise<string[]> {
-    const { data } = await supabase
+    // Get all customer user IDs associated with this location via user_locations
+    const { data: locationUsers } = await supabase
+      .from('user_locations')
+      .select('user_id')
+      .eq('location_id', locationId);
+
+    const userIds = (locationUsers || []).map(u => u.user_id);
+    if (userIds.length === 0) return [];
+
+    // Filter to customers only (exclude employees/admins)
+    const { data: profiles } = await supabase
       .from('user_profiles')
       .select('id')
-      .eq('location_id', locationId)
+      .in('id', userIds)
       .eq('role', 'customer');
 
-    return (data || []).map(u => u.id);
+    return (profiles || []).map(u => u.id);
   }
 
   private static async getNoBookingUserIds(locationId: string): Promise<string[]> {

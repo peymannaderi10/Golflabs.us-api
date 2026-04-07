@@ -69,14 +69,27 @@ class BookingEmployeeService {
             return filteredData;
         });
     }
-    searchCustomersByEmail(email) {
+    searchCustomersByEmail(email, locationId) {
         return __awaiter(this, void 0, void 0, function* () {
             if (!email || email.length < 3) {
                 throw new Error('Email search requires at least 3 characters');
             }
+            // Scope search to users associated with this location
+            const { data: locationUsers, error: luError } = yield database_1.supabase
+                .from('user_locations')
+                .select('user_id')
+                .eq('location_id', locationId);
+            if (luError) {
+                logger_1.logger.error({ err: luError }, 'Error fetching user_locations for search');
+                throw luError;
+            }
+            const userIds = (locationUsers || []).map(r => r.user_id);
+            if (userIds.length === 0)
+                return [];
             const { data, error } = yield database_1.supabase
                 .from('user_profiles')
                 .select('id, email, full_name, phone')
+                .in('id', userIds)
                 .ilike('email', `%${email}%`)
                 .is('deleted_at', null)
                 .order('email')
@@ -157,6 +170,12 @@ class BookingEmployeeService {
             if (!customerUserId) {
                 throw new Error('Failed to determine customer ID');
             }
+            // Associate customer with this location (idempotent)
+            const { error: ulErr } = yield database_1.supabase
+                .from('user_locations')
+                .upsert({ user_id: customerUserId, location_id: locationId }, { onConflict: 'user_id,location_id' });
+            if (ulErr)
+                logger_1.logger.warn({ err: ulErr, userId: customerUserId, locationId }, 'Failed to upsert user_locations (non-critical)');
             // Fetch booking buffer for this location
             const { data: bufferRow } = yield database_1.supabase
                 .from('location_settings')

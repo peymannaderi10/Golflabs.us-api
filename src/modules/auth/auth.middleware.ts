@@ -3,9 +3,20 @@ import crypto from 'crypto';
 import { supabase } from '../../config/database';
 import { logger } from '../../shared/utils/logger';
 
+export interface EmployeeProfile {
+  id: string;
+  email: string;
+  full_name: string;
+  role: string;
+  location_id: string | null;
+  clientId: string;
+  clientRole: 'owner' | 'admin' | 'employee';
+  accessibleLocationIds: string[];
+}
+
 export interface AuthenticatedRequest extends Request {
   user?: any;
-  employeeProfile?: any;
+  employeeProfile?: EmployeeProfile;
   isKiosk?: boolean;
 }
 
@@ -66,12 +77,56 @@ export const authenticateEmployee = async (req: AuthenticatedRequest, res: Respo
       return res.status(401).json({ error: 'User profile not found' });
     }
 
+    // INVARIANT: user_profiles.role is one of 'customer' | 'employee' | 'admin'.
+    // Business owners have user_profiles.role='admin' and client_members.role='owner'
+    // — ownership-level authorization reads from employeeProfile.clientRole (below),
+    // not user_profiles.role. Never migrate user_profiles.role to include 'owner'
+    // without updating this gate.
     if (!profile || (profile.role !== 'employee' && profile.role !== 'admin')) {
       return res.status(403).json({ error: 'Employee access required' });
     }
 
+    // Query client_members for multi-location access
+    const { data: memberships } = await supabase
+      .from('client_members')
+      .select('client_id, role, location_id')
+      .eq('user_id', user.id);
+
+    let clientId = '';
+    let clientRole: 'owner' | 'admin' | 'employee' = 'employee';
+    let accessibleLocationIds: string[] = [];
+
+    if (memberships && memberships.length > 0) {
+      const uniqueClients = new Set(memberships.map(m => m.client_id));
+      if (uniqueClients.size > 1) {
+        logger.error({ userId: user.id }, 'Employee has memberships across multiple clients');
+        return res.status(403).json({ error: 'Account configuration error — contact support' });
+      }
+      clientId = memberships[0].client_id;
+      // Derive highest role across all memberships
+      const roles = memberships.map(m => m.role);
+      if (roles.includes('owner')) clientRole = 'owner';
+      else if (roles.includes('admin')) clientRole = 'admin';
+      accessibleLocationIds = memberships.map(m => m.location_id);
+    } else {
+      // Backward compat: fallback to user_profiles.location_id
+      if (profile.location_id) {
+        const { data: loc } = await supabase.from('locations').select('id').eq('id', profile.location_id).eq('status', 'active').is('deleted_at', null).maybeSingle();
+        if (loc) accessibleLocationIds = [loc.id];
+      }
+    }
+
     req.user = user;
-    req.employeeProfile = profile;
+    req.employeeProfile = {
+      id: profile.id,
+      email: profile.email,
+      full_name: profile.full_name,
+      role: profile.role,
+      location_id: profile.location_id,
+      clientId,
+      clientRole,
+      accessibleLocationIds,
+    };
     next();
   } catch (error) {
     logger.error({ err: error }, 'Employee authentication error');
@@ -120,9 +175,9 @@ export const validateLocationAccess = (
   field = 'locationId'
 ) => {
   return (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
-    const employeeLocationId = req.employeeProfile?.location_id;
-    if (!employeeLocationId) {
-      return res.status(403).json({ error: 'Employee profile missing location' });
+    const accessibleIds = req.employeeProfile?.accessibleLocationIds;
+    if (!accessibleIds || accessibleIds.length === 0) {
+      return res.status(403).json({ error: 'Employee profile missing location access' });
     }
 
     const requestedLocationId = (req[source] as Record<string, any>)?.[field];
@@ -131,8 +186,8 @@ export const validateLocationAccess = (
       return res.status(400).json({ error: `${field} is required` });
     }
 
-    if (requestedLocationId !== employeeLocationId) {
-      return res.status(403).json({ error: 'Access denied: you do not belong to this location' });
+    if (!accessibleIds.includes(requestedLocationId)) {
+      return res.status(403).json({ error: 'Access denied: you do not have access to this location' });
     }
 
     next();

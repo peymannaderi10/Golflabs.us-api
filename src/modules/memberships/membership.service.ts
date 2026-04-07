@@ -815,6 +815,14 @@ export class MembershipService {
       updateFields.brand_logo_url = updates.brandLogoUrl || null;
     }
     if (updates.customDomain !== undefined) {
+      if (updates.customDomain) {
+        const { LocationService } = await import('../locations/location.service');
+        const locationService = new LocationService();
+        const availability = await locationService.isSubdomainAvailable(updates.customDomain, locationId);
+        if (!availability.available) {
+          throw new Error(availability.reason || 'This subdomain is not available');
+        }
+      }
       updateFields.custom_domain = updates.customDomain || null;
     }
 

@@ -11,6 +11,12 @@ const locationController = new LocationController();
 const pricingController = new PricingController();
 const logController = new LogController();
 
+/**
+ * GET /employee/accessible-locations
+ * Returns locations the authenticated employee has access to (from client_members)
+ */
+router.get('/accessible-locations', authenticateEmployee, (req, res) => locationController.getAccessibleLocations(req, res));
+
 // All routes require locationId, startDate, and endDate query parameters
 // Example: GET /employee/reports/overview?locationId=xxx&startDate=2024-01-01&endDate=2024-01-31
 

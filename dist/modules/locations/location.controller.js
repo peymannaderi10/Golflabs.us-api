@@ -41,6 +41,59 @@ class LocationController {
                 res.status(500).json({ error: 'An unexpected error occurred' });
             }
         });
+        this.getAccessibleLocations = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            var _a;
+            try {
+                const authReq = req;
+                const profile = authReq.employeeProfile;
+                const accessibleIds = (_a = profile === null || profile === void 0 ? void 0 : profile.accessibleLocationIds) !== null && _a !== void 0 ? _a : [];
+                if (accessibleIds.length === 0) {
+                    return res.json({ locations: [], preferredLocationId: null });
+                }
+                const locations = yield this.locationService.getAccessibleLocations(accessibleIds);
+                // Server-side default: user_profiles.location_id is the authoritative
+                // "default workspace" set by the signup RPC. We only honour it if it
+                // is still in the accessible set (defends against stale references
+                // after a location is removed from the user's permissions).
+                const preferredLocationId = (profile === null || profile === void 0 ? void 0 : profile.location_id) && accessibleIds.includes(profile.location_id)
+                    ? profile.location_id
+                    : null;
+                res.json({ locations, preferredLocationId });
+            }
+            catch (error) {
+                logger_1.logger.error({ err: error }, 'Error fetching accessible locations');
+                res.status(500).json({ error: 'An unexpected error occurred' });
+            }
+        });
+        this.resolveSubdomain = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            try {
+                const { subdomain } = req.params;
+                if (!subdomain || !/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(subdomain) || subdomain.length < 3 || subdomain.length > 63) {
+                    return res.status(400).json({ error: 'Invalid subdomain' });
+                }
+                const location = yield this.locationService.resolveBySubdomain(subdomain);
+                if (!location) {
+                    return res.status(404).json({ error: 'Location not found for this subdomain' });
+                }
+                res.json(location);
+            }
+            catch (error) {
+                logger_1.logger.error({ err: error, subdomain: req.params.subdomain }, 'Error resolving subdomain');
+                res.status(500).json({ error: 'An unexpected error occurred' });
+            }
+        });
+        this.checkSubdomainAvailability = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            try {
+                const { slug } = req.params;
+                const excludeLocationId = req.query.excludeLocationId;
+                const result = yield this.locationService.isSubdomainAvailable(slug, excludeLocationId);
+                res.json(result);
+            }
+            catch (error) {
+                logger_1.logger.error({ err: error }, 'Error checking subdomain availability');
+                res.status(500).json({ error: 'An unexpected error occurred' });
+            }
+        });
         this.updateLocation = (req, res) => __awaiter(this, void 0, void 0, function* () {
             try {
                 const { locationId } = req.params;

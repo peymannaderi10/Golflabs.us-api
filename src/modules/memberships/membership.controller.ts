@@ -7,11 +7,11 @@ import { logger } from '../../shared/utils/logger';
 export class MembershipController {
   private service = new MembershipService();
 
-  /** Verify the authenticated employee belongs to the requested location */
+  /** Verify the authenticated employee has access to the requested location */
   private validateEmployeeLocation(req: AuthenticatedRequest, locationId: string): string | null {
-    const employeeLocationId = req.employeeProfile?.location_id;
-    if (!employeeLocationId || employeeLocationId !== locationId) {
-      return 'Access denied: you do not belong to this location';
+    const accessibleIds = req.employeeProfile?.accessibleLocationIds;
+    if (!accessibleIds || !accessibleIds.includes(locationId)) {
+      return 'Access denied: you do not have access to this location';
     }
     return null;
   }

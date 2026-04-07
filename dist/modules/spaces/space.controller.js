@@ -42,7 +42,7 @@ class SpaceController {
             }
         });
         this.deleteSpace = (req, res) => __awaiter(this, void 0, void 0, function* () {
-            var _a;
+            var _a, _b;
             try {
                 const { spaceId } = req.params;
                 if (!spaceId) {
@@ -51,7 +51,7 @@ class SpaceController {
                 const spaceLocationId = yield this.spaceService.getSpaceLocationId(spaceId);
                 if (!spaceLocationId)
                     return res.status(404).json({ message: 'Space not found' });
-                if (spaceLocationId !== ((_a = req.employeeProfile) === null || _a === void 0 ? void 0 : _a.location_id)) {
+                if (!((_b = (_a = req.employeeProfile) === null || _a === void 0 ? void 0 : _a.accessibleLocationIds) === null || _b === void 0 ? void 0 : _b.includes(spaceLocationId))) {
                     return res.status(403).json({ message: 'Access denied: space belongs to a different location' });
                 }
                 const result = yield this.spaceService.deleteSpace(spaceId);
@@ -82,7 +82,7 @@ class SpaceController {
         });
         // Add: Update space status
         this.updateSpaceStatus = (req, res) => __awaiter(this, void 0, void 0, function* () {
-            var _a;
+            var _a, _b;
             try {
                 const { spaceId } = req.params;
                 const { status } = req.body;
@@ -92,7 +92,7 @@ class SpaceController {
                 const spaceLocationId = yield this.spaceService.getSpaceLocationId(spaceId);
                 if (!spaceLocationId)
                     return res.status(404).json({ message: 'Space not found' });
-                if (spaceLocationId !== ((_a = req.employeeProfile) === null || _a === void 0 ? void 0 : _a.location_id)) {
+                if (!((_b = (_a = req.employeeProfile) === null || _a === void 0 ? void 0 : _a.accessibleLocationIds) === null || _b === void 0 ? void 0 : _b.includes(spaceLocationId))) {
                     return res.status(403).json({ message: 'Access denied: space belongs to a different location' });
                 }
                 const updatedSpace = yield this.spaceService.updateSpaceStatus(spaceId, status);
@@ -125,7 +125,7 @@ class SpaceController {
         });
         // Employee endpoint — location-scoped
         this.getClosures = (req, res) => __awaiter(this, void 0, void 0, function* () {
-            var _a, _b;
+            var _a, _b, _c, _d;
             try {
                 const { spaceId } = req.params;
                 const locationId = req.query.locationId;
@@ -133,14 +133,14 @@ class SpaceController {
                     const spaceLocationId = yield this.spaceService.getSpaceLocationId(spaceId);
                     if (!spaceLocationId)
                         return res.status(404).json({ error: 'Space not found' });
-                    if (spaceLocationId !== ((_a = req.employeeProfile) === null || _a === void 0 ? void 0 : _a.location_id)) {
+                    if (!((_b = (_a = req.employeeProfile) === null || _a === void 0 ? void 0 : _a.accessibleLocationIds) === null || _b === void 0 ? void 0 : _b.includes(spaceLocationId))) {
                         return res.status(403).json({ error: 'Access denied: space belongs to a different location' });
                     }
                     const closures = yield this.spaceService.getClosures(spaceId);
                     return res.json({ success: true, data: closures });
                 }
                 if (locationId) {
-                    if (locationId !== ((_b = req.employeeProfile) === null || _b === void 0 ? void 0 : _b.location_id)) {
+                    if (!((_d = (_c = req.employeeProfile) === null || _c === void 0 ? void 0 : _c.accessibleLocationIds) === null || _d === void 0 ? void 0 : _d.includes(locationId))) {
                         return res.status(403).json({ error: 'Access denied: location mismatch' });
                     }
                     const closures = yield this.spaceService.getClosuresByLocation(locationId);
@@ -153,7 +153,7 @@ class SpaceController {
             }
         });
         this.createClosure = (req, res) => __awaiter(this, void 0, void 0, function* () {
-            var _a, _b;
+            var _a, _b, _c;
             try {
                 const { spaceId } = req.params;
                 const { closureType, dates, recurringDays, startDate, endDate, startTime, endTime, reason } = req.body;
@@ -167,7 +167,7 @@ class SpaceController {
                 const spaceLocationId = yield this.spaceService.getSpaceLocationId(spaceId);
                 if (!spaceLocationId)
                     return res.status(404).json({ error: 'Space not found' });
-                if (spaceLocationId !== ((_a = req.employeeProfile) === null || _a === void 0 ? void 0 : _a.location_id)) {
+                if (!((_b = (_a = req.employeeProfile) === null || _a === void 0 ? void 0 : _a.accessibleLocationIds) === null || _b === void 0 ? void 0 : _b.includes(spaceLocationId))) {
                     return res.status(403).json({ error: 'Access denied' });
                 }
                 const closure = yield this.spaceService.createClosure({
@@ -181,7 +181,7 @@ class SpaceController {
                     startTime,
                     endTime,
                     reason,
-                    createdBy: ((_b = req.user) === null || _b === void 0 ? void 0 : _b.id) || '',
+                    createdBy: ((_c = req.user) === null || _c === void 0 ? void 0 : _c.id) || '',
                 });
                 // Broadcast update
                 if (this.socketService) {
@@ -194,7 +194,7 @@ class SpaceController {
             }
         });
         this.deleteClosure = (req, res) => __awaiter(this, void 0, void 0, function* () {
-            var _a;
+            var _a, _b;
             try {
                 const { closureId } = req.params;
                 if (!closureId) {
@@ -206,7 +206,7 @@ class SpaceController {
                     return res.status(404).json({ error: 'Closure not found' });
                 }
                 const closureLocationId = yield this.spaceService.getSpaceLocationId(closure.space_id);
-                if (!closureLocationId || closureLocationId !== ((_a = req.employeeProfile) === null || _a === void 0 ? void 0 : _a.location_id)) {
+                if (!closureLocationId || !((_b = (_a = req.employeeProfile) === null || _a === void 0 ? void 0 : _a.accessibleLocationIds) === null || _b === void 0 ? void 0 : _b.includes(closureLocationId))) {
                     return res.status(403).json({ error: 'Access denied: closure belongs to a different location' });
                 }
                 const result = yield this.spaceService.deleteClosure(closureId);
@@ -269,7 +269,7 @@ class SpaceController {
             }
         });
         this.toggleSpaceLeagueMode = (req, res) => __awaiter(this, void 0, void 0, function* () {
-            var _a;
+            var _a, _b;
             try {
                 const { spaceId } = req.params;
                 const { active, leagueId } = req.body;
@@ -279,7 +279,7 @@ class SpaceController {
                 const spaceLocationId = yield this.spaceService.getSpaceLocationId(spaceId);
                 if (!spaceLocationId)
                     return res.status(404).json({ message: 'Space not found' });
-                if (spaceLocationId !== ((_a = req.employeeProfile) === null || _a === void 0 ? void 0 : _a.location_id)) {
+                if (!((_b = (_a = req.employeeProfile) === null || _a === void 0 ? void 0 : _a.accessibleLocationIds) === null || _b === void 0 ? void 0 : _b.includes(spaceLocationId))) {
                     return res.status(403).json({ message: 'Access denied: space belongs to a different location' });
                 }
                 const updatedSpace = yield this.spaceService.toggleSpaceLeagueMode(spaceId, active, leagueId || null);

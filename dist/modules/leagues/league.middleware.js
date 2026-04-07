@@ -17,9 +17,9 @@ const database_1 = require("../../config/database");
  */
 const validateLeagueAccess = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
     var _a;
-    const employeeLocationId = (_a = req.employeeProfile) === null || _a === void 0 ? void 0 : _a.location_id;
-    if (!employeeLocationId) {
-        return res.status(403).json({ error: 'Employee profile missing location' });
+    const accessibleIds = (_a = req.employeeProfile) === null || _a === void 0 ? void 0 : _a.accessibleLocationIds;
+    if (!accessibleIds || accessibleIds.length === 0) {
+        return res.status(403).json({ error: 'Employee profile missing location access' });
     }
     const { leagueId } = req.params;
     if (!leagueId) {
@@ -33,7 +33,7 @@ const validateLeagueAccess = (req, res, next) => __awaiter(void 0, void 0, void 
     if (!data) {
         return res.status(404).json({ error: 'League not found' });
     }
-    if (data.location_id !== employeeLocationId) {
+    if (!accessibleIds.includes(data.location_id)) {
         return res.status(403).json({ error: 'Access denied: league belongs to a different location' });
     }
     next();
