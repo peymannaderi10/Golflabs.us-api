@@ -3,7 +3,7 @@ import { AuthenticatedRequest } from '../auth/auth.middleware';
 import { agreementService } from './agreement.service';
 import { sanitizeError } from '../../shared/utils/error.utils';
 import { logger } from '../../shared/utils/logger';
-
+ 
 export class AgreementController {
   acceptAgreements = async (req: AuthenticatedRequest, res: Response) => {
     try {
