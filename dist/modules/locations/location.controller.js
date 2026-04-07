@@ -14,16 +14,6 @@ const location_service_1 = require("./location.service");
 const logger_1 = require("../../shared/utils/logger");
 class LocationController {
     constructor() {
-        this.getAllLocations = (req, res) => __awaiter(this, void 0, void 0, function* () {
-            try {
-                const locations = yield this.locationService.getAllLocations();
-                res.json(locations);
-            }
-            catch (error) {
-                logger_1.logger.error({ err: error }, 'Error in /locations endpoint');
-                res.status(500).json({ error: 'An unexpected error occurred' });
-            }
-        });
         this.getLocationById = (req, res) => __awaiter(this, void 0, void 0, function* () {
             try {
                 const { locationId } = req.params;

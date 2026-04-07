@@ -60,19 +60,24 @@ function isAllowedOrigin(origin) {
         return true;
     if (STATIC_ORIGINS.includes(origin))
         return true;
-    if (/^https:\/\/[a-z0-9-]+\.golflabs\.us$/.test(origin))
+    // Any depth of golflabs.us subdomain (tenant subdomains, preview URLs,
+    // business.golflabs.us, etc.)
+    if (/^https:\/\/([a-z0-9-]+\.)+golflabs\.us$/.test(origin))
         return true;
     return false;
+}
+function rejectCors(origin, callback) {
+    logger_1.logger.warn({ origin }, 'CORS rejected origin');
+    callback(new Error(`Not allowed by CORS: ${origin !== null && origin !== void 0 ? origin : 'unknown'}`));
 }
 const io = new socket_io_1.Server(exports.httpServer, {
     cors: {
         origin: (origin, callback) => {
-            if (isAllowedOrigin(origin)) {
+            const o = origin;
+            if (isAllowedOrigin(o))
                 callback(null, true);
-            }
-            else {
-                callback(new Error('Not allowed by CORS'));
-            }
+            else
+                rejectCors(o, callback);
         },
         methods: ["GET", "POST"]
     }
@@ -105,12 +110,10 @@ exports.app.use((0, helmet_1.default)({
 }));
 exports.app.use((0, cors_1.default)({
     origin: (origin, callback) => {
-        if (isAllowedOrigin(origin)) {
+        if (isAllowedOrigin(origin))
             callback(null, true);
-        }
-        else {
-            callback(new Error('Not allowed by CORS'));
-        }
+        else
+            rejectCors(origin, callback);
     },
     credentials: true,
 }));

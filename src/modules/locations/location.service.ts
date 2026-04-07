@@ -64,37 +64,6 @@ function formatLocation(location: any, settings: Partial<LocationSettingsRow>) {
 }
 
 export class LocationService {
-  async getAllLocations() {
-    const { data: locations, error } = await supabase
-      .from('locations')
-      .select('id, name, slug, address, city, state, zip_code, phone, timezone, status, sales_tax_rate')
-      .eq('status', 'active')
-      .is('deleted_at', null)
-      .order('name', { ascending: true });
-
-    if (error) {
-      logger.error({ err: error }, 'Error fetching locations');
-      throw new Error('Failed to fetch locations');
-    }
-
-    const locationIds = locations.map(l => l.id);
-    const { data: settingsRows } = await supabase
-      .from('location_settings')
-      .select('*')
-      .in('location_id', locationIds);
-
-    const settingsMap = new Map<string, LocationSettingsRow>();
-    if (settingsRows) {
-      for (const row of settingsRows) {
-        settingsMap.set(row.location_id, row);
-      }
-    }
-
-    return locations.map(location =>
-      formatLocation(location, settingsMap.get(location.id) || {})
-    );
-  }
-
   async getLocationById(locationId: string) {
     if (!locationId) {
       throw new Error('Location ID is required');
@@ -228,18 +197,44 @@ export class LocationService {
     );
   }
 
+  /**
+   * Resolve a tenant from a hostname slug (e.g. `app`, `gogolf`, `gltest1`).
+   *
+   * Two valid sources, checked in priority order:
+   *   1. `location_settings.custom_domain` — explicit override set during
+   *      business signup or via the settings page. Wins over slug because
+   *      it represents an intentional choice.
+   *   2. `locations.slug` — the canonical URL slug. Lets a tenant rename
+   *      their subdomain by editing one column (no settings dance).
+   *
+   * Returns the first match or null. Both lookups are indexed on a single
+   * column, so this is two cheap point-reads — no scan, no join, no list.
+   */
   async resolveBySubdomain(subdomain: string) {
-    const { data: settingsRow, error: settingsErr } = await supabase
+    // 1. Custom domain override
+    const { data: settingsRow } = await supabase
       .from('location_settings')
       .select('location_id')
       .eq('custom_domain', subdomain)
-      .single();
+      .maybeSingle();
 
-    if (settingsErr || !settingsRow) {
-      return null;
+    if (settingsRow?.location_id) {
+      return this.getLocationById(settingsRow.location_id);
     }
 
-    return this.getLocationById(settingsRow.location_id);
+    // 2. Canonical slug
+    const { data: locationRow } = await supabase
+      .from('locations')
+      .select('id')
+      .eq('slug', subdomain)
+      .is('deleted_at', null)
+      .maybeSingle();
+
+    if (locationRow?.id) {
+      return this.getLocationById(locationRow.id);
+    }
+
+    return null;
   }
 
   async isSubdomainAvailable(slug: string, excludeLocationId?: string): Promise<{ available: boolean; reason?: string }> {

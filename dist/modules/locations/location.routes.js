@@ -8,6 +8,8 @@ const controller = new location_controller_1.LocationController();
 // Subdomain resolution (public, must be before /:locationId)
 exports.locationRoutes.get('/resolve/:subdomain', controller.resolveSubdomain);
 exports.locationRoutes.get('/check-subdomain/:slug', controller.checkSubdomainAvailability);
-// Location routes
-exports.locationRoutes.get('/', controller.getAllLocations);
+// Single-location lookup. The list endpoint was removed: tenant resolution
+// happens via /resolve/:subdomain so the browser only ever sees its own
+// tenant's row. Listing every location was a data-leak surface with no
+// remaining caller.
 exports.locationRoutes.get('/:locationId', controller.getLocationById);

@@ -52,32 +52,6 @@ function formatLocation(location, settings) {
     };
 }
 class LocationService {
-    getAllLocations() {
-        return __awaiter(this, void 0, void 0, function* () {
-            const { data: locations, error } = yield database_1.supabase
-                .from('locations')
-                .select('id, name, slug, address, city, state, zip_code, phone, timezone, status, sales_tax_rate')
-                .eq('status', 'active')
-                .is('deleted_at', null)
-                .order('name', { ascending: true });
-            if (error) {
-                logger_1.logger.error({ err: error }, 'Error fetching locations');
-                throw new Error('Failed to fetch locations');
-            }
-            const locationIds = locations.map(l => l.id);
-            const { data: settingsRows } = yield database_1.supabase
-                .from('location_settings')
-                .select('*')
-                .in('location_id', locationIds);
-            const settingsMap = new Map();
-            if (settingsRows) {
-                for (const row of settingsRows) {
-                    settingsMap.set(row.location_id, row);
-                }
-            }
-            return locations.map(location => formatLocation(location, settingsMap.get(location.id) || {}));
-        });
-    }
     getLocationById(locationId) {
         return __awaiter(this, void 0, void 0, function* () {
             if (!locationId) {
@@ -191,17 +165,41 @@ class LocationService {
             return locations.map(location => formatLocation(location, settingsMap.get(location.id) || {}));
         });
     }
+    /**
+     * Resolve a tenant from a hostname slug (e.g. `app`, `gogolf`, `gltest1`).
+     *
+     * Two valid sources, checked in priority order:
+     *   1. `location_settings.custom_domain` — explicit override set during
+     *      business signup or via the settings page. Wins over slug because
+     *      it represents an intentional choice.
+     *   2. `locations.slug` — the canonical URL slug. Lets a tenant rename
+     *      their subdomain by editing one column (no settings dance).
+     *
+     * Returns the first match or null. Both lookups are indexed on a single
+     * column, so this is two cheap point-reads — no scan, no join, no list.
+     */
     resolveBySubdomain(subdomain) {
         return __awaiter(this, void 0, void 0, function* () {
-            const { data: settingsRow, error: settingsErr } = yield database_1.supabase
+            // 1. Custom domain override
+            const { data: settingsRow } = yield database_1.supabase
                 .from('location_settings')
                 .select('location_id')
                 .eq('custom_domain', subdomain)
-                .single();
-            if (settingsErr || !settingsRow) {
-                return null;
+                .maybeSingle();
+            if (settingsRow === null || settingsRow === void 0 ? void 0 : settingsRow.location_id) {
+                return this.getLocationById(settingsRow.location_id);
             }
-            return this.getLocationById(settingsRow.location_id);
+            // 2. Canonical slug
+            const { data: locationRow } = yield database_1.supabase
+                .from('locations')
+                .select('id')
+                .eq('slug', subdomain)
+                .is('deleted_at', null)
+                .maybeSingle();
+            if (locationRow === null || locationRow === void 0 ? void 0 : locationRow.id) {
+                return this.getLocationById(locationRow.id);
+            }
+            return null;
         });
     }
     isSubdomainAvailable(slug, excludeLocationId) {

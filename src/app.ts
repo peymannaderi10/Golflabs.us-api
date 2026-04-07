@@ -46,18 +46,23 @@ const STATIC_ORIGINS = [
 function isAllowedOrigin(origin: string | undefined): boolean {
   if (!origin) return true;
   if (STATIC_ORIGINS.includes(origin)) return true;
-  if (/^https:\/\/[a-z0-9-]+\.golflabs\.us$/.test(origin)) return true;
+  // Any depth of golflabs.us subdomain (tenant subdomains, preview URLs,
+  // business.golflabs.us, etc.)
+  if (/^https:\/\/([a-z0-9-]+\.)+golflabs\.us$/.test(origin)) return true;
   return false;
+}
+
+function rejectCors(origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void): void {
+  logger.warn({ origin }, 'CORS rejected origin');
+  callback(new Error(`Not allowed by CORS: ${origin ?? 'unknown'}`));
 }
 
 const io = new Server(httpServer, {
   cors: {
     origin: (origin, callback) => {
-      if (isAllowedOrigin(origin as string | undefined)) {
-        callback(null, true);
-      } else {
-        callback(new Error('Not allowed by CORS'));
-      }
+      const o = origin as string | undefined;
+      if (isAllowedOrigin(o)) callback(null, true);
+      else rejectCors(o, callback);
     },
     methods: ["GET", "POST"]
   }
@@ -94,11 +99,8 @@ app.use(helmet({
 
 app.use(cors({
   origin: (origin, callback) => {
-    if (isAllowedOrigin(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
+    if (isAllowedOrigin(origin)) callback(null, true);
+    else rejectCors(origin, callback);
   },
   credentials: true,
 }));

@@ -10,16 +10,6 @@ export class LocationController {
     this.locationService = new LocationService();
   }
 
-  getAllLocations = async (req: Request, res: Response) => {
-    try {
-      const locations = await this.locationService.getAllLocations();
-      res.json(locations);
-    } catch (error: any) {
-      logger.error({ err: error }, 'Error in /locations endpoint');
-      res.status(500).json({ error: 'An unexpected error occurred' });
-    }
-  };
-
   getLocationById = async (req: Request, res: Response) => {
     try {
       const { locationId } = req.params;

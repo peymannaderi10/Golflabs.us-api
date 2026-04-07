@@ -9,6 +9,8 @@ const controller = new LocationController();
 locationRoutes.get('/resolve/:subdomain', controller.resolveSubdomain);
 locationRoutes.get('/check-subdomain/:slug', controller.checkSubdomainAvailability);
 
-// Location routes
-locationRoutes.get('/', controller.getAllLocations);
-locationRoutes.get('/:locationId', controller.getLocationById); 
+// Single-location lookup. The list endpoint was removed: tenant resolution
+// happens via /resolve/:subdomain so the browser only ever sees its own
+// tenant's row. Listing every location was a data-leak surface with no
+// remaining caller.
+locationRoutes.get('/:locationId', controller.getLocationById);
