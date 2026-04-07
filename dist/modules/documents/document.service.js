@@ -423,30 +423,41 @@ class DocumentService {
                 logger_1.logger.error({ err: error, locationId }, 'Error fetching active documents');
                 throw new Error('Failed to fetch active documents');
             }
-            if (!data || data.length === 0) {
-                return null;
-            }
             const customDocs = new Map();
-            for (const row of data) {
-                customDocs.set(row.document_type, row);
-            }
-            // All 3 document types must exist
-            for (const docType of document_types_1.VALID_DOCUMENT_TYPES) {
-                if (!customDocs.has(docType)) {
-                    logger_1.logger.warn({ locationId, missingType: docType }, 'Location is missing a required document type');
-                    return null;
+            if (data) {
+                for (const row of data) {
+                    customDocs.set(row.document_type, row);
                 }
             }
+            // Always return all three types. Missing types fall back to empty
+            // placeholders so the admin UI can show a blank editor ready for a
+            // first version, and customer-facing pages never 404.
+            const placeholderTitles = {
+                terms_of_service: 'Terms of Service',
+                privacy_policy: 'Privacy Policy',
+                liability_waiver: 'Liability Waiver',
+            };
             const result = {};
             for (const docType of document_types_1.VALID_DOCUMENT_TYPES) {
                 const doc = customDocs.get(docType);
-                result[docType] = {
-                    title: doc.title,
-                    content: doc.content,
-                    contentHash: doc.content_hash,
-                    version: doc.version,
-                    isDefault: false,
-                };
+                if (doc) {
+                    result[docType] = {
+                        title: doc.title,
+                        content: doc.content,
+                        contentHash: doc.content_hash,
+                        version: doc.version,
+                        isDefault: false,
+                    };
+                }
+                else {
+                    result[docType] = {
+                        title: placeholderTitles[docType],
+                        content: '',
+                        contentHash: '',
+                        version: 0,
+                        isDefault: true,
+                    };
+                }
             }
             return result;
         });

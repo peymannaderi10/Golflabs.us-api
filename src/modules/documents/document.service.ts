@@ -411,7 +411,7 @@ function hashContent(content: string): string {
 }
 
 export class DocumentService {
-  async getActiveDocuments(locationId: string): Promise<ActiveDocumentSet | null> {
+  async getActiveDocuments(locationId: string): Promise<ActiveDocumentSet> {
     const { data, error } = await supabase
       .from('location_documents')
       .select('id, location_id, document_type, version, title, content, content_hash, is_active, published_by, created_at')
@@ -424,33 +424,42 @@ export class DocumentService {
       throw new Error('Failed to fetch active documents');
     }
 
-    if (!data || data.length === 0) {
-      return null;
-    }
-
     const customDocs = new Map<DocumentType, LocationDocument>();
-    for (const row of data as LocationDocument[]) {
-      customDocs.set(row.document_type, row);
-    }
-
-    // All 3 document types must exist
-    for (const docType of VALID_DOCUMENT_TYPES) {
-      if (!customDocs.has(docType)) {
-        logger.warn({ locationId, missingType: docType }, 'Location is missing a required document type');
-        return null;
+    if (data) {
+      for (const row of data as LocationDocument[]) {
+        customDocs.set(row.document_type, row);
       }
     }
 
+    // Always return all three types. Missing types fall back to empty
+    // placeholders so the admin UI can show a blank editor ready for a
+    // first version, and customer-facing pages never 404.
+    const placeholderTitles: Record<DocumentType, string> = {
+      terms_of_service: 'Terms of Service',
+      privacy_policy: 'Privacy Policy',
+      liability_waiver: 'Liability Waiver',
+    };
+
     const result = {} as ActiveDocumentSet;
     for (const docType of VALID_DOCUMENT_TYPES) {
-      const doc = customDocs.get(docType)!;
-      result[docType] = {
-        title: doc.title,
-        content: doc.content,
-        contentHash: doc.content_hash,
-        version: doc.version,
-        isDefault: false,
-      };
+      const doc = customDocs.get(docType);
+      if (doc) {
+        result[docType] = {
+          title: doc.title,
+          content: doc.content,
+          contentHash: doc.content_hash,
+          version: doc.version,
+          isDefault: false,
+        };
+      } else {
+        result[docType] = {
+          title: placeholderTitles[docType],
+          content: '',
+          contentHash: '',
+          version: 0,
+          isDefault: true,
+        };
+      }
     }
 
     return result;

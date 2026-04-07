@@ -14,11 +14,6 @@ class DocumentController {
       }
 
       const documents = await documentService.getActiveDocuments(locationId);
-
-      if (!documents) {
-        return res.status(404).json({ success: false, error: 'Policies not found for this location. Please contact the facility administrator.' });
-      }
-
       res.json({ success: true, data: documents });
     } catch (error: unknown) {
       logger.error({ err: error }, 'Error fetching active documents');

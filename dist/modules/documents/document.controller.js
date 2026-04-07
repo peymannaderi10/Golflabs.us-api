@@ -22,9 +22,6 @@ class DocumentController {
                     return res.status(400).json({ error: 'locationId is required' });
                 }
                 const documents = yield document_service_1.documentService.getActiveDocuments(locationId);
-                if (!documents) {
-                    return res.status(404).json({ success: false, error: 'Policies not found for this location. Please contact the facility administrator.' });
-                }
                 res.json({ success: true, data: documents });
             }
             catch (error) {
