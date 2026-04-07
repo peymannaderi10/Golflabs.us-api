@@ -555,12 +555,14 @@ export class BookingService {
 
   async getBookingDiscountInfo(
     userId: string,
+    locationId: string,
     bookingMinutes: number,
     originalAmount: number,
     hourlyRate?: number
   ) {
     return promotionService.calculateDiscountSimple(
       userId,
+      locationId,
       bookingMinutes,
       originalAmount,
       hourlyRate

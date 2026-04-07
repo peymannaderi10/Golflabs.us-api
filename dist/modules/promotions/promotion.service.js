@@ -18,18 +18,24 @@ class PromotionService {
     /**
      * Get all available promotions for a user (unredeemed)
      */
-    getUserAvailablePromotions(userId) {
+    getUserAvailablePromotions(userId, locationId) {
         return __awaiter(this, void 0, void 0, function* () {
             if (!userId) {
                 throw new Error('User ID is required');
             }
+            if (!locationId) {
+                throw new Error('Location ID is required');
+            }
+            // `!inner` makes `promotion.location_id` filterable at the DB level so
+            // tenants don't see each other's promotions.
             const { data, error } = yield database_1.supabase
                 .from('user_promotions')
                 .select(`
         *,
-        promotion:promotions(*)
+        promotion:promotions!inner(*)
       `)
                 .eq('user_id', userId)
+                .eq('promotion.location_id', locationId)
                 .is('redeemed_at', null)
                 .order('created_at', { ascending: false });
             if (error) {
@@ -42,6 +48,8 @@ class PromotionService {
                 const promo = up.promotion;
                 if (!promo || !promo.is_active)
                     return false;
+                if (promo.location_id !== locationId)
+                    return false; // belt-and-suspenders
                 if (promo.valid_from && promo.valid_from > now)
                     return false;
                 if (promo.valid_to && promo.valid_to < now)
@@ -54,20 +62,23 @@ class PromotionService {
         });
     }
     /**
-     * Check if a user has the first booking free promotion available
+     * Check if a user has the first booking free promotion available at a
+     * specific location. Scoped per-location — a promo seeded at Location A
+     * must NOT surface for a booking at Location B.
      */
-    hasFirstBookingPromo(userId) {
+    hasFirstBookingPromo(userId, locationId) {
         return __awaiter(this, void 0, void 0, function* () {
-            if (!userId) {
+            if (!userId || !locationId) {
                 return { available: false };
             }
             const { data, error } = yield database_1.supabase
                 .from('user_promotions')
                 .select(`
         *,
-        promotion:promotions(*)
+        promotion:promotions!inner(*)
       `)
                 .eq('user_id', userId)
+                .eq('promotion.location_id', locationId)
                 .is('redeemed_at', null)
                 .limit(1);
             if (error || !data || data.length === 0) {
@@ -75,9 +86,11 @@ class PromotionService {
             }
             const userPromo = data[0];
             const promo = userPromo.promotion;
-            // Validate the promotion is still valid
+            // Validate the promotion is still valid and location-scoped
             const now = new Date().toISOString();
             if (!promo || !promo.is_active)
+                return { available: false };
+            if (promo.location_id !== locationId)
                 return { available: false };
             if (promo.valid_from && promo.valid_from > now)
                 return { available: false };
@@ -156,10 +169,10 @@ class PromotionService {
      * Calculate discount without using the database function (for when user isn't in DB yet)
      * This is a simpler version that assumes the first-booking-free promotion
      */
-    calculateDiscountSimple(userId_1, bookingMinutes_1, originalAmount_1) {
-        return __awaiter(this, arguments, void 0, function* (userId, bookingMinutes, originalAmount, hourlyRate = 60) {
-            // Check if user has an available promotion
-            const { available, promotion } = yield this.hasFirstBookingPromo(userId);
+    calculateDiscountSimple(userId_1, locationId_1, bookingMinutes_1, originalAmount_1) {
+        return __awaiter(this, arguments, void 0, function* (userId, locationId, bookingMinutes, originalAmount, hourlyRate = 60) {
+            // Check if user has an available promotion AT THIS LOCATION
+            const { available, promotion } = yield this.hasFirstBookingPromo(userId, locationId);
             if (!available || !promotion) {
                 return {
                     promotionId: null,
@@ -212,8 +225,8 @@ class PromotionService {
     calculateDiscountWithPricing(request) {
         return __awaiter(this, void 0, void 0, function* () {
             const { userId, locationId, date, startTime, endTime, originalAmount } = request;
-            // Check if user has an available promotion
-            const { available, promotion } = yield this.hasFirstBookingPromo(userId);
+            // Check if user has an available promotion scoped to THIS location
+            const { available, promotion } = yield this.hasFirstBookingPromo(userId, locationId);
             if (!available || !promotion) {
                 return {
                     promotionId: null,
@@ -244,7 +257,7 @@ class PromotionService {
                 // For non-free_minutes promotions, use simple calculation
                 if (promotion.discount_type !== 'free_minutes') {
                     const bookingMinutes = Math.round((new Date(endTimeISO).getTime() - new Date(startTimeISO).getTime()) / 60000);
-                    return this.calculateDiscountSimple(userId, bookingMinutes, originalAmount);
+                    return this.calculateDiscountSimple(userId, locationId, bookingMinutes, originalAmount);
                 }
                 // Use shared pricing context for user-type-aware discount calculation
                 let ctx;
@@ -381,14 +394,18 @@ class PromotionService {
     /**
      * Get promotion by code (for manual entry)
      */
-    getPromotionByCode(code) {
+    getPromotionByCode(code, locationId) {
         return __awaiter(this, void 0, void 0, function* () {
-            if (!code) {
+            if (!code || !locationId) {
                 return null;
             }
+            // Codes are unique PER LOCATION (see createPromotion), so the lookup
+            // must be location-scoped or a shared code (e.g. "WELCOME15") would
+            // leak across tenants.
             const { data, error } = yield database_1.supabase
                 .from('promotions')
                 .select('*')
+                .eq('location_id', locationId)
                 .ilike('code', code.trim()) // Case-insensitive match
                 .eq('is_active', true)
                 .single();

@@ -487,9 +487,9 @@ class BookingService {
             }
         });
     }
-    getBookingDiscountInfo(userId, bookingMinutes, originalAmount, hourlyRate) {
+    getBookingDiscountInfo(userId, locationId, bookingMinutes, originalAmount, hourlyRate) {
         return __awaiter(this, void 0, void 0, function* () {
-            return promotion_service_1.promotionService.calculateDiscountSimple(userId, bookingMinutes, originalAmount, hourlyRate);
+            return promotion_service_1.promotionService.calculateDiscountSimple(userId, locationId, bookingMinutes, originalAmount, hourlyRate);
         });
     }
     // =====================================================

@@ -18,18 +18,24 @@ export class PromotionService {
   /**
    * Get all available promotions for a user (unredeemed)
    */
-  async getUserAvailablePromotions(userId: string): Promise<UserPromotion[]> {
+  async getUserAvailablePromotions(userId: string, locationId: string): Promise<UserPromotion[]> {
     if (!userId) {
       throw new Error('User ID is required');
     }
+    if (!locationId) {
+      throw new Error('Location ID is required');
+    }
 
+    // `!inner` makes `promotion.location_id` filterable at the DB level so
+    // tenants don't see each other's promotions.
     const { data, error } = await supabase
       .from('user_promotions')
       .select(`
         *,
-        promotion:promotions(*)
+        promotion:promotions!inner(*)
       `)
       .eq('user_id', userId)
+      .eq('promotion.location_id', locationId)
       .is('redeemed_at', null)
       .order('created_at', { ascending: false });
 
@@ -43,6 +49,7 @@ export class PromotionService {
     const validPromotions = (data || []).filter((up: any) => {
       const promo = up.promotion;
       if (!promo || !promo.is_active) return false;
+      if (promo.location_id !== locationId) return false; // belt-and-suspenders
       if (promo.valid_from && promo.valid_from > now) return false;
       if (promo.valid_to && promo.valid_to < now) return false;
       if (up.expires_at && up.expires_at < now) return false;
@@ -53,10 +60,12 @@ export class PromotionService {
   }
 
   /**
-   * Check if a user has the first booking free promotion available
+   * Check if a user has the first booking free promotion available at a
+   * specific location. Scoped per-location — a promo seeded at Location A
+   * must NOT surface for a booking at Location B.
    */
-  async hasFirstBookingPromo(userId: string): Promise<{ available: boolean; promotion?: Promotion }> {
-    if (!userId) {
+  async hasFirstBookingPromo(userId: string, locationId: string): Promise<{ available: boolean; promotion?: Promotion }> {
+    if (!userId || !locationId) {
       return { available: false };
     }
 
@@ -64,9 +73,10 @@ export class PromotionService {
       .from('user_promotions')
       .select(`
         *,
-        promotion:promotions(*)
+        promotion:promotions!inner(*)
       `)
       .eq('user_id', userId)
+      .eq('promotion.location_id', locationId)
       .is('redeemed_at', null)
       .limit(1);
 
@@ -77,16 +87,17 @@ export class PromotionService {
     const userPromo = data[0] as any;
     const promo = userPromo.promotion;
 
-    // Validate the promotion is still valid
+    // Validate the promotion is still valid and location-scoped
     const now = new Date().toISOString();
     if (!promo || !promo.is_active) return { available: false };
+    if (promo.location_id !== locationId) return { available: false };
     if (promo.valid_from && promo.valid_from > now) return { available: false };
     if (promo.valid_to && promo.valid_to < now) return { available: false };
     if (userPromo.expires_at && userPromo.expires_at < now) return { available: false };
 
-    return { 
-      available: true, 
-      promotion: promo 
+    return {
+      available: true,
+      promotion: promo
     };
   }
 
@@ -161,13 +172,14 @@ export class PromotionService {
    * This is a simpler version that assumes the first-booking-free promotion
    */
   async calculateDiscountSimple(
-    userId: string, 
-    bookingMinutes: number, 
+    userId: string,
+    locationId: string,
+    bookingMinutes: number,
     originalAmount: number,
     hourlyRate: number = 60
   ): Promise<CalculatedDiscount> {
-    // Check if user has an available promotion
-    const { available, promotion } = await this.hasFirstBookingPromo(userId);
+    // Check if user has an available promotion AT THIS LOCATION
+    const { available, promotion } = await this.hasFirstBookingPromo(userId, locationId);
 
     if (!available || !promotion) {
       return {
@@ -231,8 +243,8 @@ export class PromotionService {
   async calculateDiscountWithPricing(request: CheckDiscountWithTimesRequest): Promise<CalculatedDiscount> {
     const { userId, locationId, date, startTime, endTime, originalAmount } = request;
 
-    // Check if user has an available promotion
-    const { available, promotion } = await this.hasFirstBookingPromo(userId);
+    // Check if user has an available promotion scoped to THIS location
+    const { available, promotion } = await this.hasFirstBookingPromo(userId, locationId);
 
     if (!available || !promotion) {
       return {
@@ -269,7 +281,7 @@ export class PromotionService {
       // For non-free_minutes promotions, use simple calculation
       if (promotion.discount_type !== 'free_minutes') {
         const bookingMinutes = Math.round((new Date(endTimeISO).getTime() - new Date(startTimeISO).getTime()) / 60000);
-        return this.calculateDiscountSimple(userId, bookingMinutes, originalAmount);
+        return this.calculateDiscountSimple(userId, locationId, bookingMinutes, originalAmount);
       }
 
       // Use shared pricing context for user-type-aware discount calculation
@@ -436,14 +448,18 @@ export class PromotionService {
   /**
    * Get promotion by code (for manual entry)
    */
-  async getPromotionByCode(code: string): Promise<Promotion | null> {
-    if (!code) {
+  async getPromotionByCode(code: string, locationId: string): Promise<Promotion | null> {
+    if (!code || !locationId) {
       return null;
     }
 
+    // Codes are unique PER LOCATION (see createPromotion), so the lookup
+    // must be location-scoped or a shared code (e.g. "WELCOME15") would
+    // leak across tenants.
     const { data, error } = await supabase
       .from('promotions')
       .select('*')
+      .eq('location_id', locationId)
       .ilike('code', code.trim())  // Case-insensitive match
       .eq('is_active', true)
       .single();

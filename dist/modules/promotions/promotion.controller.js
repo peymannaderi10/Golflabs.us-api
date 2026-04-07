@@ -19,14 +19,18 @@ class PromotionController {
      */
     getUserPromotions(req, res) {
         return __awaiter(this, void 0, void 0, function* () {
-            var _a;
+            var _a, _b;
             try {
                 const authenticatedUserId = (_a = req.user) === null || _a === void 0 ? void 0 : _a.id;
                 const { userId } = req.params;
+                const locationId = (_b = req.query.locationId) === null || _b === void 0 ? void 0 : _b.trim();
                 if (authenticatedUserId !== userId) {
                     return res.status(403).json({ error: 'Access denied' });
                 }
-                const promotions = yield promotion_service_1.promotionService.getUserAvailablePromotions(userId);
+                if (!locationId) {
+                    return res.status(400).json({ error: 'locationId query param is required' });
+                }
+                const promotions = yield promotion_service_1.promotionService.getUserAvailablePromotions(userId, locationId);
                 return res.json({ promotions });
             }
             catch (error) {
@@ -43,14 +47,18 @@ class PromotionController {
      */
     checkFirstBookingPromo(req, res) {
         return __awaiter(this, void 0, void 0, function* () {
-            var _a;
+            var _a, _b;
             try {
                 const authenticatedUserId = (_a = req.user) === null || _a === void 0 ? void 0 : _a.id;
                 const { userId } = req.params;
+                const locationId = (_b = req.query.locationId) === null || _b === void 0 ? void 0 : _b.trim();
                 if (authenticatedUserId !== userId) {
                     return res.status(403).json({ error: 'Access denied' });
                 }
-                const result = yield promotion_service_1.promotionService.hasFirstBookingPromo(userId);
+                if (!locationId) {
+                    return res.status(400).json({ error: 'locationId query param is required' });
+                }
+                const result = yield promotion_service_1.promotionService.hasFirstBookingPromo(userId, locationId);
                 return res.json(result);
             }
             catch (error) {
@@ -138,12 +146,15 @@ class PromotionController {
         return __awaiter(this, void 0, void 0, function* () {
             try {
                 const userId = req.user.id;
-                const { code } = req.body;
+                const { code, locationId } = req.body;
                 if (!code) {
                     return res.status(400).json({ error: 'code is required' });
                 }
-                // Find the promotion by code
-                const promotion = yield promotion_service_1.promotionService.getPromotionByCode(code);
+                if (!locationId) {
+                    return res.status(400).json({ error: 'locationId is required' });
+                }
+                // Find the promotion by code (scoped to the location being booked)
+                const promotion = yield promotion_service_1.promotionService.getPromotionByCode(code, locationId);
                 if (!promotion) {
                     return res.status(404).json({ error: 'Invalid or expired promotion code' });
                 }
@@ -186,8 +197,8 @@ class PromotionController {
                         error: 'locationId, date, startTime, endTime, and originalAmount are required'
                     });
                 }
-                // Find the promotion by code
-                const promotion = yield promotion_service_1.promotionService.getPromotionByCode(code);
+                // Find the promotion by code (location-scoped — codes are unique per tenant)
+                const promotion = yield promotion_service_1.promotionService.getPromotionByCode(code, locationId);
                 if (!promotion) {
                     return res.status(404).json({ error: 'Invalid or expired promo code' });
                 }

@@ -126,12 +126,16 @@ export class PaymentService {
     let serverDiscountAmount = 0;
     if (promotionInfo?.promotionId) {
       try {
-        // First check if user has this promo pre-assigned (first-booking flow)
+        // First check if user has this promo pre-assigned (first-booking flow).
+        // `!inner` + `.eq('promotions.location_id', booking.location_id)` pushes
+        // the tenant check to the DB — a client can't redeem another tenant's
+        // promo by forging the promotionId.
         const { data: userPromo } = await supabase
           .from('user_promotions')
-          .select('id, promotion_id, redeemed_at, promotions(*)')
+          .select('id, promotion_id, redeemed_at, promotions!inner(*)')
           .eq('user_id', booking.user_id)
           .eq('promotion_id', promotionInfo.promotionId)
+          .eq('promotions.location_id', booking.location_id)
           .is('redeemed_at', null)
           .maybeSingle();
 
@@ -141,11 +145,13 @@ export class PaymentService {
           // Promotion was pre-assigned to the user (e.g. first-booking promo)
           promo = userPromo.promotions;
         } else {
-          // Promotion applied via code at checkout — look up directly and verify it's active
+          // Promotion applied via code at checkout — look up directly and
+          // verify it's active AND belongs to this booking's location.
           const { data: directPromo } = await supabase
             .from('promotions')
             .select('*')
             .eq('id', promotionInfo.promotionId)
+            .eq('location_id', booking.location_id)
             .eq('is_active', true)
             .single();
 

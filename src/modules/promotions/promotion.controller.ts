@@ -12,12 +12,16 @@ export class PromotionController {
     try {
       const authenticatedUserId = (req as AuthenticatedRequest).user?.id;
       const { userId } = req.params;
+      const locationId = (req.query.locationId as string | undefined)?.trim();
 
       if (authenticatedUserId !== userId) {
         return res.status(403).json({ error: 'Access denied' });
       }
+      if (!locationId) {
+        return res.status(400).json({ error: 'locationId query param is required' });
+      }
 
-      const promotions = await promotionService.getUserAvailablePromotions(userId);
+      const promotions = await promotionService.getUserAvailablePromotions(userId, locationId);
       return res.json({ promotions });
     } catch (error) {
       logger.error({ err: error }, 'Error getting user promotions');
@@ -35,12 +39,16 @@ export class PromotionController {
     try {
       const authenticatedUserId = (req as AuthenticatedRequest).user?.id;
       const { userId } = req.params;
+      const locationId = (req.query.locationId as string | undefined)?.trim();
 
       if (authenticatedUserId !== userId) {
         return res.status(403).json({ error: 'Access denied' });
       }
+      if (!locationId) {
+        return res.status(400).json({ error: 'locationId query param is required' });
+      }
 
-      const result = await promotionService.hasFirstBookingPromo(userId);
+      const result = await promotionService.hasFirstBookingPromo(userId, locationId);
       return res.json(result);
     } catch (error) {
       logger.error({ err: error }, 'Error checking first booking promo');
@@ -129,14 +137,17 @@ export class PromotionController {
   async redeemCode(req: Request, res: Response) {
     try {
       const userId = (req as AuthenticatedRequest).user!.id;
-      const { code } = req.body;
+      const { code, locationId } = req.body;
 
       if (!code) {
         return res.status(400).json({ error: 'code is required' });
       }
+      if (!locationId) {
+        return res.status(400).json({ error: 'locationId is required' });
+      }
 
-      // Find the promotion by code
-      const promotion = await promotionService.getPromotionByCode(code);
+      // Find the promotion by code (scoped to the location being booked)
+      const promotion = await promotionService.getPromotionByCode(code, locationId);
 
       if (!promotion) {
         return res.status(404).json({ error: 'Invalid or expired promotion code' });
@@ -182,8 +193,8 @@ export class PromotionController {
         });
       }
 
-      // Find the promotion by code
-      const promotion = await promotionService.getPromotionByCode(code);
+      // Find the promotion by code (location-scoped — codes are unique per tenant)
+      const promotion = await promotionService.getPromotionByCode(code, locationId);
 
       if (!promotion) {
         return res.status(404).json({ error: 'Invalid or expired promo code' });
