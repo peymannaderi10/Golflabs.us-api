@@ -4,7 +4,7 @@ import { BusinessService, BusinessSignupError } from './business.service';
 import {
   startSignupSchema,
   verifySignupSchema,
-  locationInputSchema,
+  additionalLocationInputSchema,
 } from './business.types';
 import { AuthenticatedRequest } from '../auth/auth.middleware';
 import { logger } from '../../shared/utils/logger';
@@ -62,7 +62,7 @@ export class BusinessController {
           .json({ success: false, error: 'Only owners or admins can create locations' });
       }
 
-      const parsed = locationInputSchema.parse(req.body);
+      const parsed = additionalLocationInputSchema.parse(req.body);
       const result = await this.service.createLocation(
         employee.clientId,
         employee.id,

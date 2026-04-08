@@ -78,6 +78,12 @@ function mapRpcError(error) {
     if (msg.includes('forbidden_caller_role')) {
         return new BusinessSignupError('Insufficient permissions', 403);
     }
+    if (msg.includes('free_tier_location_limit_reached')) {
+        return new BusinessSignupError('Your free plan is limited to 1 location. Upgrade to add more.', 402);
+    }
+    if (msg.includes('free_tier_space_limit_reached')) {
+        return new BusinessSignupError('Your free plan is limited to 4 spaces per location. Upgrade to add more.', 402);
+    }
     return new BusinessSignupError('Failed to create business', 500);
 }
 function renderOtpEmail(otp, businessName) {
@@ -248,16 +254,15 @@ class BusinessService {
     createLocation(clientId, callerUserId, callerRole, location) {
         return __awaiter(this, void 0, void 0, function* () {
             var _a, _b, _c;
-            if ((0, reserved_slugs_1.isReservedSlug)(location.slug)) {
-                throw new BusinessSignupError('This URL is reserved', 409);
-            }
-            yield this.preflightAvailability(undefined, location.slug);
+            // No slug preflight: sibling locations share the parent client's
+            // subdomain, and the create_client_location RPC auto-generates a unique
+            // locations.slug from the name.
             const { data, error } = yield database_1.supabase.rpc('create_client_location', {
                 p_client_id: clientId,
                 p_user_id: callerUserId,
                 p_caller_role: callerRole,
                 p_location_name: location.name,
-                p_location_slug: location.slug,
+                p_location_slug: '',
                 p_location_address: location.address,
                 p_location_city: location.city,
                 p_location_state: location.state,

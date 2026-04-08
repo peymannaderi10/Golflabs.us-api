@@ -59,6 +59,8 @@ function formatLocation(location: any, settings: Partial<LocationSettingsRow>) {
     timezone: location.timezone,
     status: location.status,
     salesTaxRate: parseFloat(location.sales_tax_rate) || 0,
+    clientId: location.client_id ?? null,
+    plan: location.clients?.plan ?? null,
     settings: formatSettings(settings),
   };
 }
@@ -71,7 +73,7 @@ export class LocationService {
 
     const { data, error } = await supabase
       .from('locations')
-      .select('id, name, slug, address, city, state, zip_code, phone, timezone, status, sales_tax_rate')
+      .select('id, name, slug, address, city, state, zip_code, phone, timezone, status, sales_tax_rate, client_id, clients(plan)')
       .eq('id', locationId)
       .eq('status', 'active')
       .is('deleted_at', null)
@@ -164,12 +166,47 @@ export class LocationService {
     return VALID_DOOR_LOCK_TYPES.includes(value as DoorLockType);
   }
 
+  /**
+   * All active sibling locations under a given client. Used by the public
+   * subdomain resolver so customers on a multi-location tenant can switch
+   * between sibling locations from the booking page.
+   */
+  async getLocationsByClient(clientId: string) {
+    const { data: locations, error } = await supabase
+      .from('locations')
+      .select('id, name, slug, address, city, state, zip_code, phone, timezone, status, sales_tax_rate, client_id, clients(plan)')
+      .eq('client_id', clientId)
+      .eq('status', 'active')
+      .is('deleted_at', null)
+      .order('name', { ascending: true });
+
+    if (error) {
+      logger.error({ err: error, clientId }, 'Error fetching client locations');
+      return [];
+    }
+
+    const ids = locations.map(l => l.id);
+    const { data: settingsRows } = await supabase
+      .from('location_settings')
+      .select('*')
+      .in('location_id', ids);
+
+    const settingsMap = new Map<string, LocationSettingsRow>();
+    if (settingsRows) {
+      for (const row of settingsRows) {
+        settingsMap.set(row.location_id, row);
+      }
+    }
+
+    return locations.map(l => formatLocation(l, settingsMap.get(l.id) || {}));
+  }
+
   async getAccessibleLocations(locationIds: string[]) {
     if (locationIds.length === 0) return [];
 
     const { data: locations, error } = await supabase
       .from('locations')
-      .select('id, name, slug, address, city, state, zip_code, phone, timezone, status, sales_tax_rate')
+      .select('id, name, slug, address, city, state, zip_code, phone, timezone, status, sales_tax_rate, client_id, clients(plan)')
       .in('id', locationIds)
       .eq('status', 'active')
       .is('deleted_at', null)

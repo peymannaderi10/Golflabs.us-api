@@ -26,6 +26,7 @@ class SpaceService {
     }
     createSpace(locationId, name, spaceNumber, equipment) {
         return __awaiter(this, void 0, void 0, function* () {
+            var _a;
             if (!locationId || !name || spaceNumber === undefined) {
                 throw new Error('Location ID, name, and space number are required');
             }
@@ -53,6 +54,11 @@ class SpaceService {
                 .single();
             if (error) {
                 logger_1.logger.error({ err: error }, 'Error creating space');
+                if ((_a = error.message) === null || _a === void 0 ? void 0 : _a.includes('free_tier_space_limit_reached')) {
+                    const err = new Error('Your free plan is limited to 4 spaces per location. Upgrade to add more.');
+                    err.statusCode = 402;
+                    throw err;
+                }
                 throw new Error('Failed to create space');
             }
             return data;

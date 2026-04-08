@@ -40,7 +40,8 @@ export class SpaceController {
 
       res.status(201).json(space);
     } catch (error: any) {
-      res.status(500).json({ error: sanitizeError(error) });
+      const status = typeof error?.statusCode === 'number' ? error.statusCode : 500;
+      res.status(status).json({ error: sanitizeError(error), message: error?.message });
     }
   };
 

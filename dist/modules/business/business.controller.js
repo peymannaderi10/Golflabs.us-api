@@ -61,7 +61,7 @@ class BusinessController {
                         .status(403)
                         .json({ success: false, error: 'Only owners or admins can create locations' });
                 }
-                const parsed = business_types_1.locationInputSchema.parse(req.body);
+                const parsed = business_types_1.additionalLocationInputSchema.parse(req.body);
                 const result = yield this.service.createLocation(employee.clientId, employee.id, employee.clientRole, parsed);
                 res.status(201).json({ success: true, data: result });
             }

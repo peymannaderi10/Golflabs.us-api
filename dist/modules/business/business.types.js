@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.verifySignupSchema = exports.startSignupSchema = exports.locationInputSchema = void 0;
+exports.verifySignupSchema = exports.startSignupSchema = exports.additionalLocationInputSchema = exports.locationInputSchema = void 0;
 const zod_1 = require("zod");
 const slugSchema = zod_1.z
     .string()
@@ -31,6 +31,23 @@ const phoneSchema = zod_1.z
 exports.locationInputSchema = zod_1.z.object({
     name: zod_1.z.string().trim().min(2).max(120),
     slug: slugSchema,
+    address: zod_1.z.string().trim().min(3).max(255),
+    city: zod_1.z.string().trim().min(2).max(100),
+    state: usStateSchema,
+    zipCode: zipSchema,
+    phone: phoneSchema.optional().or(zod_1.z.literal('')),
+    timezone: zod_1.z.string().trim().max(64).optional(),
+    salesTaxRate: zod_1.z
+        .number()
+        .min(0, 'Sales tax must be >= 0')
+        .max(0.5, 'Sales tax must be <= 50%')
+        .optional(),
+});
+// Sibling locations under an existing client share the parent's subdomain,
+// so the slug field is omitted (the create_client_location RPC auto-generates
+// a unique locations.slug from the name).
+exports.additionalLocationInputSchema = zod_1.z.object({
+    name: zod_1.z.string().trim().min(2).max(120),
     address: zod_1.z.string().trim().min(3).max(255),
     city: zod_1.z.string().trim().min(2).max(100),
     state: usStateSchema,

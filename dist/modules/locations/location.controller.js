@@ -65,7 +65,13 @@ class LocationController {
                 if (!location) {
                     return res.status(404).json({ error: 'Location not found for this subdomain' });
                 }
-                res.json(location);
+                // Include all sibling locations under the same client so customers
+                // on multi-location tenants can switch between them from the booking
+                // page. Falls back to a single-element array if no clientId is set.
+                const siblings = location.clientId
+                    ? yield this.locationService.getLocationsByClient(location.clientId)
+                    : [location];
+                res.json(Object.assign(Object.assign({}, location), { siblings }));
             }
             catch (error) {
                 logger_1.logger.error({ err: error, subdomain: req.params.subdomain }, 'Error resolving subdomain');

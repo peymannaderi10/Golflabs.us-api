@@ -36,6 +36,7 @@ function formatSettings(ls) {
     };
 }
 function formatLocation(location, settings) {
+    var _a, _b, _c;
     return {
         id: location.id,
         name: location.name,
@@ -48,6 +49,8 @@ function formatLocation(location, settings) {
         timezone: location.timezone,
         status: location.status,
         salesTaxRate: parseFloat(location.sales_tax_rate) || 0,
+        clientId: (_a = location.client_id) !== null && _a !== void 0 ? _a : null,
+        plan: (_c = (_b = location.clients) === null || _b === void 0 ? void 0 : _b.plan) !== null && _c !== void 0 ? _c : null,
         settings: formatSettings(settings),
     };
 }
@@ -59,7 +62,7 @@ class LocationService {
             }
             const { data, error } = yield database_1.supabase
                 .from('locations')
-                .select('id, name, slug, address, city, state, zip_code, phone, timezone, status, sales_tax_rate')
+                .select('id, name, slug, address, city, state, zip_code, phone, timezone, status, sales_tax_rate, client_id, clients(plan)')
                 .eq('id', locationId)
                 .eq('status', 'active')
                 .is('deleted_at', null)
@@ -137,13 +140,45 @@ class LocationService {
     static isValidDoorLockType(value) {
         return VALID_DOOR_LOCK_TYPES.includes(value);
     }
+    /**
+     * All active sibling locations under a given client. Used by the public
+     * subdomain resolver so customers on a multi-location tenant can switch
+     * between sibling locations from the booking page.
+     */
+    getLocationsByClient(clientId) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const { data: locations, error } = yield database_1.supabase
+                .from('locations')
+                .select('id, name, slug, address, city, state, zip_code, phone, timezone, status, sales_tax_rate, client_id, clients(plan)')
+                .eq('client_id', clientId)
+                .eq('status', 'active')
+                .is('deleted_at', null)
+                .order('name', { ascending: true });
+            if (error) {
+                logger_1.logger.error({ err: error, clientId }, 'Error fetching client locations');
+                return [];
+            }
+            const ids = locations.map(l => l.id);
+            const { data: settingsRows } = yield database_1.supabase
+                .from('location_settings')
+                .select('*')
+                .in('location_id', ids);
+            const settingsMap = new Map();
+            if (settingsRows) {
+                for (const row of settingsRows) {
+                    settingsMap.set(row.location_id, row);
+                }
+            }
+            return locations.map(l => formatLocation(l, settingsMap.get(l.id) || {}));
+        });
+    }
     getAccessibleLocations(locationIds) {
         return __awaiter(this, void 0, void 0, function* () {
             if (locationIds.length === 0)
                 return [];
             const { data: locations, error } = yield database_1.supabase
                 .from('locations')
-                .select('id, name, slug, address, city, state, zip_code, phone, timezone, status, sales_tax_rate')
+                .select('id, name, slug, address, city, state, zip_code, phone, timezone, status, sales_tax_rate, client_id, clients(plan)')
                 .in('id', locationIds)
                 .eq('status', 'active')
                 .is('deleted_at', null)

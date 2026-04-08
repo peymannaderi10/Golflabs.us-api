@@ -43,6 +43,11 @@ export class SpaceService {
 
     if (error) {
       logger.error({ err: error }, 'Error creating space');
+      if (error.message?.includes('free_tier_space_limit_reached')) {
+        const err = new Error('Your free plan is limited to 4 spaces per location. Upgrade to add more.') as Error & { statusCode?: number };
+        err.statusCode = 402;
+        throw err;
+      }
       throw new Error('Failed to create space');
     }
 

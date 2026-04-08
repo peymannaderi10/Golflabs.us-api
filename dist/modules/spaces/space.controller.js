@@ -38,7 +38,8 @@ class SpaceController {
                 res.status(201).json(space);
             }
             catch (error) {
-                res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
+                const status = typeof (error === null || error === void 0 ? void 0 : error.statusCode) === 'number' ? error.statusCode : 500;
+                res.status(status).json({ error: (0, error_utils_1.sanitizeError)(error), message: error === null || error === void 0 ? void 0 : error.message });
             }
         });
         this.deleteSpace = (req, res) => __awaiter(this, void 0, void 0, function* () {

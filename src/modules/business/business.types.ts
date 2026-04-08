@@ -50,6 +50,24 @@ export const locationInputSchema = z.object({
     .optional(),
 });
 
+// Sibling locations under an existing client share the parent's subdomain,
+// so the slug field is omitted (the create_client_location RPC auto-generates
+// a unique locations.slug from the name).
+export const additionalLocationInputSchema = z.object({
+  name: z.string().trim().min(2).max(120),
+  address: z.string().trim().min(3).max(255),
+  city: z.string().trim().min(2).max(100),
+  state: usStateSchema,
+  zipCode: zipSchema,
+  phone: phoneSchema.optional().or(z.literal('')),
+  timezone: z.string().trim().max(64).optional(),
+  salesTaxRate: z
+    .number()
+    .min(0, 'Sales tax must be >= 0')
+    .max(0.5, 'Sales tax must be <= 50%')
+    .optional(),
+});
+
 export const startSignupSchema = z.object({
   business: z.object({
     name: z.string().trim().min(2).max(120),
@@ -71,6 +89,7 @@ export const verifySignupSchema = z.object({
 export type StartSignupInput = z.infer<typeof startSignupSchema>;
 export type VerifySignupInput = z.infer<typeof verifySignupSchema>;
 export type LocationInput = z.infer<typeof locationInputSchema>;
+export type AdditionalLocationInput = z.infer<typeof additionalLocationInputSchema>;
 
 export interface StartSignupResult {
   email: string;
