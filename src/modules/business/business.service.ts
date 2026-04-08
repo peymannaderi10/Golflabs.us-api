@@ -3,6 +3,7 @@ import { supabase } from '../../config/database';
 import { logger } from '../../shared/utils/logger';
 import { isReservedSlug } from '../../shared/constants/reserved-slugs';
 import { EmailService } from '../email/email.service';
+import { stripeConnectService } from './stripe-connect.service';
 import {
   StartSignupInput,
   StartSignupResult,
@@ -333,6 +334,61 @@ export class BusinessService {
     if (!locationId) {
       logger.error({ data }, 'create_client_location RPC returned malformed result');
       throw new BusinessSignupError('Failed to create location', 500);
+    }
+
+    // Sibling Stripe Connect inheritance: corporate chains operating under a
+    // single legal entity want one Stripe account shared across every
+    // location. Copy the connected-account id (and cached capability flags)
+    // from any existing sibling so the new location is "pre-connected" the
+    // moment it's created. Franchisees can override later via the
+    // disconnect-and-reconnect flow on the Payments card.
+    //
+    // Best-effort: a failure here must NOT roll back location creation.
+    // The owner can always click "Connect Stripe" on the new location to
+    // run fresh onboarding.
+    try {
+      const { data: sibling } = await supabase
+        .from('locations')
+        .select('stripe_connected_account_id')
+        .eq('client_id', clientId)
+        .neq('id', locationId)
+        .not('stripe_connected_account_id', 'is', null)
+        .is('deleted_at', null)
+        .limit(1)
+        .maybeSingle();
+
+      if (sibling?.stripe_connected_account_id) {
+        // Copy only the account id; let syncAccountStatus pull the live
+        // capability flags from Stripe rather than trusting the sibling's
+        // (possibly stale) cache. syncAccountStatus updates ALL location
+        // rows that share this account in a single UPDATE, so the new row
+        // and every existing sibling end up with identical, current flags.
+        const { error: copyError } = await supabase
+          .from('locations')
+          .update({ stripe_connected_account_id: sibling.stripe_connected_account_id })
+          .eq('id', locationId);
+
+        if (copyError) {
+          logger.warn(
+            { err: copyError, locationId, clientId },
+            'Failed to inherit sibling Stripe Connect account on new location'
+          );
+        } else {
+          try {
+            await stripeConnectService.syncAccountStatus(sibling.stripe_connected_account_id);
+          } catch (syncErr) {
+            logger.warn(
+              { err: syncErr, locationId, accountId: sibling.stripe_connected_account_id },
+              'Failed to refresh Stripe status after sibling inheritance — cache will heal on next webhook'
+            );
+          }
+        }
+      }
+    } catch (err) {
+      logger.warn(
+        { err, locationId, clientId },
+        'Sibling Stripe Connect inheritance check threw — continuing'
+      );
     }
 
     return { locationId };

@@ -36,7 +36,7 @@ function formatSettings(ls) {
     };
 }
 function formatLocation(location, settings) {
-    var _a, _b, _c;
+    var _a, _b, _c, _d, _e, _f, _g;
     return {
         id: location.id,
         name: location.name,
@@ -51,9 +51,19 @@ function formatLocation(location, settings) {
         salesTaxRate: parseFloat(location.sales_tax_rate) || 0,
         clientId: (_a = location.client_id) !== null && _a !== void 0 ? _a : null,
         plan: (_c = (_b = location.clients) === null || _b === void 0 ? void 0 : _b.plan) !== null && _c !== void 0 ? _c : null,
+        stripeConnect: {
+            accountId: (_d = location.stripe_connected_account_id) !== null && _d !== void 0 ? _d : null,
+            chargesEnabled: (_e = location.stripe_charges_enabled) !== null && _e !== void 0 ? _e : false,
+            payoutsEnabled: (_f = location.stripe_payouts_enabled) !== null && _f !== void 0 ? _f : false,
+            detailsSubmitted: (_g = location.stripe_details_submitted) !== null && _g !== void 0 ? _g : false,
+            ready: Boolean(location.stripe_connected_account_id &&
+                location.stripe_charges_enabled &&
+                location.stripe_payouts_enabled),
+        },
         settings: formatSettings(settings),
     };
 }
+const LOCATION_SELECT = 'id, name, slug, address, city, state, zip_code, phone, timezone, status, sales_tax_rate, client_id, stripe_connected_account_id, stripe_charges_enabled, stripe_payouts_enabled, stripe_details_submitted, clients(plan)';
 class LocationService {
     getLocationById(locationId) {
         return __awaiter(this, void 0, void 0, function* () {
@@ -62,7 +72,7 @@ class LocationService {
             }
             const { data, error } = yield database_1.supabase
                 .from('locations')
-                .select('id, name, slug, address, city, state, zip_code, phone, timezone, status, sales_tax_rate, client_id, clients(plan)')
+                .select(LOCATION_SELECT)
                 .eq('id', locationId)
                 .eq('status', 'active')
                 .is('deleted_at', null)
@@ -103,7 +113,7 @@ class LocationService {
                 .from('locations')
                 .update(updateData)
                 .eq('id', locationId)
-                .select('id, name, slug, address, city, state, zip_code, phone, timezone, status, sales_tax_rate')
+                .select(LOCATION_SELECT)
                 .single();
             if (error || !data) {
                 logger_1.logger.error({ err: error, locationId }, 'Error updating location');
@@ -149,7 +159,7 @@ class LocationService {
         return __awaiter(this, void 0, void 0, function* () {
             const { data: locations, error } = yield database_1.supabase
                 .from('locations')
-                .select('id, name, slug, address, city, state, zip_code, phone, timezone, status, sales_tax_rate, client_id, clients(plan)')
+                .select(LOCATION_SELECT)
                 .eq('client_id', clientId)
                 .eq('status', 'active')
                 .is('deleted_at', null)
@@ -178,7 +188,7 @@ class LocationService {
                 return [];
             const { data: locations, error } = yield database_1.supabase
                 .from('locations')
-                .select('id, name, slug, address, city, state, zip_code, phone, timezone, status, sales_tax_rate, client_id, clients(plan)')
+                .select(LOCATION_SELECT)
                 .in('id', locationIds)
                 .eq('status', 'active')
                 .is('deleted_at', null)

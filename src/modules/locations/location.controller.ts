@@ -71,7 +71,24 @@ export class LocationController {
       const siblings = location.clientId
         ? await this.locationService.getLocationsByClient(location.clientId)
         : [location];
-      res.json({ ...location, siblings });
+
+      // Strip employee/admin-only fields before responding to this PUBLIC,
+      // unauthenticated endpoint. The customer-facing booking SPA does not
+      // need (and should not see) the merchant's Stripe Connect account id,
+      // its connect-status flags, billing plan, or internal client id.
+      // The employee dashboard fetches the same locations through
+      // `/locations/accessible` which keeps these fields intact.
+      const stripPrivate = <T extends { stripeConnect?: unknown; clientId?: unknown; plan?: unknown }>(
+        loc: T
+      ): Omit<T, 'stripeConnect' | 'clientId' | 'plan'> => {
+        const { stripeConnect: _s, clientId: _c, plan: _p, ...rest } = loc;
+        return rest;
+      };
+
+      res.json({
+        ...stripPrivate(location),
+        siblings: siblings.map(stripPrivate),
+      });
     } catch (error: any) {
       logger.error({ err: error, subdomain: req.params.subdomain }, 'Error resolving subdomain');
       res.status(500).json({ error: 'An unexpected error occurred' });

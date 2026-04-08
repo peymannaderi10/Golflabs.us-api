@@ -1,11 +1,13 @@
 import { Router, Request } from 'express';
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { BusinessController } from './business.controller';
-import { authenticateEmployee, AuthenticatedRequest } from '../auth/auth.middleware';
+import { StripeConnectController } from './stripe-connect.controller';
+import { authenticateEmployee, enforceLocationScope, AuthenticatedRequest } from '../auth/auth.middleware';
 
 export const businessRoutes = Router();
 
 const controller = new BusinessController();
+const stripeConnectController = new StripeConnectController();
 
 /**
  * Key rate limits on IP + normalized email where available. The email
@@ -64,4 +66,39 @@ businessRoutes.post(
   authenticateEmployee,
   createLocationLimiter,
   controller.createLocation
+);
+
+// ---------------------------------------------------------------------------
+// Stripe Connect onboarding (Express accounts)
+// ---------------------------------------------------------------------------
+// All four endpoints are scoped per location and protected by the standard
+// employee + tenant-scope guards. The controller additionally enforces
+// owner/admin role since billing setup is privileged.
+
+const stripeConnectGuards = [authenticateEmployee, enforceLocationScope] as const;
+
+businessRoutes.get(
+  '/locations/:locationId/stripe-connect/status',
+  ...stripeConnectGuards,
+  stripeConnectController.getStatus
+);
+businessRoutes.post(
+  '/locations/:locationId/stripe-connect/onboard',
+  ...stripeConnectGuards,
+  stripeConnectController.startOnboarding
+);
+businessRoutes.post(
+  '/locations/:locationId/stripe-connect/dashboard',
+  ...stripeConnectGuards,
+  stripeConnectController.openDashboard
+);
+businessRoutes.post(
+  '/locations/:locationId/stripe-connect/refresh',
+  ...stripeConnectGuards,
+  stripeConnectController.refreshStatus
+);
+businessRoutes.delete(
+  '/locations/:locationId/stripe-connect',
+  ...stripeConnectGuards,
+  stripeConnectController.disconnect
 );

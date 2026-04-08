@@ -8,6 +8,17 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
+var __rest = (this && this.__rest) || function (s, e) {
+    var t = {};
+    for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p) && e.indexOf(p) < 0)
+        t[p] = s[p];
+    if (s != null && typeof Object.getOwnPropertySymbols === "function")
+        for (var i = 0, p = Object.getOwnPropertySymbols(s); i < p.length; i++) {
+            if (e.indexOf(p[i]) < 0 && Object.prototype.propertyIsEnumerable.call(s, p[i]))
+                t[p[i]] = s[p[i]];
+        }
+    return t;
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.LocationController = void 0;
 const location_service_1 = require("./location.service");
@@ -71,7 +82,17 @@ class LocationController {
                 const siblings = location.clientId
                     ? yield this.locationService.getLocationsByClient(location.clientId)
                     : [location];
-                res.json(Object.assign(Object.assign({}, location), { siblings }));
+                // Strip employee/admin-only fields before responding to this PUBLIC,
+                // unauthenticated endpoint. The customer-facing booking SPA does not
+                // need (and should not see) the merchant's Stripe Connect account id,
+                // its connect-status flags, billing plan, or internal client id.
+                // The employee dashboard fetches the same locations through
+                // `/locations/accessible` which keeps these fields intact.
+                const stripPrivate = (loc) => {
+                    const { stripeConnect: _s, clientId: _c, plan: _p } = loc, rest = __rest(loc, ["stripeConnect", "clientId", "plan"]);
+                    return rest;
+                };
+                res.json(Object.assign(Object.assign({}, stripPrivate(location)), { siblings: siblings.map(stripPrivate) }));
             }
             catch (error) {
                 logger_1.logger.error({ err: error, subdomain: req.params.subdomain }, 'Error resolving subdomain');

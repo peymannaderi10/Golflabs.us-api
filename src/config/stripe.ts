@@ -110,7 +110,14 @@ export async function getOrCreateCustomerForLocation(
   }
 
   // ------ Connected account ------
-  const connectedAccountId = stripeOpts.stripeAccount!;
+  // `stripeOpts` is non-null here (the `if (!stripeOpts)` branch above
+  // returned), and `getStripeOptions` only returns an object when
+  // `stripeAccount` is set. Narrow explicitly instead of `!` so a future
+  // refactor can't quietly produce undefined.
+  const connectedAccountId = stripeOpts.stripeAccount;
+  if (!connectedAccountId) {
+    throw new Error('Internal error: connected account id missing on stripeOpts');
+  }
 
   const { data: existing } = await supabase
     .from('customer_stripe_accounts')

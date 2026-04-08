@@ -61,9 +61,23 @@ function formatLocation(location: any, settings: Partial<LocationSettingsRow>) {
     salesTaxRate: parseFloat(location.sales_tax_rate) || 0,
     clientId: location.client_id ?? null,
     plan: location.clients?.plan ?? null,
+    stripeConnect: {
+      accountId: location.stripe_connected_account_id ?? null,
+      chargesEnabled: location.stripe_charges_enabled ?? false,
+      payoutsEnabled: location.stripe_payouts_enabled ?? false,
+      detailsSubmitted: location.stripe_details_submitted ?? false,
+      ready: Boolean(
+        location.stripe_connected_account_id &&
+          location.stripe_charges_enabled &&
+          location.stripe_payouts_enabled
+      ),
+    },
     settings: formatSettings(settings),
   };
 }
+
+const LOCATION_SELECT =
+  'id, name, slug, address, city, state, zip_code, phone, timezone, status, sales_tax_rate, client_id, stripe_connected_account_id, stripe_charges_enabled, stripe_payouts_enabled, stripe_details_submitted, clients(plan)';
 
 export class LocationService {
   async getLocationById(locationId: string) {
@@ -73,7 +87,7 @@ export class LocationService {
 
     const { data, error } = await supabase
       .from('locations')
-      .select('id, name, slug, address, city, state, zip_code, phone, timezone, status, sales_tax_rate, client_id, clients(plan)')
+      .select(LOCATION_SELECT)
       .eq('id', locationId)
       .eq('status', 'active')
       .is('deleted_at', null)
@@ -124,7 +138,7 @@ export class LocationService {
       .from('locations')
       .update(updateData)
       .eq('id', locationId)
-      .select('id, name, slug, address, city, state, zip_code, phone, timezone, status, sales_tax_rate')
+      .select(LOCATION_SELECT)
       .single();
 
     if (error || !data) {
@@ -174,7 +188,7 @@ export class LocationService {
   async getLocationsByClient(clientId: string) {
     const { data: locations, error } = await supabase
       .from('locations')
-      .select('id, name, slug, address, city, state, zip_code, phone, timezone, status, sales_tax_rate, client_id, clients(plan)')
+      .select(LOCATION_SELECT)
       .eq('client_id', clientId)
       .eq('status', 'active')
       .is('deleted_at', null)
@@ -206,7 +220,7 @@ export class LocationService {
 
     const { data: locations, error } = await supabase
       .from('locations')
-      .select('id, name, slug, address, city, state, zip_code, phone, timezone, status, sales_tax_rate, client_id, clients(plan)')
+      .select(LOCATION_SELECT)
       .in('id', locationIds)
       .eq('status', 'active')
       .is('deleted_at', null)

@@ -112,7 +112,14 @@ function getOrCreateCustomerForLocation(userId, locationId, email, name) {
             return { customerId, stripeOpts: undefined };
         }
         // ------ Connected account ------
+        // `stripeOpts` is non-null here (the `if (!stripeOpts)` branch above
+        // returned), and `getStripeOptions` only returns an object when
+        // `stripeAccount` is set. Narrow explicitly instead of `!` so a future
+        // refactor can't quietly produce undefined.
         const connectedAccountId = stripeOpts.stripeAccount;
+        if (!connectedAccountId) {
+            throw new Error('Internal error: connected account id missing on stripeOpts');
+        }
         const { data: existing } = yield database_1.supabase
             .from('customer_stripe_accounts')
             .select('stripe_customer_id')

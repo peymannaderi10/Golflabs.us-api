@@ -10,6 +10,7 @@ import { MembershipService } from '../memberships/membership.service';
 import { createUnlockToken } from '../../shared/utils/token.utils';
 import { logger } from '../../shared/utils/logger';
 import { LocationService } from '../locations/location.service';
+import { stripeConnectService } from '../business/stripe-connect.service';
 
 export async function handleStripeWebhook(req: Request, res: Response, socketService: SocketService) {
   const sig = req.headers['stripe-signature'] as string;
@@ -28,8 +29,10 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
-  // Stripe Connect: extract connected account from the event (if present)
-  const connectAccount = (event as any).account as string | undefined;
+  // Stripe Connect: extract connected account from the event (if present).
+  // Stripe.Event.account is set on events forwarded from connected accounts;
+  // unset on events from the platform account itself.
+  const connectAccount: string | undefined = event.account ?? undefined;
   const webhookStripeOpts: Stripe.RequestOptions | undefined = connectAccount
     ? { stripeAccount: connectAccount }
     : undefined;
@@ -761,6 +764,22 @@ export async function handleStripeWebhook(req: Request, res: Response, socketSer
           .from('memberships')
           .update({ status: 'past_due' })
           .eq('stripe_subscription_id', failedSubId);
+      }
+      return res.json({ received: true });
+    }
+
+    // Stripe Connect: connected account capability changed
+    // (e.g. owner finished onboarding, charges_enabled flipped to true)
+    case 'account.updated': {
+      const account = event.data.object as Stripe.Account;
+      try {
+        await stripeConnectService.syncAccountStatus(account.id);
+        logger.info(
+          { accountId: account.id, chargesEnabled: account.charges_enabled },
+          'Synced Stripe Connect account status'
+        );
+      } catch (err) {
+        logger.error({ err, accountId: account.id }, 'Failed to sync account.updated event');
       }
       return res.json({ received: true });
     }

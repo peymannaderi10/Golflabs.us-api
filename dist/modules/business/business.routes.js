@@ -37,9 +37,11 @@ exports.businessRoutes = void 0;
 const express_1 = require("express");
 const express_rate_limit_1 = __importStar(require("express-rate-limit"));
 const business_controller_1 = require("./business.controller");
+const stripe_connect_controller_1 = require("./stripe-connect.controller");
 const auth_middleware_1 = require("../auth/auth.middleware");
 exports.businessRoutes = (0, express_1.Router)();
 const controller = new business_controller_1.BusinessController();
+const stripeConnectController = new stripe_connect_controller_1.StripeConnectController();
 /**
  * Key rate limits on IP + normalized email where available. The email
  * fingerprint prevents a single attacker from rotating IPs to bypass the
@@ -91,3 +93,15 @@ const createLocationLimiter = (0, express_rate_limit_1.default)({
 exports.businessRoutes.post('/signup/start', startSignupLimiter, controller.startSignup);
 exports.businessRoutes.post('/signup/verify', verifySignupLimiter, controller.verifySignup);
 exports.businessRoutes.post('/locations', auth_middleware_1.authenticateEmployee, createLocationLimiter, controller.createLocation);
+// ---------------------------------------------------------------------------
+// Stripe Connect onboarding (Express accounts)
+// ---------------------------------------------------------------------------
+// All four endpoints are scoped per location and protected by the standard
+// employee + tenant-scope guards. The controller additionally enforces
+// owner/admin role since billing setup is privileged.
+const stripeConnectGuards = [auth_middleware_1.authenticateEmployee, auth_middleware_1.enforceLocationScope];
+exports.businessRoutes.get('/locations/:locationId/stripe-connect/status', ...stripeConnectGuards, stripeConnectController.getStatus);
+exports.businessRoutes.post('/locations/:locationId/stripe-connect/onboard', ...stripeConnectGuards, stripeConnectController.startOnboarding);
+exports.businessRoutes.post('/locations/:locationId/stripe-connect/dashboard', ...stripeConnectGuards, stripeConnectController.openDashboard);
+exports.businessRoutes.post('/locations/:locationId/stripe-connect/refresh', ...stripeConnectGuards, stripeConnectController.refreshStatus);
+exports.businessRoutes.delete('/locations/:locationId/stripe-connect', ...stripeConnectGuards, stripeConnectController.disconnect);

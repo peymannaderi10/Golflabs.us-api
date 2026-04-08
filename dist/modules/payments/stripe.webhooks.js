@@ -19,9 +19,10 @@ const membership_service_1 = require("../memberships/membership.service");
 const token_utils_1 = require("../../shared/utils/token.utils");
 const logger_1 = require("../../shared/utils/logger");
 const location_service_1 = require("../locations/location.service");
+const stripe_connect_service_1 = require("../business/stripe-connect.service");
 function handleStripeWebhook(req, res, socketService) {
     return __awaiter(this, void 0, void 0, function* () {
-        var _a, _b, _c;
+        var _a, _b, _c, _d;
         const sig = req.headers['stripe-signature'];
         if (!stripe_1.webhookSecret) {
             logger_1.logger.error('Stripe webhook secret not found');
@@ -35,8 +36,10 @@ function handleStripeWebhook(req, res, socketService) {
             logger_1.logger.error({ err }, 'Webhook signature verification failed');
             return res.status(400).send(`Webhook Error: ${err.message}`);
         }
-        // Stripe Connect: extract connected account from the event (if present)
-        const connectAccount = event.account;
+        // Stripe Connect: extract connected account from the event (if present).
+        // Stripe.Event.account is set on events forwarded from connected accounts;
+        // unset on events from the platform account itself.
+        const connectAccount = (_a = event.account) !== null && _a !== void 0 ? _a : undefined;
         const webhookStripeOpts = connectAccount
             ? { stripeAccount: connectAccount }
             : undefined;
@@ -701,6 +704,19 @@ function handleStripeWebhook(req, res, socketService) {
                 }
                 return res.json({ received: true });
             }
+            // Stripe Connect: connected account capability changed
+            // (e.g. owner finished onboarding, charges_enabled flipped to true)
+            case 'account.updated': {
+                const account = event.data.object;
+                try {
+                    yield stripe_connect_service_1.stripeConnectService.syncAccountStatus(account.id);
+                    logger_1.logger.info({ accountId: account.id, chargesEnabled: account.charges_enabled }, 'Synced Stripe Connect account status');
+                }
+                catch (err) {
+                    logger_1.logger.error({ err, accountId: account.id }, 'Failed to sync account.updated event');
+                }
+                return res.json({ received: true });
+            }
             // Refund webhook handlers
             case 'charge.dispute.created':
                 const dispute = event.data.object;
@@ -715,9 +731,9 @@ function handleStripeWebhook(req, res, socketService) {
                 if (event.type.startsWith('refund.')) {
                     const refundEvent = event; // Type assertion for refund events
                     const refund = refundEvent.data.object;
-                    const refundBookingId = (_a = refund.metadata) === null || _a === void 0 ? void 0 : _a.booking_id;
-                    const refundLeaguePlayerId = (_b = refund.metadata) === null || _b === void 0 ? void 0 : _b.league_player_id;
-                    const refundLeagueId = (_c = refund.metadata) === null || _c === void 0 ? void 0 : _c.league_id;
+                    const refundBookingId = (_b = refund.metadata) === null || _b === void 0 ? void 0 : _b.booking_id;
+                    const refundLeaguePlayerId = (_c = refund.metadata) === null || _c === void 0 ? void 0 : _c.league_player_id;
+                    const refundLeagueId = (_d = refund.metadata) === null || _d === void 0 ? void 0 : _d.league_id;
                     // League enrollment refund
                     if (refundLeaguePlayerId && refundLeagueId) {
                         if (event.type === 'refund.created') {
