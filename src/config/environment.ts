@@ -2,6 +2,14 @@ export interface EnvironmentConfig {
   stripe: {
     secretKey: string;
     webhookSecret: string;
+    /**
+     * Signing secret for the SECOND webhook endpoint dedicated to events
+     * forwarded from connected accounts (Stripe Connect). When unset, the
+     * handler falls back to verifying every event against `webhookSecret`,
+     * which is fine for platform-only deployments but means
+     * `account.updated` from the Connect endpoint will fail verification.
+     */
+    connectWebhookSecret: string | null;
   };
   supabase: {
     url: string;
@@ -25,6 +33,13 @@ export function validateEnvironment(): EnvironmentConfig {
     // Intentionally using console here to avoid circular dependency with logger
     console.error("Stripe webhook secret not found. Make sure STRIPE_WEBHOOK_SECRET is set in .env.");
     process.exit(1);
+  }
+
+  const connectWebhookSecret = process.env.STRIPE_CONNECT_WEBHOOK_SECRET || null;
+  if (!connectWebhookSecret) {
+    console.warn(
+      'STRIPE_CONNECT_WEBHOOK_SECRET not set — account.updated events from connected accounts will fail signature verification. Required if you have a Connect-scoped webhook endpoint configured in Stripe.'
+    );
   }
 
   const supabaseUrl = process.env.SUPABASE_URL;
@@ -56,6 +71,7 @@ export function validateEnvironment(): EnvironmentConfig {
     stripe: {
       secretKey: stripeSecretKey,
       webhookSecret: webhookSecret,
+      connectWebhookSecret,
     },
     supabase: {
       url: supabaseUrl,

@@ -7,6 +7,32 @@ import { MembershipService } from '../memberships/membership.service';
 import { logger } from '../../shared/utils/logger';
 import { fetchPricingContext, splitRules, findRuleForSlot, localSlotInfo } from '../../shared/utils/pricing.utils';
 
+/**
+ * Discriminated union returned by `createPaymentIntent`. Annotating the
+ * method with this type forces every return path to include `clientSecret`,
+ * `bookingId`, the `type` discriminant, AND `stripeAccountId` — preventing
+ * the silent regression where a future code path forgets the connect-account
+ * id and the frontend falls back to platform-account Elements (which then
+ * 400s on `/v1/elements/sessions`).
+ *
+ * `stripeAccountId` is the connected account that owns the intent, or null
+ * for charges processed directly on the platform account (the current
+ * GolfLabs-Southampton behavior).
+ */
+export type CreatePaymentIntentResult =
+  | {
+      type: 'payment';
+      clientSecret: string | null;
+      bookingId: string;
+      stripeAccountId: string | null;
+    }
+  | {
+      type: 'setup';
+      clientSecret: string | null;
+      bookingId: string;
+      stripeAccountId: string | null;
+    };
+
 export class PaymentService {
   /**
    * Update the booking record with server-computed promotion info.
@@ -45,7 +71,7 @@ export class PaymentService {
       membershipId: string;
       freeMinutesApplied: number;
     }
-  ) {
+  ): Promise<CreatePaymentIntentResult> {
     if (!bookingId) {
       throw new Error('Booking ID is required');
     }
@@ -239,7 +265,7 @@ export class PaymentService {
             await stripe.setupIntents.cancel(existingSetupIntent.id, stripeOpts);
           } else if (['requires_payment_method', 'requires_confirmation', 'requires_action'].includes(existingSetupIntent.status)) {
             logger.info({ setupIntentId: existingSetupIntent.id, bookingId }, 'Reusing existing setup intent');
-            return { clientSecret: existingSetupIntent.client_secret, bookingId: booking.id, type: 'setup' as const };
+            return { clientSecret: existingSetupIntent.client_secret, bookingId: booking.id, type: 'setup' as const, stripeAccountId: stripeOpts?.stripeAccount ?? null };
           }
         } else {
           const existingPaymentIntent = await stripe.paymentIntents.retrieve(existingId, stripeOpts);
@@ -259,13 +285,13 @@ export class PaymentService {
               // Update local payment record and booking
               await supabase.from('payments').update({ amount: amount / 100 }).eq('stripe_payment_intent_id', existingId);
               await this.updateBookingPromotion(bookingId, promotionInfo?.promotionId, originalSubtotal, serverDiscountAmount, subtotal);
-              return { clientSecret: updated.client_secret, bookingId: booking.id, type: 'payment' as const };
+              return { clientSecret: updated.client_secret, bookingId: booking.id, type: 'payment' as const, stripeAccountId: stripeOpts?.stripeAccount ?? null };
             }
             logger.info({ paymentIntentId: existingPaymentIntent.id, bookingId }, 'Reusing existing payment intent (same amount)');
-            return { clientSecret: existingPaymentIntent.client_secret, bookingId: booking.id, type: 'payment' as const };
+            return { clientSecret: existingPaymentIntent.client_secret, bookingId: booking.id, type: 'payment' as const, stripeAccountId: stripeOpts?.stripeAccount ?? null };
           } else if (existingPaymentIntent.status === 'processing') {
             logger.info({ paymentIntentId: existingPaymentIntent.id, bookingId }, 'Existing payment intent is processing, returning as-is');
-            return { clientSecret: existingPaymentIntent.client_secret, bookingId: booking.id, type: 'payment' as const };
+            return { clientSecret: existingPaymentIntent.client_secret, bookingId: booking.id, type: 'payment' as const, stripeAccountId: stripeOpts?.stripeAccount ?? null };
           } else {
             logger.info({ paymentIntentId: existingPaymentIntent.id, status: existingPaymentIntent.status }, 'Existing payment intent has non-reusable status, creating new one');
           }
@@ -341,7 +367,8 @@ export class PaymentService {
       return {
         clientSecret: setupIntent.client_secret,
         bookingId: booking.id,
-        type: 'setup' as const
+        type: 'setup' as const,
+        stripeAccountId: stripeOpts?.stripeAccount ?? null,
       };
     }
 
@@ -382,11 +409,14 @@ export class PaymentService {
 
     logger.info({ paymentIntentId: paymentIntent.id, bookingId, amount: amount / 100, discountAmount: serverDiscountAmount / 100 }, 'Created new payment intent');
 
-    // 8. Send the client secret back to the frontend
+    // 8. Send the client secret + the connected-account id back to the
+    //    frontend so Stripe Elements can be initialized with `stripeAccount`
+    //    and load this PI from the right account.
     return {
       clientSecret: paymentIntent.client_secret,
       bookingId: booking.id,
-      type: 'payment' as const
+      type: 'payment' as const,
+      stripeAccountId: stripeOpts?.stripeAccount ?? null,
     };
   }
 

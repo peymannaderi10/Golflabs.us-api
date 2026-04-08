@@ -42,6 +42,7 @@ class PaymentService {
     }
     createPaymentIntent(bookingId, authenticatedUserId, promotionInfo, memberPricingInfo) {
         return __awaiter(this, void 0, void 0, function* () {
+            var _a, _b, _c, _d, _e, _f;
             if (!bookingId) {
                 throw new Error('Booking ID is required');
             }
@@ -218,7 +219,7 @@ class PaymentService {
                         }
                         else if (['requires_payment_method', 'requires_confirmation', 'requires_action'].includes(existingSetupIntent.status)) {
                             logger_1.logger.info({ setupIntentId: existingSetupIntent.id, bookingId }, 'Reusing existing setup intent');
-                            return { clientSecret: existingSetupIntent.client_secret, bookingId: booking.id, type: 'setup' };
+                            return { clientSecret: existingSetupIntent.client_secret, bookingId: booking.id, type: 'setup', stripeAccountId: (_a = stripeOpts === null || stripeOpts === void 0 ? void 0 : stripeOpts.stripeAccount) !== null && _a !== void 0 ? _a : null };
                         }
                     }
                     else {
@@ -234,14 +235,14 @@ class PaymentService {
                                 // Update local payment record and booking
                                 yield database_1.supabase.from('payments').update({ amount: amount / 100 }).eq('stripe_payment_intent_id', existingId);
                                 yield this.updateBookingPromotion(bookingId, promotionInfo === null || promotionInfo === void 0 ? void 0 : promotionInfo.promotionId, originalSubtotal, serverDiscountAmount, subtotal);
-                                return { clientSecret: updated.client_secret, bookingId: booking.id, type: 'payment' };
+                                return { clientSecret: updated.client_secret, bookingId: booking.id, type: 'payment', stripeAccountId: (_b = stripeOpts === null || stripeOpts === void 0 ? void 0 : stripeOpts.stripeAccount) !== null && _b !== void 0 ? _b : null };
                             }
                             logger_1.logger.info({ paymentIntentId: existingPaymentIntent.id, bookingId }, 'Reusing existing payment intent (same amount)');
-                            return { clientSecret: existingPaymentIntent.client_secret, bookingId: booking.id, type: 'payment' };
+                            return { clientSecret: existingPaymentIntent.client_secret, bookingId: booking.id, type: 'payment', stripeAccountId: (_c = stripeOpts === null || stripeOpts === void 0 ? void 0 : stripeOpts.stripeAccount) !== null && _c !== void 0 ? _c : null };
                         }
                         else if (existingPaymentIntent.status === 'processing') {
                             logger_1.logger.info({ paymentIntentId: existingPaymentIntent.id, bookingId }, 'Existing payment intent is processing, returning as-is');
-                            return { clientSecret: existingPaymentIntent.client_secret, bookingId: booking.id, type: 'payment' };
+                            return { clientSecret: existingPaymentIntent.client_secret, bookingId: booking.id, type: 'payment', stripeAccountId: (_d = stripeOpts === null || stripeOpts === void 0 ? void 0 : stripeOpts.stripeAccount) !== null && _d !== void 0 ? _d : null };
                         }
                         else {
                             logger_1.logger.info({ paymentIntentId: existingPaymentIntent.id, status: existingPaymentIntent.status }, 'Existing payment intent has non-reusable status, creating new one');
@@ -310,7 +311,8 @@ class PaymentService {
                 return {
                     clientSecret: setupIntent.client_secret,
                     bookingId: booking.id,
-                    type: 'setup'
+                    type: 'setup',
+                    stripeAccountId: (_e = stripeOpts === null || stripeOpts === void 0 ? void 0 : stripeOpts.stripeAccount) !== null && _e !== void 0 ? _e : null,
                 };
             }
             // 7. Paid booking: create Stripe Payment Intent (with customer + save card for future use)
@@ -344,11 +346,14 @@ class PaymentService {
                 throw paymentError;
             }
             logger_1.logger.info({ paymentIntentId: paymentIntent.id, bookingId, amount: amount / 100, discountAmount: serverDiscountAmount / 100 }, 'Created new payment intent');
-            // 8. Send the client secret back to the frontend
+            // 8. Send the client secret + the connected-account id back to the
+            //    frontend so Stripe Elements can be initialized with `stripeAccount`
+            //    and load this PI from the right account.
             return {
                 clientSecret: paymentIntent.client_secret,
                 bookingId: booking.id,
-                type: 'payment'
+                type: 'payment',
+                stripeAccountId: (_f = stripeOpts === null || stripeOpts === void 0 ? void 0 : stripeOpts.stripeAccount) !== null && _f !== void 0 ? _f : null,
             };
         });
     }

@@ -28,13 +28,39 @@ function handleStripeWebhook(req, res, socketService) {
             logger_1.logger.error('Stripe webhook secret not found');
             return res.status(400).send('Webhook Error: Missing secret');
         }
-        let event;
-        try {
-            event = stripe_1.stripe.webhooks.constructEvent(req.body, sig, stripe_1.webhookSecret);
+        // Two webhook endpoints in Stripe both deliver to this URL: the platform
+        // endpoint (events on your own account) and the Connect endpoint (events
+        // forwarded from connected accounts). Each is signed with its own secret.
+        //
+        // Connect events embed an `"account":"acct_..."` field at the top level
+        // of the payload. Pre-routing on that hint lets us verify against the
+        // most likely secret first and fall back to the other only when needed,
+        // halving HMAC work on the steady-state high-volume path. Both
+        // verifications still run against trusted env constants, never user
+        // input, so the routing hint is purely an optimization — we never trust
+        // it for the actual signature check.
+        const rawBody = req.body;
+        const looksLikeConnectEvent = stripe_1.connectWebhookSecret !== null && rawBody.includes(Buffer.from('"account":"acct_'));
+        const secretsInPriorityOrder = looksLikeConnectEvent
+            ? [stripe_1.connectWebhookSecret, stripe_1.webhookSecret]
+            : stripe_1.connectWebhookSecret
+                ? [stripe_1.webhookSecret, stripe_1.connectWebhookSecret]
+                : [stripe_1.webhookSecret];
+        let event = null;
+        let lastErr = null;
+        for (const secret of secretsInPriorityOrder) {
+            try {
+                event = stripe_1.stripe.webhooks.constructEvent(rawBody, sig, secret);
+                break;
+            }
+            catch (err) {
+                lastErr = err;
+            }
         }
-        catch (err) {
-            logger_1.logger.error({ err }, 'Webhook signature verification failed');
-            return res.status(400).send(`Webhook Error: ${err.message}`);
+        if (!event) {
+            logger_1.logger.error({ err: lastErr, triedSecrets: secretsInPriorityOrder.length }, 'Webhook signature verification failed against all configured secrets');
+            const msg = lastErr instanceof Error ? lastErr.message : 'unknown';
+            return res.status(400).send(`Webhook Error: ${msg}`);
         }
         // Stripe Connect: extract connected account from the event (if present).
         // Stripe.Event.account is set on events forwarded from connected accounts;

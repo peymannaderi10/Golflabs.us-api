@@ -7,6 +7,7 @@ const config = validateEnvironment();
 
 export const stripe = new Stripe(config.stripe.secretKey);
 export const webhookSecret = config.stripe.webhookSecret;
+export const connectWebhookSecret = config.stripe.connectWebhookSecret;
 
 // ---------------------------------------------------------------------------
 // Stripe Connect helpers

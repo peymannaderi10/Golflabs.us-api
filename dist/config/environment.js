@@ -14,6 +14,10 @@ function validateEnvironment() {
         console.error("Stripe webhook secret not found. Make sure STRIPE_WEBHOOK_SECRET is set in .env.");
         process.exit(1);
     }
+    const connectWebhookSecret = process.env.STRIPE_CONNECT_WEBHOOK_SECRET || null;
+    if (!connectWebhookSecret) {
+        console.warn('STRIPE_CONNECT_WEBHOOK_SECRET not set — account.updated events from connected accounts will fail signature verification. Required if you have a Connect-scoped webhook endpoint configured in Stripe.');
+    }
     const supabaseUrl = process.env.SUPABASE_URL;
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
     if (!supabaseUrl || !supabaseServiceKey) {
@@ -38,6 +42,7 @@ function validateEnvironment() {
         stripe: {
             secretKey: stripeSecretKey,
             webhookSecret: webhookSecret,
+            connectWebhookSecret,
         },
         supabase: {
             url: supabaseUrl,

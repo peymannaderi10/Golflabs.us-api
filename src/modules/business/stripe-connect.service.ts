@@ -173,13 +173,20 @@ export class StripeConnectService {
    */
   async createOnboardingLink(locationId: string, accountId: string): Promise<string> {
     const base = frontendUrl();
+    // Both URLs point at a tiny standalone callback page (`/stripe-connect/callback`)
+    // rather than the full dashboard. This page detects whether it's running
+    // inside a popup window and either postMessages the opener (popup mode,
+    // the default for our flow) or falls back to redirecting the parent into
+    // the dashboard with the legacy `?stripe_return=` query param.
+    const callback = (result: 'return' | 'refresh') =>
+      `${base}/stripe-connect/callback?locationId=${encodeURIComponent(locationId)}&result=${result}`;
+
     try {
       const link = await stripe.accountLinks.create({
         account: accountId,
         type: 'account_onboarding',
-        // refresh_url is hit if the link expired before the user clicked it.
-        refresh_url: `${base}/dashboard/settings?stripe_refresh=${locationId}`,
-        return_url: `${base}/dashboard/settings?stripe_return=${locationId}`,
+        refresh_url: callback('refresh'),
+        return_url: callback('return'),
       });
       return link.url;
     } catch (err) {

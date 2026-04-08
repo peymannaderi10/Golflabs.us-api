@@ -12,7 +12,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.webhookSecret = exports.stripe = void 0;
+exports.connectWebhookSecret = exports.webhookSecret = exports.stripe = void 0;
 exports.getStripeOptions = getStripeOptions;
 exports.getOrCreateCustomerForLocation = getOrCreateCustomerForLocation;
 exports.clearStripeCache = clearStripeCache;
@@ -23,6 +23,7 @@ const logger_1 = require("../shared/utils/logger");
 const config = (0, environment_1.validateEnvironment)();
 exports.stripe = new stripe_1.default(config.stripe.secretKey);
 exports.webhookSecret = config.stripe.webhookSecret;
+exports.connectWebhookSecret = config.stripe.connectWebhookSecret;
 // ---------------------------------------------------------------------------
 // Stripe Connect helpers
 // ---------------------------------------------------------------------------
