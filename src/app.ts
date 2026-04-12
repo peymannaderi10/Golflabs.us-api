@@ -23,6 +23,7 @@ import documentRoutes from './modules/documents/document.routes';
 import { membershipRoutes } from './modules/memberships/membership.routes';
 import { marketingRoutes } from './modules/marketing/marketing.routes';
 import { businessRoutes } from './modules/business';
+import { createKioskRoutes } from './modules/kiosk';
 import { marketingController } from './modules/marketing/marketing.controller';
 import { BookingController } from './modules/bookings/booking.controller';
 import { SocketService } from './modules/sockets/socket.service';
@@ -265,6 +266,7 @@ app.use('/agreements', agreementRoutes); // Legal agreement tracking routes
 app.use('/documents', documentRoutes); // Per-location legal document management
 app.use('/memberships', membershipRoutes); // Membership subscription routes
 app.use('/employee/marketing', marketingRoutes); // Marketing campaigns (employee-auth)
+app.use('/kiosk', createKioskRoutes(socketService)); // Kiosk self-registration + dashboard config
 app.get('/marketing/unsubscribe', (req, res) => marketingController.unsubscribe(req, res)); // Public unsubscribe
 
 // Health check endpoint

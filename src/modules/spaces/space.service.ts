@@ -11,7 +11,7 @@ export class SpaceService {
     return data?.location_id ?? null;
   }
 
-  async createSpace(locationId: string, name: string, spaceNumber: number, equipment?: string) {
+  async createSpace(locationId: string, name: string, spaceNumber: number, equipment?: string, kioskEquipped?: boolean) {
     if (!locationId || !name || spaceNumber === undefined) {
       throw new Error('Location ID, name, and space number are required');
     }
@@ -37,8 +37,9 @@ export class SpaceService {
         equipment_type: equipment || 'Golf Simulator',
         status: 'available',
         league_mode_active: false,
+        kiosk_equipped: kioskEquipped === true,
       })
-      .select('id, status, location_id, space_number, name, equipment_type, last_seen, kiosk_ip, league_mode_active, league_mode_league_id')
+      .select('id, status, location_id, space_number, name, equipment_type, last_seen, kiosk_ip, kiosk_equipped, league_mode_active, league_mode_league_id')
       .single();
 
     if (error) {
@@ -87,7 +88,7 @@ export class SpaceService {
 
     const { data, error } = await supabase
       .from('spaces')
-      .select('id, status, location_id, space_number, name, last_seen, kiosk_ip, league_mode_active, league_mode_league_id')
+      .select('id, status, location_id, space_number, name, last_seen, kiosk_ip, kiosk_equipped, league_mode_active, league_mode_league_id')
       .eq('location_id', locationId)
       .is('deleted_at', null);
 
@@ -111,7 +112,7 @@ export class SpaceService {
         kiosk_ip: kioskIp
       })
       .eq('id', spaceId)
-      .select('id, last_seen, kiosk_ip, location_id, space_number, name, status, league_mode_active, league_mode_league_id')
+      .select('id, last_seen, kiosk_ip, kiosk_equipped, location_id, space_number, name, status, league_mode_active, league_mode_league_id')
       .single();
 
     if (error) {

@@ -304,6 +304,10 @@ const authenticateKiosk = (req, res, next) => {
         return res.status(401).json({ error: 'Invalid kiosk API key' });
     }
     req.isKiosk = true;
+    const installationHeader = req.headers['x-kiosk-installation-id'];
+    if (typeof installationHeader === 'string' && installationHeader.length > 0) {
+        req.kioskInstallationId = installationHeader;
+    }
     next();
 };
 exports.authenticateKiosk = authenticateKiosk;

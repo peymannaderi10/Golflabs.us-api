@@ -390,6 +390,18 @@ export class SocketService {
   }
 
   /**
+   * Broadcast an event to a single space's room. Used by the kiosk
+   * module to push settings updates and restart commands to exactly
+   * the kiosk for a given bay without fanning out to the full
+   * location. Room name matches the `register_kiosk` handler above.
+   */
+  public broadcastToSpace(locationId: string, spaceId: string, event: string, payload: unknown) {
+    const room = `location-${locationId}-space-${spaceId}`;
+    this.io.to(room).emit(event, payload);
+    logger.info({ event, room }, 'Broadcasted event to space room');
+  }
+
+  /**
    * Broadcasts a space status change to all dashboards and kiosks at a location.
    */
   public broadcastSpaceUpdate(locationId: string, space: any) {

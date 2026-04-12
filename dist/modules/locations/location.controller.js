@@ -89,10 +89,10 @@ class LocationController {
                 // The employee dashboard fetches the same locations through
                 // `/locations/accessible` which keeps these fields intact.
                 const stripPrivate = (loc) => {
-                    const { stripeConnect: _s, clientId: _c, plan: _p } = loc, rest = __rest(loc, ["stripeConnect", "clientId", "plan"]);
+                    const _a = loc, { stripeConnect: _s, clientId: _c, plan: _p } = _a, rest = __rest(_a, ["stripeConnect", "clientId", "plan"]);
                     return rest;
                 };
-                res.json(Object.assign(Object.assign({}, stripPrivate(location)), { siblings: siblings.map(stripPrivate) }));
+                res.json(Object.assign(Object.assign({}, stripPrivate(location)), { siblings: siblings.map((s) => stripPrivate(s)) }));
             }
             catch (error) {
                 logger_1.logger.error({ err: error, subdomain: req.params.subdomain }, 'Error resolving subdomain');

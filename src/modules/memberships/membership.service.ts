@@ -695,12 +695,12 @@ export class MembershipService {
   async getLocationMembershipSettings(locationId: string): Promise<LocationMembershipSettings> {
     const { data, error } = await supabase
       .from('location_settings')
-      .select('memberships_enabled, leagues_enabled, marketing_enabled, promotions_enabled, door_lock_type, default_booking_window_days, default_booking_hours_start, default_booking_hours_end, booking_buffer_minutes, booking_grace_period_before_minutes, booking_grace_period_after_minutes, reservation_timeout_minutes, cancellation_policy_hours, brand_primary_color, brand_logo_url, custom_domain')
+      .select('memberships_enabled, leagues_enabled, marketing_enabled, promotions_enabled, kiosk_feature_enabled, door_lock_type, default_booking_window_days, default_booking_hours_start, default_booking_hours_end, booking_buffer_minutes, booking_grace_period_before_minutes, booking_grace_period_after_minutes, reservation_timeout_minutes, cancellation_policy_hours, brand_primary_color, brand_logo_url, custom_domain')
       .eq('location_id', locationId)
       .single();
 
     if (error || !data) {
-      return { membershipsEnabled: false, leaguesEnabled: true, marketingEnabled: false, promotionsEnabled: false, doorLockType: 'shelly', defaultBookingWindowDays: 7, defaultBookingHours: null, bookingBufferMinutes: 0, bookingGracePeriodBeforeMinutes: 0, bookingGracePeriodAfterMinutes: 0, reservationTimeoutMinutes: null, cancellationPolicyHours: 24, brandPrimaryColor: '158 100% 33%', brandLogoUrl: null, customDomain: null };
+      return { membershipsEnabled: false, leaguesEnabled: true, marketingEnabled: false, promotionsEnabled: false, kioskFeatureEnabled: false, doorLockType: 'shelly', defaultBookingWindowDays: 7, defaultBookingHours: null, bookingBufferMinutes: 0, bookingGracePeriodBeforeMinutes: 0, bookingGracePeriodAfterMinutes: 0, reservationTimeoutMinutes: null, cancellationPolicyHours: 24, brandPrimaryColor: '158 100% 33%', brandLogoUrl: null, customDomain: null };
     }
 
     return {
@@ -708,6 +708,7 @@ export class MembershipService {
       leaguesEnabled: data.leagues_enabled,
       marketingEnabled: data.marketing_enabled ?? false,
       promotionsEnabled: data.promotions_enabled ?? false,
+      kioskFeatureEnabled: data.kiosk_feature_enabled ?? false,
       doorLockType: data.door_lock_type ?? 'shelly',
       defaultBookingWindowDays: data.default_booking_window_days,
       defaultBookingHours: data.default_booking_hours_start && data.default_booking_hours_end
@@ -729,6 +730,7 @@ export class MembershipService {
     leaguesEnabled?: boolean;
     marketingEnabled?: boolean;
     promotionsEnabled?: boolean;
+    kioskFeatureEnabled?: boolean;
     doorLockType?: DoorLockType;
     defaultBookingWindowDays?: number;
     defaultBookingHours?: { start: string; end: string } | null;
@@ -746,6 +748,7 @@ export class MembershipService {
     if (updates.leaguesEnabled !== undefined) updateFields.leagues_enabled = updates.leaguesEnabled;
     if (updates.marketingEnabled !== undefined) updateFields.marketing_enabled = updates.marketingEnabled;
     if (updates.promotionsEnabled !== undefined) updateFields.promotions_enabled = updates.promotionsEnabled;
+    if (updates.kioskFeatureEnabled !== undefined) updateFields.kiosk_feature_enabled = updates.kioskFeatureEnabled;
     if (updates.doorLockType !== undefined) {
       if (!LocationService.isValidDoorLockType(updates.doorLockType)) {
         throw new Error('Invalid door lock type');

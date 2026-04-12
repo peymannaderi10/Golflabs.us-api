@@ -23,6 +23,7 @@ interface LocationSettingsRow {
   brand_primary_color: string;
   brand_logo_url: string | null;
   custom_domain: string | null;
+  kiosk_feature_enabled: boolean;
 }
 
 function formatSettings(ls: Partial<LocationSettingsRow>) {
@@ -43,6 +44,7 @@ function formatSettings(ls: Partial<LocationSettingsRow>) {
     brandPrimaryColor: ls.brand_primary_color ?? '158 100% 33%',
     brandLogoUrl: ls.brand_logo_url ?? null,
     customDomain: ls.custom_domain ?? null,
+    kioskFeatureEnabled: ls.kiosk_feature_enabled ?? false,
   };
 }
 

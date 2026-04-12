@@ -74,6 +74,7 @@ export interface LocationMembershipSettings {
   leaguesEnabled: boolean;
   marketingEnabled: boolean;
   promotionsEnabled: boolean;
+  kioskFeatureEnabled: boolean;
   doorLockType: DoorLockType;
   defaultBookingWindowDays: number;
   defaultBookingHours: { start: string; end: string } | null;

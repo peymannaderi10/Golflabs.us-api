@@ -39,6 +39,7 @@ const document_routes_1 = __importDefault(require("./modules/documents/document.
 const membership_routes_1 = require("./modules/memberships/membership.routes");
 const marketing_routes_1 = require("./modules/marketing/marketing.routes");
 const business_1 = require("./modules/business");
+const kiosk_1 = require("./modules/kiosk");
 const marketing_controller_1 = require("./modules/marketing/marketing.controller");
 const booking_controller_1 = require("./modules/bookings/booking.controller");
 const socket_service_1 = require("./modules/sockets/socket.service");
@@ -254,6 +255,7 @@ exports.app.use('/agreements', agreement_routes_1.default); // Legal agreement t
 exports.app.use('/documents', document_routes_1.default); // Per-location legal document management
 exports.app.use('/memberships', membership_routes_1.membershipRoutes); // Membership subscription routes
 exports.app.use('/employee/marketing', marketing_routes_1.marketingRoutes); // Marketing campaigns (employee-auth)
+exports.app.use('/kiosk', (0, kiosk_1.createKioskRoutes)(socketService)); // Kiosk self-registration + dashboard config
 exports.app.get('/marketing/unsubscribe', (req, res) => marketing_controller_1.marketingController.unsubscribe(req, res)); // Public unsubscribe
 // Health check endpoint
 exports.app.get('/health', (req, res) => {

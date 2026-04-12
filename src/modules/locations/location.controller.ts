@@ -78,16 +78,18 @@ export class LocationController {
       // its connect-status flags, billing plan, or internal client id.
       // The employee dashboard fetches the same locations through
       // `/locations/accessible` which keeps these fields intact.
-      const stripPrivate = <T extends { stripeConnect?: unknown; clientId?: unknown; plan?: unknown }>(
-        loc: T
-      ): Omit<T, 'stripeConnect' | 'clientId' | 'plan'> => {
-        const { stripeConnect: _s, clientId: _c, plan: _p, ...rest } = loc;
+      const stripPrivate = (loc: Record<string, unknown>): Record<string, unknown> => {
+        const { stripeConnect: _s, clientId: _c, plan: _p, ...rest } = loc as {
+          stripeConnect?: unknown;
+          clientId?: unknown;
+          plan?: unknown;
+        } & Record<string, unknown>;
         return rest;
       };
 
       res.json({
-        ...stripPrivate(location),
-        siblings: siblings.map(stripPrivate),
+        ...stripPrivate(location as unknown as Record<string, unknown>),
+        siblings: siblings.map((s) => stripPrivate(s as unknown as Record<string, unknown>)),
       });
     } catch (error: any) {
       logger.error({ err: error, subdomain: req.params.subdomain }, 'Error resolving subdomain');

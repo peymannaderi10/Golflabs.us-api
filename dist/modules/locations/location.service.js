@@ -15,7 +15,7 @@ const logger_1 = require("../../shared/utils/logger");
 const reserved_slugs_1 = require("../../shared/constants/reserved-slugs");
 const VALID_DOOR_LOCK_TYPES = ['none', 'shelly'];
 function formatSettings(ls) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s;
     return {
         membershipsEnabled: (_a = ls.memberships_enabled) !== null && _a !== void 0 ? _a : false,
         leaguesEnabled: (_b = ls.leagues_enabled) !== null && _b !== void 0 ? _b : true,
@@ -33,6 +33,7 @@ function formatSettings(ls) {
         brandPrimaryColor: (_p = ls.brand_primary_color) !== null && _p !== void 0 ? _p : '158 100% 33%',
         brandLogoUrl: (_q = ls.brand_logo_url) !== null && _q !== void 0 ? _q : null,
         customDomain: (_r = ls.custom_domain) !== null && _r !== void 0 ? _r : null,
+        kioskFeatureEnabled: (_s = ls.kiosk_feature_enabled) !== null && _s !== void 0 ? _s : false,
     };
 }
 function formatLocation(location, settings) {

@@ -689,33 +689,34 @@ class MembershipService {
     // =====================================================
     getLocationMembershipSettings(locationId) {
         return __awaiter(this, void 0, void 0, function* () {
-            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l;
+            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m;
             const { data, error } = yield database_1.supabase
                 .from('location_settings')
-                .select('memberships_enabled, leagues_enabled, marketing_enabled, promotions_enabled, door_lock_type, default_booking_window_days, default_booking_hours_start, default_booking_hours_end, booking_buffer_minutes, booking_grace_period_before_minutes, booking_grace_period_after_minutes, reservation_timeout_minutes, cancellation_policy_hours, brand_primary_color, brand_logo_url, custom_domain')
+                .select('memberships_enabled, leagues_enabled, marketing_enabled, promotions_enabled, kiosk_feature_enabled, door_lock_type, default_booking_window_days, default_booking_hours_start, default_booking_hours_end, booking_buffer_minutes, booking_grace_period_before_minutes, booking_grace_period_after_minutes, reservation_timeout_minutes, cancellation_policy_hours, brand_primary_color, brand_logo_url, custom_domain')
                 .eq('location_id', locationId)
                 .single();
             if (error || !data) {
-                return { membershipsEnabled: false, leaguesEnabled: true, marketingEnabled: false, promotionsEnabled: false, doorLockType: 'shelly', defaultBookingWindowDays: 7, defaultBookingHours: null, bookingBufferMinutes: 0, bookingGracePeriodBeforeMinutes: 0, bookingGracePeriodAfterMinutes: 0, reservationTimeoutMinutes: null, cancellationPolicyHours: 24, brandPrimaryColor: '158 100% 33%', brandLogoUrl: null, customDomain: null };
+                return { membershipsEnabled: false, leaguesEnabled: true, marketingEnabled: false, promotionsEnabled: false, kioskFeatureEnabled: false, doorLockType: 'shelly', defaultBookingWindowDays: 7, defaultBookingHours: null, bookingBufferMinutes: 0, bookingGracePeriodBeforeMinutes: 0, bookingGracePeriodAfterMinutes: 0, reservationTimeoutMinutes: null, cancellationPolicyHours: 24, brandPrimaryColor: '158 100% 33%', brandLogoUrl: null, customDomain: null };
             }
             return {
                 membershipsEnabled: data.memberships_enabled,
                 leaguesEnabled: data.leagues_enabled,
                 marketingEnabled: (_a = data.marketing_enabled) !== null && _a !== void 0 ? _a : false,
                 promotionsEnabled: (_b = data.promotions_enabled) !== null && _b !== void 0 ? _b : false,
-                doorLockType: (_c = data.door_lock_type) !== null && _c !== void 0 ? _c : 'shelly',
+                kioskFeatureEnabled: (_c = data.kiosk_feature_enabled) !== null && _c !== void 0 ? _c : false,
+                doorLockType: (_d = data.door_lock_type) !== null && _d !== void 0 ? _d : 'shelly',
                 defaultBookingWindowDays: data.default_booking_window_days,
                 defaultBookingHours: data.default_booking_hours_start && data.default_booking_hours_end
                     ? { start: data.default_booking_hours_start, end: data.default_booking_hours_end }
                     : null,
-                bookingBufferMinutes: (_d = data.booking_buffer_minutes) !== null && _d !== void 0 ? _d : 0,
-                bookingGracePeriodBeforeMinutes: (_e = data.booking_grace_period_before_minutes) !== null && _e !== void 0 ? _e : 0,
-                bookingGracePeriodAfterMinutes: (_f = data.booking_grace_period_after_minutes) !== null && _f !== void 0 ? _f : 0,
-                reservationTimeoutMinutes: (_g = data.reservation_timeout_minutes) !== null && _g !== void 0 ? _g : null,
-                cancellationPolicyHours: (_h = data.cancellation_policy_hours) !== null && _h !== void 0 ? _h : 24,
-                brandPrimaryColor: (_j = data.brand_primary_color) !== null && _j !== void 0 ? _j : '158 100% 33%',
-                brandLogoUrl: (_k = data.brand_logo_url) !== null && _k !== void 0 ? _k : null,
-                customDomain: (_l = data.custom_domain) !== null && _l !== void 0 ? _l : null,
+                bookingBufferMinutes: (_e = data.booking_buffer_minutes) !== null && _e !== void 0 ? _e : 0,
+                bookingGracePeriodBeforeMinutes: (_f = data.booking_grace_period_before_minutes) !== null && _f !== void 0 ? _f : 0,
+                bookingGracePeriodAfterMinutes: (_g = data.booking_grace_period_after_minutes) !== null && _g !== void 0 ? _g : 0,
+                reservationTimeoutMinutes: (_h = data.reservation_timeout_minutes) !== null && _h !== void 0 ? _h : null,
+                cancellationPolicyHours: (_j = data.cancellation_policy_hours) !== null && _j !== void 0 ? _j : 24,
+                brandPrimaryColor: (_k = data.brand_primary_color) !== null && _k !== void 0 ? _k : '158 100% 33%',
+                brandLogoUrl: (_l = data.brand_logo_url) !== null && _l !== void 0 ? _l : null,
+                customDomain: (_m = data.custom_domain) !== null && _m !== void 0 ? _m : null,
             };
         });
     }
@@ -731,6 +732,8 @@ class MembershipService {
                 updateFields.marketing_enabled = updates.marketingEnabled;
             if (updates.promotionsEnabled !== undefined)
                 updateFields.promotions_enabled = updates.promotionsEnabled;
+            if (updates.kioskFeatureEnabled !== undefined)
+                updateFields.kiosk_feature_enabled = updates.kioskFeatureEnabled;
             if (updates.doorLockType !== undefined) {
                 if (!location_service_1.LocationService.isValidDoorLockType(updates.doorLockType)) {
                     throw new Error('Invalid door lock type');

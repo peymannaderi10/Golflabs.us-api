@@ -211,6 +211,13 @@ export interface AuthenticatedRequest extends Request {
   employeeProfile?: EmployeeProfile;
   isKiosk?: boolean;
   /**
+   * Populated by `authenticateKiosk` from the `X-Kiosk-Installation-Id`
+   * header. Used by post-registration kiosk endpoints to bind the caller
+   * to a specific installation, preventing a compromised kiosk from
+   * fetching other tenants' settings with the shared KIOSK_API_KEY.
+   */
+  kioskInstallationId?: string;
+  /**
    * Populated by `resolveResourceLocation` middleware when a route
    * identifies a resource by its own id (e.g. `:ruleId`). Read by
    * `enforceLocationScope` to validate tenant membership without
@@ -341,6 +348,10 @@ export const authenticateKiosk = (req: AuthenticatedRequest, res: Response, next
   }
 
   req.isKiosk = true;
+  const installationHeader = req.headers['x-kiosk-installation-id'];
+  if (typeof installationHeader === 'string' && installationHeader.length > 0) {
+    req.kioskInstallationId = installationHeader;
+  }
   next();
 };
 

@@ -26,11 +26,11 @@ class SpaceController {
         });
         this.createSpace = (req, res) => __awaiter(this, void 0, void 0, function* () {
             try {
-                const { locationId, name, spaceNumber, equipment } = req.body;
+                const { locationId, name, spaceNumber, equipment, kioskEquipped } = req.body;
                 if (!locationId || !name || spaceNumber === undefined) {
                     return res.status(400).json({ message: 'locationId, name, and spaceNumber are required' });
                 }
-                const space = yield this.spaceService.createSpace(locationId, name, spaceNumber, equipment);
+                const space = yield this.spaceService.createSpace(locationId, name, spaceNumber, equipment, kioskEquipped === true);
                 // Broadcast to dashboards
                 if (this.socketService) {
                     this.socketService.broadcastSpaceCreated(locationId, space);

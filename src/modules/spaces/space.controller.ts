@@ -25,13 +25,19 @@ export class SpaceController {
 
   createSpace = async (req: Request, res: Response) => {
     try {
-      const { locationId, name, spaceNumber, equipment } = req.body;
+      const { locationId, name, spaceNumber, equipment, kioskEquipped } = req.body;
 
       if (!locationId || !name || spaceNumber === undefined) {
         return res.status(400).json({ message: 'locationId, name, and spaceNumber are required' });
       }
 
-      const space = await this.spaceService.createSpace(locationId, name, spaceNumber, equipment);
+      const space = await this.spaceService.createSpace(
+        locationId,
+        name,
+        spaceNumber,
+        equipment,
+        kioskEquipped === true,
+      );
 
       // Broadcast to dashboards
       if (this.socketService) {
