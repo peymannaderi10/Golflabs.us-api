@@ -249,9 +249,13 @@ export class SocketService {
       timeZone: timezone
     });
 
+    // A booking is "live" on the kiosk only while it still holds the slot.
+    // Any terminal status (cancelled, expired, abandoned, no_show, completed)
+    // means the slot is released and the kiosk should drop the row.
+    const isLive = booking.status === 'confirmed' || booking.status === 'reserved' || booking.status === 'pending';
     const payload = {
       type: 'booking_update',
-      action: booking.status === 'cancelled' ? 'remove' : 'add',
+      action: isLive ? 'add' : 'remove',
       locationId,
       spaceId,
       date: dateForLocation,
