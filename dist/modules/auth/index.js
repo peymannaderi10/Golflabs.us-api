@@ -1,11 +1,12 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.requireEmployee = exports.resolveResourceLocation = exports.enforceLocationScopeOptional = exports.enforceLocationScope = exports.authenticateKioskOrEmployee = exports.authenticateKiosk = exports.authenticateEmployee = exports.authenticateUser = void 0;
+exports.requireEmployee = exports.resolveResourceLocation = exports.enforceLocationScopeOptional = exports.enforceLocationScope = exports.authenticateGuestBooking = exports.authenticateKioskOrEmployee = exports.authenticateKiosk = exports.authenticateEmployee = exports.authenticateUser = void 0;
 var auth_middleware_1 = require("./auth.middleware");
 Object.defineProperty(exports, "authenticateUser", { enumerable: true, get: function () { return auth_middleware_1.authenticateUser; } });
 Object.defineProperty(exports, "authenticateEmployee", { enumerable: true, get: function () { return auth_middleware_1.authenticateEmployee; } });
 Object.defineProperty(exports, "authenticateKiosk", { enumerable: true, get: function () { return auth_middleware_1.authenticateKiosk; } });
 Object.defineProperty(exports, "authenticateKioskOrEmployee", { enumerable: true, get: function () { return auth_middleware_1.authenticateKioskOrEmployee; } });
+Object.defineProperty(exports, "authenticateGuestBooking", { enumerable: true, get: function () { return auth_middleware_1.authenticateGuestBooking; } });
 Object.defineProperty(exports, "enforceLocationScope", { enumerable: true, get: function () { return auth_middleware_1.enforceLocationScope; } });
 Object.defineProperty(exports, "enforceLocationScopeOptional", { enumerable: true, get: function () { return auth_middleware_1.enforceLocationScopeOptional; } });
 Object.defineProperty(exports, "resolveResourceLocation", { enumerable: true, get: function () { return auth_middleware_1.resolveResourceLocation; } });

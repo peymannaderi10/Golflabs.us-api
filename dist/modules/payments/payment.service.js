@@ -230,7 +230,7 @@ class PaymentService {
                                 logger_1.logger.info({ paymentIntentId: existingPaymentIntent.id, oldAmount: existingPaymentIntent.amount, newAmount: amount, bookingId }, 'Updating existing payment intent with new amount');
                                 const updated = yield stripe_1.stripe.paymentIntents.update(existingPaymentIntent.id, {
                                     amount,
-                                    metadata: Object.assign(Object.assign({}, existingPaymentIntent.metadata), { promotion_id: (promotionInfo === null || promotionInfo === void 0 ? void 0 : promotionInfo.promotionId) || '', discount_amount: serverDiscountAmount.toString(), original_amount: (originalSubtotal / 100).toString() }),
+                                    metadata: Object.assign(Object.assign({}, existingPaymentIntent.metadata), { promotion_id: (promotionInfo === null || promotionInfo === void 0 ? void 0 : promotionInfo.promotionId) || '', discount_amount: (serverDiscountAmount / 100).toString(), original_amount: (originalSubtotal / 100).toString() }),
                                 }, stripeOpts);
                                 // Update local payment record and booking
                                 yield database_1.supabase.from('payments').update({ amount: amount / 100 }).eq('stripe_payment_intent_id', existingId);
@@ -315,10 +315,18 @@ class PaymentService {
                     stripeAccountId: (_e = stripeOpts === null || stripeOpts === void 0 ? void 0 : stripeOpts.stripeAccount) !== null && _e !== void 0 ? _e : null,
                 };
             }
-            // 7. Paid booking: create Stripe Payment Intent (with customer + save card for future use)
+            // 7. Paid booking: create Stripe Payment Intent with MANUAL capture.
+            // capture_method='manual' authorizes the card (holds funds) without
+            // charging. The webhook's amount_capturable_updated handler does a
+            // final availability check at capture time — if the booking is still
+            // valid, it captures; if not, it cancels the auth so the customer is
+            // never charged. This is the industry-standard pattern for preventing
+            // "charge then refund" when a slot is claimed between PI creation and
+            // payment confirmation.
             const paymentIntentParams = {
                 amount,
                 currency: 'usd',
+                capture_method: 'manual',
                 automatic_payment_methods: { enabled: true },
                 metadata: intentMetadata
             };

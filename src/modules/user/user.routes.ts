@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { param } from 'express-validator';
+import { param, body } from 'express-validator';
 import { UserController } from './user.controller';
 import { authenticateUser } from '../auth';
 import { handleValidationErrors } from '../../shared/middleware/validation';
@@ -26,6 +26,13 @@ export function createUserRoutes(socketService: SocketService) {
     handleValidationErrors,
     authenticateUser,
     controller.deleteAccount,
+  );
+  router.post('/users/:userId/locations',
+    param('userId').isUUID().withMessage('userId must be a valid UUID'),
+    body('locationId').isUUID().withMessage('locationId must be a valid UUID'),
+    handleValidationErrors,
+    authenticateUser,
+    controller.associateLocation,
   );
 
   return router;

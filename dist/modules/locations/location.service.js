@@ -15,7 +15,7 @@ const logger_1 = require("../../shared/utils/logger");
 const reserved_slugs_1 = require("../../shared/constants/reserved-slugs");
 const VALID_DOOR_LOCK_TYPES = ['none', 'shelly'];
 function formatSettings(ls) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u;
     return {
         membershipsEnabled: (_a = ls.memberships_enabled) !== null && _a !== void 0 ? _a : false,
         leaguesEnabled: (_b = ls.leagues_enabled) !== null && _b !== void 0 ? _b : true,
@@ -30,10 +30,12 @@ function formatSettings(ls) {
         bookingGracePeriodBeforeMinutes: (_l = ls.booking_grace_period_before_minutes) !== null && _l !== void 0 ? _l : 0,
         bookingGracePeriodAfterMinutes: (_m = ls.booking_grace_period_after_minutes) !== null && _m !== void 0 ? _m : 0,
         reservationTimeoutMinutes: (_o = ls.reservation_timeout_minutes) !== null && _o !== void 0 ? _o : null,
-        brandPrimaryColor: (_p = ls.brand_primary_color) !== null && _p !== void 0 ? _p : '158 100% 33%',
-        brandLogoUrl: (_q = ls.brand_logo_url) !== null && _q !== void 0 ? _q : null,
-        customDomain: (_r = ls.custom_domain) !== null && _r !== void 0 ? _r : null,
-        kioskFeatureEnabled: (_s = ls.kiosk_feature_enabled) !== null && _s !== void 0 ? _s : false,
+        guestReservationHoldEnabled: (_p = ls.guest_reservation_hold_enabled) !== null && _p !== void 0 ? _p : false,
+        brandPrimaryColor: (_q = ls.brand_primary_color) !== null && _q !== void 0 ? _q : '158 100% 33%',
+        brandLogoUrl: (_r = ls.brand_logo_url) !== null && _r !== void 0 ? _r : null,
+        customDomain: (_s = ls.custom_domain) !== null && _s !== void 0 ? _s : null,
+        kioskFeatureEnabled: (_t = ls.kiosk_feature_enabled) !== null && _t !== void 0 ? _t : false,
+        bookingFlowMode: (_u = ls.booking_flow_mode) !== null && _u !== void 0 ? _u : 'auth_first',
     };
 }
 function formatLocation(location, settings) {

@@ -183,6 +183,8 @@ export class NotificationService {
         total_amount,
         location_id,
         user_id,
+        guest_email,
+        guest_name,
         user_profiles (
           full_name,
           email
@@ -208,9 +210,9 @@ export class NotificationService {
       return null;
     }
 
-    // Check if we have the required related data
-    if (!data.user_profiles || !data.spaces || !data.locations) {
-      logger.error({ bookingId, hasUser: !!data.user_profiles, hasSpace: !!data.spaces, hasLocation: !!data.locations }, 'Missing related data for booking');
+    // Check required related data (spaces + locations always needed; user_profiles OR guest fields)
+    if (!data.spaces || !data.locations) {
+      logger.error({ bookingId, hasSpace: !!data.spaces, hasLocation: !!data.locations }, 'Missing related data for booking');
       return null;
     }
 
@@ -219,14 +221,23 @@ export class NotificationService {
     const space = Array.isArray(data.spaces) ? data.spaces[0] : data.spaces;
     const location = Array.isArray(data.locations) ? data.locations[0] : data.locations;
 
-    if (!userProfile || !space || !location) {
+    if (!space || !location) {
       logger.error({ bookingId }, 'Missing required nested data for booking');
       return null;
     }
 
+    // Resolve name and email: prefer user profile, fall back to guest fields
+    const userEmail = userProfile?.email || data.guest_email;
+    const userFullName = userProfile?.full_name || data.guest_name || 'Valued Customer';
+
+    if (!userEmail) {
+      logger.error({ bookingId }, 'No email available for booking (neither user profile nor guest email)');
+      return null;
+    }
+
     return {
-      userFullName: userProfile.full_name || 'Valued Customer',
-      userEmail: userProfile.email,
+      userFullName,
+      userEmail,
       bookingId: data.id,
       spaceName: space.name,
       locationName: location.name,

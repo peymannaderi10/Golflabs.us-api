@@ -132,10 +132,41 @@ class SocketService {
                     socket.emit('auth_error', { message: 'Authentication failed' });
                 }
             }));
+            // Join a payment-intent-specific room to receive real-time status
+            // updates during the manual-capture window. Used by the Return page
+            // to transition from "Finalizing..." to "Success" without polling.
+            // Payment intent IDs are already known to the user (in the URL), so
+            // no additional auth is required — joining only gives access to that
+            // specific PI's status events.
+            socket.on('register_payment', (payload) => {
+                const intentId = (payload === null || payload === void 0 ? void 0 : payload.paymentIntentId) || (payload === null || payload === void 0 ? void 0 : payload.setupIntentId);
+                if (!intentId || typeof intentId !== 'string')
+                    return;
+                // Basic shape check: Stripe PIs start with pi_, SIs with seti_
+                if (!/^(pi|seti)_[a-zA-Z0-9_]+$/.test(intentId))
+                    return;
+                const room = `payment-${intentId}`;
+                socket.join(room);
+                logger_1.logger.info({ socketId: socket.id, room }, 'Socket joined payment room');
+            });
             socket.on('disconnect', () => {
                 logger_1.logger.info({ socketId: socket.id }, 'Client disconnected');
             });
         });
+    }
+    /**
+     * Broadcast a payment status transition to any client subscribed to this
+     * specific payment intent. Called from the webhook when status changes
+     * (requires_capture → succeeded, requires_capture → canceled, etc.).
+     *
+     * Consumers (Return page) subscribe by joining `payment-${intentId}`.
+     */
+    emitPaymentStatus(intentId, status, extras = {}) {
+        if (!intentId)
+            return;
+        const room = `payment-${intentId}`;
+        this.io.to(room).emit('payment_status', Object.assign({ intentId, status }, extras));
+        logger_1.logger.info({ intentId, status, room }, 'Emitted payment_status');
     }
     /**
      * Fetches the specific booking and broadcasts it to the space kiosk.

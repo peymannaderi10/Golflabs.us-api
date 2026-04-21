@@ -17,9 +17,14 @@ function handleExpiredReservations() {
     return __awaiter(this, void 0, void 0, function* () {
         try {
             const now = new Date().toISOString();
+            // Reserved bookings whose expires_at has passed → mark expired + record reason
             const { error } = yield database_1.supabase
                 .from('bookings')
-                .update({ status: 'expired' })
+                .update({
+                status: 'expired',
+                outcome_reason: 'reservation_timeout',
+                terminated_at: now,
+            })
                 .lt('expires_at', now)
                 .eq('status', 'reserved');
             if (error) {
@@ -27,13 +32,17 @@ function handleExpiredReservations() {
                 return;
             }
             logger_1.logger.info('Checked for expired reservations');
-            // Clean up orphaned pending bookings (reservation holds off) older than 30 minutes.
-            // These are created when a customer enters checkout without a reservation hold
-            // and never completes payment.
+            // Orphaned pending bookings (holds off, no payment) older than 30 minutes
+            // → mark abandoned + record reason. These are authenticated users who
+            // reached checkout but never completed payment.
             const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
             const { error: pendingError } = yield database_1.supabase
                 .from('bookings')
-                .update({ status: 'abandoned' })
+                .update({
+                status: 'abandoned',
+                outcome_reason: 'payment_never_attempted',
+                terminated_at: now,
+            })
                 .eq('status', 'pending')
                 .is('expires_at', null)
                 .lt('created_at', thirtyMinAgo);

@@ -58,6 +58,38 @@ export class UserController {
     }
   };
 
+  associateLocation = async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { userId } = req.params;
+      const { locationId } = req.body as { locationId?: string };
+
+      if (!userId) {
+        return res.status(400).json({ error: 'User ID is required' });
+      }
+      if (!locationId) {
+        return res.status(400).json({ error: 'locationId is required' });
+      }
+
+      if (req.user?.id !== userId) {
+        return res.status(403).json({ error: 'You can only associate your own account' });
+      }
+
+      const result = await this.userService.associateUserWithLocation(userId, locationId);
+      res.json(result);
+    } catch (error: any) {
+      logger.error({ err: error }, 'Error in associateLocation endpoint');
+
+      if (error.message === 'Location not found') {
+        return res.status(404).json({ error: error.message });
+      }
+      if (error.message === 'userId and locationId are required') {
+        return res.status(400).json({ error: error.message });
+      }
+
+      res.status(500).json({ error: 'Failed to associate user with location' });
+    }
+  };
+
   getUserProfile = async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { userId } = req.params;

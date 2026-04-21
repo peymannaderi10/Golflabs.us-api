@@ -12,5 +12,6 @@ function createUserRoutes(socketService) {
     router.get('/users/:userId/profile', (0, express_validator_1.param)('userId').isUUID().withMessage('userId must be a valid UUID'), validation_1.handleValidationErrors, auth_1.authenticateUser, controller.getUserProfile);
     router.get('/users/:userId/export', (0, express_validator_1.param)('userId').isUUID().withMessage('userId must be a valid UUID'), validation_1.handleValidationErrors, auth_1.authenticateUser, controller.exportUserData);
     router.delete('/users/:userId/account', (0, express_validator_1.param)('userId').isUUID().withMessage('userId must be a valid UUID'), validation_1.handleValidationErrors, auth_1.authenticateUser, controller.deleteAccount);
+    router.post('/users/:userId/locations', (0, express_validator_1.param)('userId').isUUID().withMessage('userId must be a valid UUID'), (0, express_validator_1.body)('locationId').isUUID().withMessage('locationId must be a valid UUID'), validation_1.handleValidationErrors, auth_1.authenticateUser, controller.associateLocation);
     return router;
 }

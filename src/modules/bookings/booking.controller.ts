@@ -3,7 +3,7 @@ import { BookingService } from './booking.service';
 import { CapacityHoldService } from './capacity-hold.service';
 import { SocketService } from '../sockets/socket.service';
 import { AuthenticatedRequest } from '../auth/auth.middleware';
-import { sanitizeError } from '../../shared/utils/error.utils';
+import { sanitizeError, AppError } from '../../shared/utils/error.utils';
 import { logger } from '../../shared/utils/logger';
 
 export class BookingController {
@@ -25,9 +25,51 @@ export class BookingController {
         userId: authenticatedUserId,
       });
       res.status(201).json(result);
-    } catch (error: any) {
-      logger.error({ err: error }, 'Error in /bookings/reserve');
-      res.status(500).json({ error: sanitizeError(error) });
+    } catch (error: unknown) {
+      const status = error instanceof AppError ? error.statusCode : 500;
+      if (status >= 500) logger.error({ err: error }, 'Error in /bookings/reserve');
+      res.status(status).json({ error: sanitizeError(error) });
+    }
+  };
+
+  createGuestCheckoutSession = async (req: Request, res: Response) => {
+    try {
+      const ipAddress =
+        (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ||
+        req.socket.remoteAddress ||
+        undefined;
+      const userAgent = req.headers['user-agent'] || undefined;
+      const result = await this.bookingService.createGuestCheckoutSession({
+        ...req.body,
+        ipAddress,
+        userAgent,
+      });
+      res.status(201).json(result);
+    } catch (error: unknown) {
+      const status = error instanceof AppError ? error.statusCode : 500;
+      if (status >= 500) logger.error({ err: error }, 'Error in /bookings/guest-checkout-session');
+      res.status(status).json({ error: sanitizeError(error) });
+    }
+  };
+
+  createGuestReservationHold = async (req: Request, res: Response) => {
+    try {
+      const result = await this.bookingService.createGuestReservationHold(req.body);
+      res.status(201).json(result);
+    } catch (error: unknown) {
+      const status = error instanceof AppError ? error.statusCode : 500;
+      if (status >= 500) logger.error({ err: error }, 'Error in /bookings/guest-reservation/init');
+      res.status(status).json({ error: sanitizeError(error) });
+    }
+  };
+
+  cancelGuestReservationHold = async (req: Request, res: Response) => {
+    try {
+      await this.bookingService.cancelGuestReservationHold(req.params.bookingId);
+      res.status(204).send();
+    } catch (error: unknown) {
+      logger.warn({ err: error, bookingId: req.params.bookingId }, 'Failed to cancel guest reservation hold (non-fatal)');
+      res.status(204).send();
     }
   };
 

@@ -206,10 +206,19 @@ export interface EmployeeProfile {
   accessibleLocationIds: string[];
 }
 
+export interface GuestBookingInfo {
+  bookingId: string;
+  guestEmail: string;
+  guestName: string | null;
+  guestPhone: string | null;
+  locationId: string;
+}
+
 export interface AuthenticatedRequest extends Request {
   user?: any;
   employeeProfile?: EmployeeProfile;
   isKiosk?: boolean;
+  guestBooking?: GuestBookingInfo;
   /**
    * Populated by `authenticateKiosk` from the `X-Kiosk-Installation-Id`
    * header. Used by post-registration kiosk endpoints to bind the caller
@@ -572,4 +581,63 @@ export const authenticateKioskOrEmployee = async (req: AuthenticatedRequest, res
     return authenticateKiosk(req, res, next);
   }
   return authenticateEmployee(req, res, next);
+};
+
+/**
+ * Validates a guest session token from the `X-Guest-Token` header.
+ * Looks up the booking by `guest_session_token`, verifies it's still
+ * active (reserved/pending), and populates `req.guestBooking`.
+ */
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export const authenticateGuestBooking = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  const guestToken = req.headers['x-guest-token'] as string | undefined;
+
+  if (!guestToken || !UUID_REGEX.test(guestToken)) {
+    return res.status(401).json({ error: 'Invalid guest session token' });
+  }
+
+  try {
+    const { data: booking, error } = await supabase
+      .from('bookings')
+      .select('id, guest_email, guest_name, guest_phone, location_id, status, expires_at')
+      .eq('guest_session_token', guestToken)
+      .maybeSingle();
+
+    if (error || !booking) {
+      return res.status(401).json({ error: 'Invalid guest session token' });
+    }
+
+    // Verify the booking is still active
+    if (!['reserved', 'pending'].includes(booking.status)) {
+      return res.status(410).json({ error: 'This booking session has expired' });
+    }
+
+    // Check reservation expiry
+    if (booking.expires_at && new Date(booking.expires_at) < new Date()) {
+      return res.status(410).json({ error: 'This reservation has expired' });
+    }
+
+    // Defense-in-depth: verify the location has guest_checkout mode enabled
+    const { data: settings } = await supabase
+      .from('location_settings')
+      .select('booking_flow_mode')
+      .eq('location_id', booking.location_id)
+      .single();
+    if (settings?.booking_flow_mode !== 'guest_checkout') {
+      return res.status(403).json({ error: 'Guest checkout is not enabled for this location' });
+    }
+
+    req.guestBooking = {
+      bookingId: booking.id,
+      guestEmail: booking.guest_email,
+      guestName: booking.guest_name,
+      guestPhone: booking.guest_phone,
+      locationId: booking.location_id,
+    };
+    next();
+  } catch (error) {
+    logger.error({ err: error }, 'Guest booking authentication error');
+    return res.status(401).json({ error: 'Authentication failed' });
+  }
 };

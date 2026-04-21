@@ -156,6 +156,43 @@ export class UserService {
     };
   }
 
+  /**
+   * Associate a user with a location in the user_locations junction table.
+   * Called at signup/profile-complete time so the user shows up in the
+   * location's customer list even before they make their first booking.
+   *
+   * Uses service-role upsert because user_locations INSERT was locked down
+   * to service_role by migration 056 (anon key can't insert).
+   */
+  async associateUserWithLocation(userId: string, locationId: string): Promise<{ success: boolean }> {
+    if (!userId || !locationId) {
+      throw new Error('userId and locationId are required');
+    }
+
+    // Verify the location exists before writing the association. Without
+    // this a caller could create rows pointing at arbitrary UUIDs.
+    const { data: location, error: locErr } = await supabase
+      .from('locations')
+      .select('id')
+      .eq('id', locationId)
+      .maybeSingle();
+
+    if (locErr || !location) {
+      throw new Error('Location not found');
+    }
+
+    const { error } = await supabase
+      .from('user_locations')
+      .upsert({ user_id: userId, location_id: locationId }, { onConflict: 'user_id,location_id' });
+
+    if (error) {
+      logger.error({ err: error, userId, locationId }, 'Failed to associate user with location');
+      throw new Error('Failed to associate user with location');
+    }
+
+    return { success: true };
+  }
+
   async getUserProfile(userId: string) {
     if (!userId) {
       throw new Error('User ID is required');

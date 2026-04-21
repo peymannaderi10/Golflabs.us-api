@@ -12,7 +12,7 @@ const REQUIRED_AGREEMENT_TYPES = [
 const CURRENT_AGREEMENT_VERSION = '1.0';
 
 interface RecordAgreementsParams {
-  userId: string;
+  userId: string | null;
   signerName: string;
   signerEmail: string;
   bookingId: string;
@@ -37,8 +37,8 @@ export class AgreementService {
       userAgent,
     } = params;
 
-    if (!userId || !bookingId || !locationId) {
-      throw new Error('userId, bookingId, and locationId are required');
+    if (!bookingId || !locationId) {
+      throw new Error('bookingId and locationId are required');
     }
 
     if (!signerName || !signerEmail) {
@@ -59,12 +59,13 @@ export class AgreementService {
       throw new Error(`Missing document hashes for: ${missingHashes.join(', ')}`);
     }
 
-    // Check if agreements already exist for this booking
-    const { data: existing, error: checkError } = await supabase
+    // Check if agreements already exist for this booking (scoped by booking_id only)
+    let existingQuery = supabase
       .from('user_agreements')
       .select('agreement_type')
-      .eq('booking_id', bookingId)
-      .eq('user_id', userId);
+      .eq('booking_id', bookingId);
+    if (userId) existingQuery = existingQuery.eq('user_id', userId);
+    const { data: existing, error: checkError } = await existingQuery;
 
     if (checkError) {
       logger.error({ err: checkError }, 'Error checking existing agreements');

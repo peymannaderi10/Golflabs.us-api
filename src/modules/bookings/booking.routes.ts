@@ -1,9 +1,18 @@
 import { Router } from 'express';
 import { body, param, query } from 'express-validator';
+import rateLimit from 'express-rate-limit';
 import { BookingController } from './booking.controller';
 import { SocketService } from '../sockets/socket.service';
 import { authenticateEmployee, authenticateUser, authenticateKiosk, authenticateKioskOrEmployee, enforceLocationScope, resolveResourceLocation } from '../auth';
 import { handleValidationErrors, validateUUID } from '../../shared/middleware/validation';
+
+const guestReserveRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10, // 10 guest reservations per IP per 15 min
+  message: { error: 'Too many reservation attempts. Please try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 export const createBookingRoutes = (socketService: SocketService): Router => {
   const bookingRoutes = Router();
@@ -18,6 +27,42 @@ export const createBookingRoutes = (socketService: SocketService): Router => {
     handleValidationErrors,
     controller.reserveBooking
   );
+  // Guest checkout: no auth required, rate-limited. Returns a Stripe client
+  // secret — no booking row is created here; the booking is materialized by
+  // the stripe webhook on payment success.
+  bookingRoutes.post('/guest-checkout-session', guestReserveRateLimit,
+    validateUUID('locationId', 'body'), validateUUID('spaceId', 'body'),
+    body('startTime').notEmpty().withMessage('startTime is required'),
+    body('endTime').notEmpty().withMessage('endTime is required'),
+    body('date').notEmpty().withMessage('date is required'),
+    body('guestEmail').isEmail().withMessage('Valid email is required'),
+    body('guestName').isString().notEmpty().withMessage('Name is required'),
+    body('guestPhone').isString().notEmpty().withMessage('Phone is required'),
+    body('partySize').optional().isInt({ min: 1 }),
+    body('documentHashes').isObject().withMessage('documentHashes must be an object'),
+    body('existingBookingId').optional({ nullable: true }).isUUID().withMessage('existingBookingId must be a UUID'),
+    handleValidationErrors,
+    controller.createGuestCheckoutSession,
+  );
+  // Guest reservation hold: claim the slot the moment the guest lands on
+  // /guest-checkout so concurrent guests fail fast at form-submit time.
+  // Returns nulls if the location has the hold feature off — frontend
+  // noops in that case.
+  bookingRoutes.post('/guest-reservation/init', guestReserveRateLimit,
+    validateUUID('locationId', 'body'), validateUUID('spaceId', 'body'),
+    body('startTime').notEmpty(),
+    body('endTime').notEmpty(),
+    body('date').notEmpty(),
+    body('partySize').optional().isInt({ min: 1 }),
+    handleValidationErrors,
+    controller.createGuestReservationHold,
+  );
+  bookingRoutes.delete('/guest-reservation/:bookingId', guestReserveRateLimit,
+    validateUUID('bookingId', 'param'),
+    handleValidationErrors,
+    controller.cancelGuestReservationHold,
+  );
+
   bookingRoutes.get('/', controller.getBookings);
 
   bookingRoutes.get('/capacity-holds', controller.getCapacityHolds);

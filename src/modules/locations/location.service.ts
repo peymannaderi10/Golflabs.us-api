@@ -3,6 +3,7 @@ import { logger } from '../../shared/utils/logger';
 import { isReservedSlug } from '../../shared/constants/reserved-slugs';
 
 export type DoorLockType = 'none' | 'shelly';
+export type BookingFlowMode = 'auth_first' | 'late_auth' | 'guest_checkout' | 'members_only';
 
 const VALID_DOOR_LOCK_TYPES: DoorLockType[] = ['none', 'shelly'];
 
@@ -20,10 +21,12 @@ interface LocationSettingsRow {
   booking_grace_period_before_minutes: number;
   booking_grace_period_after_minutes: number;
   reservation_timeout_minutes: number | null;
+  guest_reservation_hold_enabled: boolean;
   brand_primary_color: string;
   brand_logo_url: string | null;
   custom_domain: string | null;
   kiosk_feature_enabled: boolean;
+  booking_flow_mode: BookingFlowMode;
 }
 
 function formatSettings(ls: Partial<LocationSettingsRow>) {
@@ -41,10 +44,12 @@ function formatSettings(ls: Partial<LocationSettingsRow>) {
     bookingGracePeriodBeforeMinutes: ls.booking_grace_period_before_minutes ?? 0,
     bookingGracePeriodAfterMinutes: ls.booking_grace_period_after_minutes ?? 0,
     reservationTimeoutMinutes: ls.reservation_timeout_minutes ?? null,
+    guestReservationHoldEnabled: ls.guest_reservation_hold_enabled ?? false,
     brandPrimaryColor: ls.brand_primary_color ?? '158 100% 33%',
     brandLogoUrl: ls.brand_logo_url ?? null,
     customDomain: ls.custom_domain ?? null,
     kioskFeatureEnabled: ls.kiosk_feature_enabled ?? false,
+    bookingFlowMode: ls.booking_flow_mode ?? 'auth_first',
   };
 }
 

@@ -12,6 +12,8 @@ import {
   MembershipPlan,
   Membership,
   LocationMembershipSettings,
+  BookingFlowMode,
+  VALID_BOOKING_FLOW_MODES,
 } from './membership.types';
 
 export class MembershipService {
@@ -695,12 +697,12 @@ export class MembershipService {
   async getLocationMembershipSettings(locationId: string): Promise<LocationMembershipSettings> {
     const { data, error } = await supabase
       .from('location_settings')
-      .select('memberships_enabled, leagues_enabled, marketing_enabled, promotions_enabled, kiosk_feature_enabled, door_lock_type, default_booking_window_days, default_booking_hours_start, default_booking_hours_end, booking_buffer_minutes, booking_grace_period_before_minutes, booking_grace_period_after_minutes, reservation_timeout_minutes, cancellation_policy_hours, brand_primary_color, brand_logo_url, custom_domain')
+      .select('memberships_enabled, leagues_enabled, marketing_enabled, promotions_enabled, kiosk_feature_enabled, booking_flow_mode, door_lock_type, default_booking_window_days, default_booking_hours_start, default_booking_hours_end, booking_buffer_minutes, booking_grace_period_before_minutes, booking_grace_period_after_minutes, reservation_timeout_minutes, guest_reservation_hold_enabled, cancellation_policy_hours, brand_primary_color, brand_logo_url, custom_domain')
       .eq('location_id', locationId)
       .single();
 
     if (error || !data) {
-      return { membershipsEnabled: false, leaguesEnabled: true, marketingEnabled: false, promotionsEnabled: false, kioskFeatureEnabled: false, doorLockType: 'shelly', defaultBookingWindowDays: 7, defaultBookingHours: null, bookingBufferMinutes: 0, bookingGracePeriodBeforeMinutes: 0, bookingGracePeriodAfterMinutes: 0, reservationTimeoutMinutes: null, cancellationPolicyHours: 24, brandPrimaryColor: '158 100% 33%', brandLogoUrl: null, customDomain: null };
+      return { membershipsEnabled: false, leaguesEnabled: true, marketingEnabled: false, promotionsEnabled: false, kioskFeatureEnabled: false, bookingFlowMode: 'auth_first', doorLockType: 'shelly', defaultBookingWindowDays: 7, defaultBookingHours: null, bookingBufferMinutes: 0, bookingGracePeriodBeforeMinutes: 0, bookingGracePeriodAfterMinutes: 0, reservationTimeoutMinutes: null, guestReservationHoldEnabled: false, cancellationPolicyHours: 24, brandPrimaryColor: '158 100% 33%', brandLogoUrl: null, customDomain: null };
     }
 
     return {
@@ -709,6 +711,7 @@ export class MembershipService {
       marketingEnabled: data.marketing_enabled ?? false,
       promotionsEnabled: data.promotions_enabled ?? false,
       kioskFeatureEnabled: data.kiosk_feature_enabled ?? false,
+      bookingFlowMode: (data.booking_flow_mode ?? 'auth_first') as BookingFlowMode,
       doorLockType: data.door_lock_type ?? 'shelly',
       defaultBookingWindowDays: data.default_booking_window_days,
       defaultBookingHours: data.default_booking_hours_start && data.default_booking_hours_end
@@ -718,6 +721,7 @@ export class MembershipService {
       bookingGracePeriodBeforeMinutes: data.booking_grace_period_before_minutes ?? 0,
       bookingGracePeriodAfterMinutes: data.booking_grace_period_after_minutes ?? 0,
       reservationTimeoutMinutes: data.reservation_timeout_minutes ?? null,
+      guestReservationHoldEnabled: data.guest_reservation_hold_enabled ?? false,
       cancellationPolicyHours: data.cancellation_policy_hours ?? 24,
       brandPrimaryColor: data.brand_primary_color ?? '158 100% 33%',
       brandLogoUrl: data.brand_logo_url ?? null,
@@ -731,6 +735,7 @@ export class MembershipService {
     marketingEnabled?: boolean;
     promotionsEnabled?: boolean;
     kioskFeatureEnabled?: boolean;
+    bookingFlowMode?: BookingFlowMode;
     doorLockType?: DoorLockType;
     defaultBookingWindowDays?: number;
     defaultBookingHours?: { start: string; end: string } | null;
@@ -738,6 +743,7 @@ export class MembershipService {
     bookingGracePeriodBeforeMinutes?: number;
     bookingGracePeriodAfterMinutes?: number;
     reservationTimeoutMinutes?: number | null;
+    guestReservationHoldEnabled?: boolean;
     cancellationPolicyHours?: number;
     brandPrimaryColor?: string;
     brandLogoUrl?: string | null;
@@ -749,6 +755,44 @@ export class MembershipService {
     if (updates.marketingEnabled !== undefined) updateFields.marketing_enabled = updates.marketingEnabled;
     if (updates.promotionsEnabled !== undefined) updateFields.promotions_enabled = updates.promotionsEnabled;
     if (updates.kioskFeatureEnabled !== undefined) updateFields.kiosk_feature_enabled = updates.kioskFeatureEnabled;
+    if (updates.bookingFlowMode !== undefined) {
+      if (!VALID_BOOKING_FLOW_MODES.includes(updates.bookingFlowMode)) {
+        throw new Error('Invalid booking flow mode');
+      }
+      // members_only requires memberships to be enabled
+      if (updates.bookingFlowMode === 'members_only') {
+        const membershipsOn = updates.membershipsEnabled ?? updateFields.memberships_enabled;
+        if (membershipsOn === false) {
+          throw new Error('Memberships must be enabled to use members-only booking flow');
+        }
+        // If not in this payload, check current DB value
+        if (membershipsOn === undefined) {
+          const { data: current } = await supabase
+            .from('location_settings')
+            .select('memberships_enabled')
+            .eq('location_id', locationId)
+            .single();
+          if (!current?.memberships_enabled) {
+            throw new Error('Memberships must be enabled to use members-only booking flow');
+          }
+        }
+      }
+      updateFields.booking_flow_mode = updates.bookingFlowMode;
+    }
+    // Prevent disabling memberships while members_only flow is active
+    if (updates.membershipsEnabled === false && updates.bookingFlowMode !== 'members_only') {
+      const currentMode = updateFields.booking_flow_mode;
+      if (currentMode === undefined) {
+        const { data: current } = await supabase
+          .from('location_settings')
+          .select('booking_flow_mode')
+          .eq('location_id', locationId)
+          .single();
+        if (current?.booking_flow_mode === 'members_only') {
+          throw new Error('Cannot disable memberships while booking flow is set to members-only');
+        }
+      }
+    }
     if (updates.doorLockType !== undefined) {
       if (!LocationService.isValidDoorLockType(updates.doorLockType)) {
         throw new Error('Invalid door lock type');
@@ -797,6 +841,9 @@ export class MembershipService {
         }
       }
       updateFields.reservation_timeout_minutes = updates.reservationTimeoutMinutes;
+    }
+    if (updates.guestReservationHoldEnabled !== undefined) {
+      updateFields.guest_reservation_hold_enabled = updates.guestReservationHoldEnabled;
     }
     if (updates.cancellationPolicyHours !== undefined) {
       if (updates.cancellationPolicyHours < 0 || updates.cancellationPolicyHours > 168) {

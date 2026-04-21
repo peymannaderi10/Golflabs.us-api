@@ -20,9 +20,13 @@ const token_utils_1 = require("../../shared/utils/token.utils");
 const logger_1 = require("../../shared/utils/logger");
 const location_service_1 = require("../locations/location.service");
 const stripe_connect_service_1 = require("../business/stripe-connect.service");
+const capture_handler_1 = require("./webhook-handlers/capture.handler");
+const guest_payment_handler_1 = require("./webhook-handlers/guest-payment.handler");
+const subscription_handler_1 = require("./webhook-handlers/subscription.handler");
+const refund_handler_1 = require("./webhook-handlers/refund.handler");
 function handleStripeWebhook(req, res, socketService) {
     return __awaiter(this, void 0, void 0, function* () {
-        var _a, _b, _c, _d;
+        var _a, _b, _c;
         const sig = req.headers['stripe-signature'];
         if (!stripe_1.webhookSecret) {
             logger_1.logger.error('Stripe webhook secret not found');
@@ -71,6 +75,23 @@ function handleStripeWebhook(req, res, socketService) {
             : undefined;
         // Handle the event based on type
         switch (event.type) {
+            case 'payment_intent.amount_capturable_updated': {
+                // Manual-capture path: card has been authorized, funds are held but
+                // not yet charged. Do a final availability/validity check and either
+                // capture (money moves) or cancel (authorization released, no charge).
+                // On handler failure, return 500 so Stripe retries the webhook —
+                // leaving a stuck authorization on the customer's card would be worse
+                // than a retry.
+                const pi = event.data.object;
+                try {
+                    yield (0, capture_handler_1.handleAmountCapturableUpdated)(pi, socketService);
+                }
+                catch (err) {
+                    logger_1.logger.error({ err, paymentIntentId: pi.id }, 'Capture handler failed — returning 500 for Stripe retry');
+                    return res.status(500).json({ error: 'Capture handler failed' });
+                }
+                return res.json({ received: true });
+            }
             case 'payment_intent.succeeded':
             case 'payment_intent.canceled':
             case 'payment_intent.payment_failed':
@@ -217,6 +238,37 @@ function handleStripeWebhook(req, res, socketService) {
                     return res.json({ received: true });
                 }
                 const bookingId = paymentIntent.metadata.booking_id;
+                const isGuest = paymentIntent.metadata.is_guest === 'true';
+                // Guest checkout succeeded. Dual-mode (see handleGuestPaymentSucceeded):
+                // reservation-hold mode flips a pre-existing row to 'confirmed';
+                // no-hold mode INSERTs the booking now, with the exclusion constraint
+                // arbitrating concurrent captures and auto-refunding the loser.
+                if (isGuest && event.type === 'payment_intent.succeeded') {
+                    yield (0, guest_payment_handler_1.handleGuestPaymentSucceeded)(paymentIntent, socketService);
+                    return res.json({ received: true });
+                }
+                // Guest payment canceled/failed: update the funnel row. In
+                // reservation-hold mode bookingId is present and we fall through
+                // to the normal booking/payment update below. In no-hold mode
+                // no booking row exists, so the fall-through is a no-op — we emit
+                // the socket event here and return.
+                if (isGuest && (event.type === 'payment_intent.canceled' || event.type === 'payment_intent.payment_failed')) {
+                    const newStatus = event.type === 'payment_intent.canceled' ? 'canceled' : 'failed';
+                    const errorMessage = ((_b = paymentIntent.last_payment_error) === null || _b === void 0 ? void 0 : _b.message) || (newStatus === 'canceled' ? 'Payment was canceled.' : 'Payment could not be completed.');
+                    yield database_1.supabase
+                        .from('guest_checkout_attempts')
+                        .update({
+                        status: newStatus,
+                        outcome_reason: errorMessage,
+                        terminated_at: new Date().toISOString(),
+                    })
+                        .eq('stripe_payment_intent_id', paymentIntent.id)
+                        .eq('status', 'pending');
+                    if (!bookingId) {
+                        socketService.emitPaymentStatus(paymentIntent.id, newStatus, { errorMessage });
+                        return res.json({ received: true });
+                    }
+                }
                 if (!bookingId) {
                     logger_1.logger.warn({ eventType: event.type }, 'Webhook received with no booking_id in metadata');
                     return res.status(200).send({ received: true, message: 'No booking_id found, ignoring.' });
@@ -231,6 +283,8 @@ function handleStripeWebhook(req, res, socketService) {
                         .single();
                     if ((existingBooking === null || existingBooking === void 0 ? void 0 : existingBooking.status) === 'confirmed') {
                         logger_1.logger.info({ bookingId }, 'Booking already confirmed — idempotent skip');
+                        // Emit anyway in case a reconnecting client missed the original event
+                        socketService.emitPaymentStatus(paymentIntent.id, 'succeeded', { bookingId });
                         return res.status(200).json({ received: true, message: 'Already processed' });
                     }
                     // Update booking status to 'confirmed' and clear expiration
@@ -238,6 +292,8 @@ function handleStripeWebhook(req, res, socketService) {
                         .from('bookings')
                         .update({ status: 'confirmed', expires_at: null })
                         .eq('id', bookingId);
+                    // Notify the Return page instantly that payment succeeded.
+                    socketService.emitPaymentStatus(paymentIntent.id, 'succeeded', { bookingId });
                     // Update payment status to 'succeeded' and extract card details
                     const paymentUpdate = { status: 'succeeded', processed_at: new Date().toISOString() };
                     // Extract card details from the payment method for display (e.g., extension upsell confirmation)
@@ -272,10 +328,11 @@ function handleStripeWebhook(req, res, socketService) {
                         const promotionId = paymentIntent.metadata.promotion_id;
                         const discountAmount = parseFloat(paymentIntent.metadata.discount_amount || '0');
                         const freeMinutes = parseInt(paymentIntent.metadata.free_minutes || '0', 10);
-                        if (promotionId && discountAmount > 0) {
+                        const userId = paymentIntent.metadata.user_id;
+                        if (promotionId && discountAmount > 0 && userId) {
                             try {
                                 yield promotion_service_1.promotionService.applyPromotion({
-                                    userId: paymentIntent.metadata.user_id,
+                                    userId,
                                     bookingId: bookingId,
                                     promotionId: promotionId,
                                     discountAmount: discountAmount,
@@ -389,10 +446,14 @@ function handleStripeWebhook(req, res, socketService) {
                 }
                 else if (event.type === 'payment_intent.canceled') {
                     logger_1.logger.info({ bookingId }, 'Payment canceled, updating database');
-                    // Update booking status to 'cancelled'
+                    // Update booking status to 'cancelled' + funnel tracking
                     const { error: cancelBookingError } = yield database_1.supabase
                         .from('bookings')
-                        .update({ status: 'cancelled' })
+                        .update({
+                        status: 'cancelled',
+                        outcome_reason: paymentIntent.cancellation_reason || 'stripe_cancelled',
+                        terminated_at: new Date().toISOString(),
+                    })
                         .eq('id', bookingId)
                         .neq('status', 'confirmed'); // Don't cancel a booking that is already confirmed
                     // Update payment status to 'cancelled'
@@ -406,6 +467,8 @@ function handleStripeWebhook(req, res, socketService) {
                     else {
                         logger_1.logger.info({ bookingId }, 'Successfully updated booking to cancelled');
                     }
+                    // Notify the Return page in real-time
+                    socketService.emitPaymentStatus(paymentIntent.id, 'canceled', { bookingId });
                 }
                 else if (event.type === 'payment_intent.payment_failed') {
                     logger_1.logger.info({ bookingId }, 'Payment failed');
@@ -417,6 +480,9 @@ function handleStripeWebhook(req, res, socketService) {
                     if (paymentFailedError) {
                         logger_1.logger.error({ err: paymentFailedError, bookingId }, 'Error updating payment status to failed');
                     }
+                    // Notify the Return page in real-time
+                    const errorMessage = ((_c = paymentIntent.last_payment_error) === null || _c === void 0 ? void 0 : _c.message) || 'Payment could not be completed.';
+                    socketService.emitPaymentStatus(paymentIntent.id, 'failed', { bookingId, errorMessage });
                 }
                 break;
             // Free booking: SetupIntent succeeded — confirm booking and save payment method
@@ -434,6 +500,8 @@ function handleStripeWebhook(req, res, socketService) {
                     .from('bookings')
                     .update({ status: 'confirmed', expires_at: null })
                     .eq('id', setupBookingId);
+                // Notify the Return page instantly (free bookings come through SetupIntent)
+                socketService.emitPaymentStatus(setupIntent.id, 'succeeded', { bookingId: setupBookingId });
                 // Update payment record to 'succeeded' and extract card details
                 const setupPaymentUpdate = { status: 'succeeded', processed_at: new Date().toISOString() };
                 try {
@@ -466,10 +534,11 @@ function handleStripeWebhook(req, res, socketService) {
                     const setupPromotionId = setupMetadata.promotion_id;
                     const setupDiscountAmount = parseFloat(setupMetadata.discount_amount || '0');
                     const setupFreeMinutes = parseInt(setupMetadata.free_minutes || '0', 10);
-                    if (setupPromotionId && setupDiscountAmount > 0) {
+                    const setupUserId = setupMetadata.user_id;
+                    if (setupPromotionId && setupDiscountAmount > 0 && setupUserId) {
                         try {
                             yield promotion_service_1.promotionService.applyPromotion({
-                                userId: setupMetadata.user_id,
+                                userId: setupUserId,
                                 bookingId: setupBookingId,
                                 promotionId: setupPromotionId,
                                 discountAmount: setupDiscountAmount,
@@ -577,159 +646,15 @@ function handleStripeWebhook(req, res, socketService) {
             // =====================================================
             case 'customer.subscription.created':
             case 'customer.subscription.updated':
-            case 'customer.subscription.deleted': {
-                const subscription = event.data.object;
-                const subMeta = subscription.metadata || {};
-                const subUserId = subMeta.user_id;
-                const subPlanId = subMeta.plan_id;
-                const subLocationId = subMeta.location_id;
-                if (!subUserId) {
-                    logger_1.logger.warn({ eventType: event.type }, 'Subscription webhook has no user_id metadata, ignoring');
-                    return res.json({ received: true });
-                }
-                // Map Stripe subscription status to our status
-                let membershipStatus = subscription.status;
-                if (subscription.status === 'active' && subscription.cancel_at_period_end) {
-                    membershipStatus = 'active'; // still active until period ends
-                }
-                const safeTimestamp = (ts) => {
-                    if (!ts || typeof ts !== 'number')
-                        return null;
-                    const d = new Date(ts * 1000);
-                    return isNaN(d.getTime()) ? null : d.toISOString();
-                };
-                if (event.type === 'customer.subscription.created') {
-                    logger_1.logger.info({ userId: subUserId, planId: subPlanId }, 'Subscription created');
-                    // Check if membership row already exists (pre-created) or needs to be created (Checkout Session flow)
-                    const { data: existingMem } = yield database_1.supabase
-                        .from('memberships')
-                        .select('id')
-                        .eq('stripe_subscription_id', subscription.id)
-                        .maybeSingle();
-                    const periodStart = safeTimestamp(subscription.current_period_start);
-                    const periodEnd = safeTimestamp(subscription.current_period_end);
-                    const billingInterval = subMeta.billing_interval || 'monthly';
-                    if (!existingMem && subPlanId && subLocationId) {
-                        // Created via Stripe Checkout — insert the membership row
-                        const { error: insertErr } = yield database_1.supabase
-                            .from('memberships')
-                            .insert({
-                            user_id: subUserId,
-                            plan_id: subPlanId,
-                            location_id: subLocationId,
-                            stripe_subscription_id: subscription.id,
-                            status: subscription.status === 'active' ? 'active' : 'incomplete',
-                            billing_interval: billingInterval,
-                            current_period_start: periodStart,
-                            current_period_end: periodEnd,
-                        });
-                        if (insertErr) {
-                            logger_1.logger.error({ err: insertErr, subscriptionId: subscription.id }, 'Error creating membership from webhook');
-                        }
-                        else {
-                            logger_1.logger.info({ userId: subUserId, subscriptionId: subscription.id }, 'Membership created from Checkout Session webhook');
-                            if (subscription.status === 'active') {
-                                sendMembershipWelcomeEmailFromWebhook(subscription, subUserId, subPlanId, subLocationId);
-                            }
-                        }
-                    }
-                    else if (existingMem && subscription.status === 'active') {
-                        // Pre-created row exists — just update status
-                        const updateFields = { status: 'active' };
-                        if (periodStart)
-                            updateFields.current_period_start = periodStart;
-                        if (periodEnd)
-                            updateFields.current_period_end = periodEnd;
-                        yield database_1.supabase
-                            .from('memberships')
-                            .update(updateFields)
-                            .eq('stripe_subscription_id', subscription.id);
-                        sendMembershipWelcomeEmailFromWebhook(subscription, subUserId, subPlanId, subLocationId);
-                    }
-                }
-                else if (event.type === 'customer.subscription.updated') {
-                    logger_1.logger.info({ userId: subUserId, status: subscription.status }, 'Subscription updated');
-                    const previousAttributes = event.data.previous_attributes;
-                    const wasIncomplete = (previousAttributes === null || previousAttributes === void 0 ? void 0 : previousAttributes.status) && previousAttributes.status !== 'active' && subscription.status === 'active';
-                    const updateData = {
-                        status: membershipStatus,
-                    };
-                    const periodStart = safeTimestamp(subscription.current_period_start);
-                    const periodEnd = safeTimestamp(subscription.current_period_end);
-                    if (periodStart)
-                        updateData.current_period_start = periodStart;
-                    if (periodEnd)
-                        updateData.current_period_end = periodEnd;
-                    if (subPlanId) {
-                        updateData.plan_id = subPlanId;
-                    }
-                    if (subscription.cancel_at_period_end) {
-                        updateData.canceled_at = new Date().toISOString();
-                    }
-                    else {
-                        updateData.canceled_at = null;
-                    }
-                    yield database_1.supabase
-                        .from('memberships')
-                        .update(updateData)
-                        .eq('stripe_subscription_id', subscription.id);
-                    // Send welcome email when transitioning to active (e.g. from incomplete)
-                    if (wasIncomplete) {
-                        sendMembershipWelcomeEmailFromWebhook(subscription, subUserId, subPlanId, subLocationId);
-                    }
-                }
-                else if (event.type === 'customer.subscription.deleted') {
-                    logger_1.logger.info({ userId: subUserId }, 'Subscription deleted');
-                    yield database_1.supabase
-                        .from('memberships')
-                        .update({
-                        status: 'canceled',
-                        canceled_at: new Date().toISOString(),
-                    })
-                        .eq('stripe_subscription_id', subscription.id);
-                }
+            case 'customer.subscription.deleted':
+                yield (0, subscription_handler_1.handleSubscriptionEvent)(event);
                 return res.json({ received: true });
-            }
-            case 'invoice.paid': {
-                const paidInvoice = event.data.object;
-                const invoiceSubId = paidInvoice.subscription;
-                if (invoiceSubId && paidInvoice.billing_reason === 'subscription_cycle') {
-                    // Only reset usage on actual renewals, not the initial subscription invoice
-                    logger_1.logger.info({ subscriptionId: invoiceSubId }, 'Subscription renewal invoice paid, resetting usage counters');
-                    const { error: resetErr } = yield database_1.supabase
-                        .from('memberships')
-                        .update({
-                        status: 'active',
-                        free_minutes_used: 0,
-                        guest_passes_used: 0,
-                    })
-                        .eq('stripe_subscription_id', invoiceSubId);
-                    if (resetErr) {
-                        logger_1.logger.error({ err: resetErr, subscriptionId: invoiceSubId }, 'Error resetting usage for subscription');
-                    }
-                }
-                else if (invoiceSubId) {
-                    // First invoice or other billing reason — just ensure active status
-                    logger_1.logger.info({ subscriptionId: invoiceSubId, billingReason: paidInvoice.billing_reason }, 'Invoice paid for subscription');
-                    yield database_1.supabase
-                        .from('memberships')
-                        .update({ status: 'active' })
-                        .eq('stripe_subscription_id', invoiceSubId);
-                }
+            case 'invoice.paid':
+                yield (0, subscription_handler_1.handleInvoicePaid)(event.data.object);
                 return res.json({ received: true });
-            }
-            case 'invoice.payment_failed': {
-                const failedInvoice = event.data.object;
-                const failedSubId = failedInvoice.subscription;
-                if (failedSubId) {
-                    logger_1.logger.info({ subscriptionId: failedSubId }, 'Invoice payment failed');
-                    yield database_1.supabase
-                        .from('memberships')
-                        .update({ status: 'past_due' })
-                        .eq('stripe_subscription_id', failedSubId);
-                }
+            case 'invoice.payment_failed':
+                yield (0, subscription_handler_1.handleInvoicePaymentFailed)(event.data.object);
                 return res.json({ received: true });
-            }
             // Stripe Connect: connected account capability changed
             // (e.g. owner finished onboarding, charges_enabled flipped to true)
             case 'account.updated': {
@@ -743,129 +668,12 @@ function handleStripeWebhook(req, res, socketService) {
                 }
                 return res.json({ received: true });
             }
-            // Refund webhook handlers
             case 'charge.dispute.created':
-                const dispute = event.data.object;
-                const chargeId = dispute.charge;
-                logger_1.logger.info({ chargeId }, 'Dispute created, handling dispute');
-                // Find the payment record by charge ID (you may need to store charge_id in payments table)
-                // For now, we'll log this and handle manually
-                logger_1.logger.warn({ chargeId }, 'Dispute created, manual review required');
+                (0, refund_handler_1.handleDisputeCreated)(event.data.object);
                 break;
             default:
-                // Handle refund events that may not be in the main Stripe.Event type
                 if (event.type.startsWith('refund.')) {
-                    const refundEvent = event; // Type assertion for refund events
-                    const refund = refundEvent.data.object;
-                    const refundBookingId = (_b = refund.metadata) === null || _b === void 0 ? void 0 : _b.booking_id;
-                    const refundLeaguePlayerId = (_c = refund.metadata) === null || _c === void 0 ? void 0 : _c.league_player_id;
-                    const refundLeagueId = (_d = refund.metadata) === null || _d === void 0 ? void 0 : _d.league_id;
-                    // League enrollment refund
-                    if (refundLeaguePlayerId && refundLeagueId) {
-                        if (event.type === 'refund.created') {
-                            logger_1.logger.info({ leaguePlayerId: refundLeaguePlayerId, leagueId: refundLeagueId, refundId: refund.id }, 'League refund created');
-                            const { error: leagueRefundError } = yield database_1.supabase
-                                .from('league_players')
-                                .update({
-                                season_paid: false,
-                                prize_pot_paid: false,
-                                enrollment_status: 'withdrawn',
-                            })
-                                .eq('id', refundLeaguePlayerId);
-                            if (leagueRefundError) {
-                                logger_1.logger.error({ err: leagueRefundError, leaguePlayerId: refundLeaguePlayerId }, 'Error updating league player on refund');
-                            }
-                            else {
-                                logger_1.logger.info({ leaguePlayerId: refundLeaguePlayerId }, 'League player marked as withdrawn (refund created)');
-                            }
-                        }
-                        else if (event.type === 'refund.updated') {
-                            logger_1.logger.info({ leaguePlayerId: refundLeaguePlayerId, refundStatus: refund.status }, 'League refund updated');
-                            if (refund.status === 'succeeded') {
-                                const { error } = yield database_1.supabase
-                                    .from('league_players')
-                                    .update({ enrollment_status: 'withdrawn', season_paid: false, prize_pot_paid: false })
-                                    .eq('id', refundLeaguePlayerId);
-                                if (error) {
-                                    logger_1.logger.error({ err: error, leaguePlayerId: refundLeaguePlayerId }, 'Error finalizing league refund');
-                                }
-                                else {
-                                    logger_1.logger.info({ leaguePlayerId: refundLeaguePlayerId }, 'League refund succeeded, status: withdrawn');
-                                }
-                            }
-                            else if (refund.status === 'failed') {
-                                logger_1.logger.error({ leaguePlayerId: refundLeaguePlayerId }, 'League refund FAILED, manual review required');
-                            }
-                        }
-                        break;
-                    }
-                    // Booking refund
-                    if (!refundBookingId) {
-                        logger_1.logger.warn({ refundId: refund.id, eventType: event.type }, 'Refund webhook received with no booking_id or league_player_id in metadata');
-                        break;
-                    }
-                    if (event.type === 'refund.created') {
-                        logger_1.logger.info({ bookingId: refundBookingId, refundId: refund.id }, 'Refund created for booking');
-                        const { error: refundCreateError } = yield database_1.supabase
-                            .from('payments')
-                            .update({
-                            status: 'refunding',
-                            refund_amount: refund.amount / 100,
-                            refunded_at: new Date().toISOString()
-                        })
-                            .eq('booking_id', refundBookingId);
-                        if (refundCreateError) {
-                            logger_1.logger.error({ err: refundCreateError, bookingId: refundBookingId }, 'Error updating payment with refund info');
-                        }
-                        else {
-                            logger_1.logger.info({ bookingId: refundBookingId }, 'Successfully updated payment record with refund info');
-                        }
-                    }
-                    else if (event.type === 'refund.updated') {
-                        logger_1.logger.info({ bookingId: refundBookingId, refundStatus: refund.status }, 'Refund updated for booking');
-                        let paymentStatus = 'refunding';
-                        if (refund.status === 'succeeded') {
-                            paymentStatus = 'refunded';
-                        }
-                        else if (refund.status === 'failed') {
-                            paymentStatus = 'refund_failed';
-                        }
-                        const { error: refundUpdateError } = yield database_1.supabase
-                            .from('payments')
-                            .update({
-                            status: paymentStatus,
-                            refund_amount: refund.amount / 100,
-                            refunded_at: refund.status === 'succeeded' ? new Date().toISOString() : undefined
-                        })
-                            .eq('booking_id', refundBookingId);
-                        if (refundUpdateError) {
-                            logger_1.logger.error({ err: refundUpdateError, bookingId: refundBookingId }, 'Error updating payment refund status');
-                        }
-                        else {
-                            logger_1.logger.info({ paymentStatus, bookingId: refundBookingId }, 'Successfully updated payment refund status');
-                        }
-                    }
-                    else if (event.type.includes('refund') && event.type.includes('failed')) {
-                        logger_1.logger.info({ bookingId: refundBookingId, refundId: refund.id }, 'Refund failed for booking');
-                        const { error: refundFailedError } = yield database_1.supabase
-                            .from('payments')
-                            .update({
-                            status: 'refund_failed'
-                        })
-                            .eq('booking_id', refundBookingId);
-                        const { error: cancellationUpdateError } = yield database_1.supabase
-                            .from('booking_cancellations')
-                            .update({
-                            cancellation_reason: `Refund failed: ${refund.failure_reason || 'Unknown reason'}. Manual processing required.`
-                        })
-                            .eq('booking_id', refundBookingId);
-                        if (refundFailedError || cancellationUpdateError) {
-                            logger_1.logger.error({ err: refundFailedError || cancellationUpdateError, bookingId: refundBookingId }, 'Error updating records for failed refund');
-                        }
-                        else {
-                            logger_1.logger.info({ bookingId: refundBookingId }, 'Updated records for failed refund');
-                        }
-                    }
+                    yield (0, refund_handler_1.handleRefundEvent)(event);
                 }
                 else {
                     logger_1.logger.info({ eventType: event.type }, 'Unhandled event type');
@@ -873,51 +681,5 @@ function handleStripeWebhook(req, res, socketService) {
                 break;
         }
         res.json({ received: true });
-    });
-}
-function sendMembershipWelcomeEmailFromWebhook(subscription, userId, planId, locationId) {
-    return __awaiter(this, void 0, void 0, function* () {
-        try {
-            if (!planId || !locationId)
-                return;
-            const { data: membership } = yield database_1.supabase
-                .from('memberships')
-                .select('*, membership_plans(*)')
-                .eq('stripe_subscription_id', subscription.id)
-                .single();
-            if (!membership)
-                return;
-            const { data: profile } = yield database_1.supabase
-                .from('user_profiles')
-                .select('full_name, email')
-                .eq('id', userId)
-                .single();
-            const { data: location } = yield database_1.supabase
-                .from('locations')
-                .select('name')
-                .eq('id', locationId)
-                .single();
-            if (!(profile === null || profile === void 0 ? void 0 : profile.email) || !location)
-                return;
-            const plan = membership.membership_plans;
-            const benefits = plan.benefits || {};
-            yield email_service_1.EmailService.sendMembershipWelcomeEmail(locationId, {
-                userFullName: profile.full_name || 'Member',
-                userEmail: profile.email,
-                planName: plan.name,
-                billingInterval: membership.billing_interval,
-                price: membership.billing_interval === 'annual' ? Number(plan.annual_price || plan.monthly_price) : Number(plan.monthly_price),
-                locationName: location.name,
-                freeHoursPerMonth: benefits.freeMinutesPerMonth ? benefits.freeMinutesPerMonth / 60 : undefined,
-                bookingWindowDays: benefits.bookingWindowDays,
-                guestPassesPerMonth: benefits.guestPassesPerMonth,
-                renewalDate: membership.current_period_end
-                    ? new Date(membership.current_period_end).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
-                    : undefined,
-            });
-        }
-        catch (err) {
-            logger_1.logger.error({ err }, 'Failed to send membership welcome email');
-        }
     });
 }

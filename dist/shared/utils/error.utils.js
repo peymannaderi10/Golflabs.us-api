@@ -1,5 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.AppError = void 0;
 exports.sanitizeError = sanitizeError;
 const SAFE_ERROR_PATTERNS = [
     /required/i,
@@ -32,6 +33,14 @@ const SAFE_ERROR_PATTERNS = [
     /not (eligible|enrolled|active)/i,
     /failed to (create|update|delete|cancel|send|process)/i,
 ];
+class AppError extends Error {
+    constructor(message, statusCode) {
+        super(message);
+        this.statusCode = statusCode;
+        this.name = 'AppError';
+    }
+}
+exports.AppError = AppError;
 function sanitizeError(error) {
     if (!(error instanceof Error))
         return 'An unexpected error occurred';

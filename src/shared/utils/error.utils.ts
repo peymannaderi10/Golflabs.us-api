@@ -30,6 +30,13 @@ const SAFE_ERROR_PATTERNS = [
   /failed to (create|update|delete|cancel|send|process)/i,
 ];
 
+export class AppError extends Error {
+  constructor(message: string, public readonly statusCode: number) {
+    super(message);
+    this.name = 'AppError';
+  }
+}
+
 export function sanitizeError(error: unknown): string {
   if (!(error instanceof Error)) return 'An unexpected error occurred';
 

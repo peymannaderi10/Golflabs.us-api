@@ -410,7 +410,7 @@ export class BookingEmployeeService {
     // 1. Fetch and validate the booking
     const { data: booking, error: bookingError } = await supabase
       .from('bookings')
-      .select('id, location_id, space_id, user_id, start_time, end_time, status, total_amount')
+      .select('id, location_id, space_id, user_id, start_time, end_time, status, total_amount, original_amount, discount_amount, promotion_id')
       .eq('id', bookingId)
       .single();
 
@@ -457,8 +457,10 @@ export class BookingEmployeeService {
     // 3. Handle price adjustment if requested
     const originalStartTime = booking.start_time;
     const originalEndTime = booking.end_time;
-    const currentTotalDollars = booking.total_amount || 0;
+    const currentTotalDollars = Number(booking.total_amount) || 0;
     let newTotalDollars = currentTotalDollars;
+    let newOriginalDollars = Number(booking.original_amount) || currentTotalDollars;
+    let newDiscountDollars = Number(booking.discount_amount) || 0;
     let priceAdjustment: { type: 'charge' | 'refund' | 'collect_manually' | 'none'; amountCents: number; amountWithTaxCents: number } = { type: 'none', amountCents: 0, amountWithTaxCents: 0 };
 
     const reschedStripeOpts = await getStripeOptions(locationId);
@@ -474,19 +476,79 @@ export class BookingEmployeeService {
       const timezone = locationData?.timezone || 'America/New_York';
       const taxRate = parseFloat(locationData?.sales_tax_rate) || 0;
 
-      // Calculate new price using pricing rules
+      // Calculate new slot price from pricing rules (pre-tax, pre-discount)
       const ctx = await fetchPricingContext(locationId, booking.user_id);
       const { userTypeRules, defaultRules } = splitRules(ctx.allRules, ctx.userType, ctx.defaultSlug, false);
       const newPriceCents = calculateSlotTotal(newStart, newEnd, timezone, userTypeRules, defaultRules);
-      const newPriceDollars = newPriceCents / 100;
 
-      const diffDollars = newPriceDollars - currentTotalDollars;
-      const diffCents = Math.round(Math.abs(diffDollars) * 100);
-      const diffWithTaxCents = Math.round(diffCents * (1 + taxRate));
+      // Re-apply the booking's promotion to the new slot so the customer
+      // doesn't silently lose their discount on reschedule.
+      let newDiscountCents = 0;
+      if (booking.promotion_id) {
+        const { data: promo } = await supabase
+          .from('promotions')
+          .select('*')
+          .eq('id', booking.promotion_id)
+          .eq('location_id', locationId)
+          .eq('is_active', true)
+          .maybeSingle();
 
-      if (diffDollars > 0.01) {
-        // New time is more expensive — try to charge the difference
-        priceAdjustment = { type: 'charge', amountCents: diffCents, amountWithTaxCents: diffWithTaxCents };
+        if (promo) {
+          if (promo.discount_type === 'percentage') {
+            newDiscountCents = Math.round(newPriceCents * (promo.discount_value / 100));
+            if (promo.max_discount_amount) {
+              newDiscountCents = Math.min(newDiscountCents, Math.round(promo.max_discount_amount * 100));
+            }
+          } else if (promo.discount_type === 'fixed') {
+            newDiscountCents = Math.min(Math.round(promo.discount_value * 100), newPriceCents);
+          } else if (promo.discount_type === 'free_minutes') {
+            const totalMinutes = (newEnd.getTime() - newStart.getTime()) / 60000;
+            const freeMinutes = Math.min(
+              promo.discount_value,
+              promo.max_free_minutes || promo.discount_value,
+              totalMinutes
+            );
+            const freeSlots = Math.floor(freeMinutes / 15);
+            const totalSlots = totalMinutes / 15;
+            if (totalSlots > 0) {
+              newDiscountCents = Math.round((freeSlots / totalSlots) * newPriceCents);
+            }
+          }
+        }
+      }
+
+      const newSubtotalCents = Math.max(0, newPriceCents - newDiscountCents);
+      const newTotalWithTaxCents = Math.round(newSubtotalCents * (1 + taxRate));
+
+      // Net cash actually paid on this booking so far (amount − refund_amount),
+      // including tax. This is what we compare against, not total_amount, so
+      // promotions and prior partial refunds are honored.
+      const { data: priorPayments } = await supabase
+        .from('payments')
+        .select('amount, refund_amount, status')
+        .eq('booking_id', bookingId)
+        .in('status', ['succeeded', 'refunded']);
+
+      const paidNetCents = (priorPayments || []).reduce((sum, p) => {
+        const paid = Math.round((Number(p.amount) || 0) * 100);
+        const refunded = Math.round((Number(p.refund_amount) || 0) * 100);
+        return sum + paid - refunded;
+      }, 0);
+
+      const diffCents = newTotalWithTaxCents - paidNetCents;
+      const absDiffCents = Math.abs(diffCents);
+      // Split absDiffCents into pretax + tax for metadata/record-keeping.
+      const absDiffPretaxCents = taxRate > 0
+        ? Math.round(absDiffCents / (1 + taxRate))
+        : absDiffCents;
+
+      newTotalDollars = newSubtotalCents / 100;
+      newOriginalDollars = newPriceCents / 100;
+      newDiscountDollars = newDiscountCents / 100;
+
+      if (diffCents > 1) {
+        // New time costs more than what's been paid — charge the difference
+        priceAdjustment = { type: 'charge', amountCents: absDiffPretaxCents, amountWithTaxCents: absDiffCents };
 
         // Check if customer has a card on file
         let hasCard = false;
@@ -519,7 +581,7 @@ export class BookingEmployeeService {
           let paymentIntent: Stripe.PaymentIntent;
           try {
             paymentIntent = await stripe.paymentIntents.create({
-              amount: diffWithTaxCents,
+              amount: absDiffCents,
               currency: 'usd',
               customer: customerId,
               payment_method: paymentMethodId,
@@ -532,7 +594,7 @@ export class BookingEmployeeService {
                 location_id: locationId,
                 reschedule: 'true',
                 price_adjustment: 'charge',
-                pretax_amount_cents: diffCents.toString(),
+                pretax_amount_cents: absDiffPretaxCents.toString(),
                 tax_rate: taxRate.toString(),
                 initiated_by: 'employee',
                 employee_id: employeeId
@@ -545,7 +607,7 @@ export class BookingEmployeeService {
 
           await supabase.from('payments').insert({
             booking_id: bookingId,
-            amount: diffWithTaxCents / 100,
+            amount: absDiffCents / 100,
             status: 'succeeded',
             stripe_payment_intent_id: paymentIntent.id,
             currency: 'usd',
@@ -559,14 +621,12 @@ export class BookingEmployeeService {
         } else {
           // Manual booking — no card on file, flag as collect manually
           priceAdjustment = { ...priceAdjustment, type: 'collect_manually' };
-          logger.info({ bookingId, diffWithTaxCents }, 'No card on file, price difference must be collected manually');
+          logger.info({ bookingId, diffWithTaxCents: absDiffCents }, 'No card on file, price difference must be collected manually');
         }
 
-        newTotalDollars = newPriceDollars;
-
-      } else if (diffDollars < -0.01) {
-        // New time is cheaper — refund the difference
-        priceAdjustment = { type: 'refund', amountCents: diffCents, amountWithTaxCents: diffWithTaxCents };
+      } else if (diffCents < -1) {
+        // Customer has overpaid (new time is cheaper or discount changed) — refund the difference
+        priceAdjustment = { type: 'refund', amountCents: absDiffPretaxCents, amountWithTaxCents: absDiffCents };
 
         const { data: payment } = await supabase
           .from('payments')
@@ -581,12 +641,12 @@ export class BookingEmployeeService {
           try {
             await stripe.refunds.create({
               payment_intent: payment.stripe_payment_intent_id,
-              amount: diffWithTaxCents,
+              amount: absDiffCents,
               metadata: {
                 booking_id: bookingId,
                 reschedule: 'true',
                 price_adjustment: 'refund',
-                pretax_amount_cents: diffCents.toString(),
+                pretax_amount_cents: absDiffPretaxCents.toString(),
                 tax_rate: taxRate.toString(),
                 employee_id: employeeId
               }
@@ -595,34 +655,40 @@ export class BookingEmployeeService {
             await supabase
               .from('payments')
               .update({
-                refund_amount: diffWithTaxCents / 100,
+                refund_amount: absDiffCents / 100,
                 refunded_at: new Date().toISOString()
               })
               .eq('stripe_payment_intent_id', payment.stripe_payment_intent_id);
 
-            logger.info({ bookingId, refundAmountCents: diffWithTaxCents }, 'Reschedule partial refund processed');
+            logger.info({ bookingId, refundAmountCents: absDiffCents }, 'Reschedule partial refund processed');
           } catch (stripeError: any) {
             logger.error({ err: stripeError, bookingId }, 'Reschedule refund failed');
             // Don't fail the reschedule — just log it
           }
         }
-
-        newTotalDollars = newPriceDollars;
       }
     }
 
     // 4. Update the booking times, price, and clear the old unlock token
+    const bookingUpdate: Record<string, unknown> = {
+      start_time: newStart.toISOString(),
+      end_time: newEnd.toISOString(),
+      space_id: spaceId,
+      total_amount: newTotalDollars,
+      unlock_token: null,
+      unlock_token_expires_at: null,
+      updated_at: new Date().toISOString(),
+    };
+    if (adjustPrice) {
+      // Only recompute original/discount when the employee opted in to price
+      // adjustment, so a pure time shift doesn't wipe out stored pricing.
+      bookingUpdate.original_amount = newOriginalDollars;
+      bookingUpdate.discount_amount = newDiscountDollars;
+    }
+
     const { error: updateError } = await supabase
       .from('bookings')
-      .update({
-        start_time: newStart.toISOString(),
-        end_time: newEnd.toISOString(),
-        space_id: spaceId,
-        total_amount: newTotalDollars,
-        unlock_token: null,
-        unlock_token_expires_at: null,
-        updated_at: new Date().toISOString(),
-      })
+      .update(bookingUpdate)
       .eq('id', bookingId);
 
     if (updateError) {

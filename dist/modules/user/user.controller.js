@@ -53,6 +53,34 @@ class UserController {
                 res.status(500).json({ error: (0, error_utils_1.sanitizeError)(error) });
             }
         });
+        this.associateLocation = (req, res) => __awaiter(this, void 0, void 0, function* () {
+            var _a;
+            try {
+                const { userId } = req.params;
+                const { locationId } = req.body;
+                if (!userId) {
+                    return res.status(400).json({ error: 'User ID is required' });
+                }
+                if (!locationId) {
+                    return res.status(400).json({ error: 'locationId is required' });
+                }
+                if (((_a = req.user) === null || _a === void 0 ? void 0 : _a.id) !== userId) {
+                    return res.status(403).json({ error: 'You can only associate your own account' });
+                }
+                const result = yield this.userService.associateUserWithLocation(userId, locationId);
+                res.json(result);
+            }
+            catch (error) {
+                logger_1.logger.error({ err: error }, 'Error in associateLocation endpoint');
+                if (error.message === 'Location not found') {
+                    return res.status(404).json({ error: error.message });
+                }
+                if (error.message === 'userId and locationId are required') {
+                    return res.status(400).json({ error: error.message });
+                }
+                res.status(500).json({ error: 'Failed to associate user with location' });
+            }
+        });
         this.getUserProfile = (req, res) => __awaiter(this, void 0, void 0, function* () {
             var _a;
             try {

@@ -100,7 +100,9 @@ class BookingCancelService {
                 .from('bookings')
                 .update({
                 status: 'cancelled',
-                expires_at: new Date().toISOString()
+                expires_at: new Date().toISOString(),
+                outcome_reason: 'user_cancelled',
+                terminated_at: new Date().toISOString(),
             })
                 .eq('id', bookingId);
             if (updateBookingError) {
@@ -190,6 +192,16 @@ class BookingCancelService {
                 logger_1.logger.error({ err: rpcError, bookingId }, 'Error cancelling booking in database');
                 throw new Error('Database cancellation failed: ' + rpcError.message);
             }
+            // 1b. Funnel tracking: record why the booking was terminated. Separate
+            // from the RPC because the RPC is shared DB logic we don't want to
+            // couple to the Node-layer analytics schema.
+            yield database_1.supabase
+                .from('bookings')
+                .update({
+                outcome_reason: `staff_cancelled: ${reason || 'no reason given'}`,
+                terminated_at: new Date().toISOString(),
+            })
+                .eq('id', bookingId);
             // 2. Get booking location for Stripe Connect options
             const { data: empBooking } = yield database_1.supabase
                 .from('bookings')
@@ -302,7 +314,9 @@ class BookingCancelService {
                 .from('bookings')
                 .update({
                 status: 'abandoned',
-                expires_at: new Date().toISOString()
+                expires_at: new Date().toISOString(),
+                outcome_reason: 'user_cancelled_reservation',
+                terminated_at: new Date().toISOString(),
             })
                 .eq('id', bookingId);
             if (updateBookingError) {

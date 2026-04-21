@@ -1,4 +1,6 @@
-import type { DoorLockType } from '../locations/location.service';
+import type { DoorLockType, BookingFlowMode } from '../locations/location.service';
+
+export type { BookingFlowMode };
 
 export interface MembershipBenefits {
   discountType?: 'fixed' | 'percentage' | null;
@@ -69,12 +71,15 @@ export interface SubscribeBody {
   billingInterval: 'monthly' | 'annual';
 }
 
+export const VALID_BOOKING_FLOW_MODES: BookingFlowMode[] = ['auth_first', 'late_auth', 'guest_checkout', 'members_only'];
+
 export interface LocationMembershipSettings {
   membershipsEnabled: boolean;
   leaguesEnabled: boolean;
   marketingEnabled: boolean;
   promotionsEnabled: boolean;
   kioskFeatureEnabled: boolean;
+  bookingFlowMode: BookingFlowMode;
   doorLockType: DoorLockType;
   defaultBookingWindowDays: number;
   defaultBookingHours: { start: string; end: string } | null;
@@ -82,6 +87,7 @@ export interface LocationMembershipSettings {
   bookingGracePeriodBeforeMinutes: number;
   bookingGracePeriodAfterMinutes: number;
   reservationTimeoutMinutes: number | null;
+  guestReservationHoldEnabled: boolean;
   cancellationPolicyHours: number;
   brandPrimaryColor: string;
   brandLogoUrl: string | null;

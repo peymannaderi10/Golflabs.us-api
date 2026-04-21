@@ -59,6 +59,7 @@ const stripe_1 = require("../../config/stripe");
 const email_service_1 = require("../email/email.service");
 const logger_1 = require("../../shared/utils/logger");
 const location_service_1 = require("../locations/location.service");
+const membership_types_1 = require("./membership.types");
 class MembershipService {
     // =====================================================
     // PLAN CRUD (Employee)
@@ -689,14 +690,14 @@ class MembershipService {
     // =====================================================
     getLocationMembershipSettings(locationId) {
         return __awaiter(this, void 0, void 0, function* () {
-            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m;
+            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p;
             const { data, error } = yield database_1.supabase
                 .from('location_settings')
-                .select('memberships_enabled, leagues_enabled, marketing_enabled, promotions_enabled, kiosk_feature_enabled, door_lock_type, default_booking_window_days, default_booking_hours_start, default_booking_hours_end, booking_buffer_minutes, booking_grace_period_before_minutes, booking_grace_period_after_minutes, reservation_timeout_minutes, cancellation_policy_hours, brand_primary_color, brand_logo_url, custom_domain')
+                .select('memberships_enabled, leagues_enabled, marketing_enabled, promotions_enabled, kiosk_feature_enabled, booking_flow_mode, door_lock_type, default_booking_window_days, default_booking_hours_start, default_booking_hours_end, booking_buffer_minutes, booking_grace_period_before_minutes, booking_grace_period_after_minutes, reservation_timeout_minutes, guest_reservation_hold_enabled, cancellation_policy_hours, brand_primary_color, brand_logo_url, custom_domain')
                 .eq('location_id', locationId)
                 .single();
             if (error || !data) {
-                return { membershipsEnabled: false, leaguesEnabled: true, marketingEnabled: false, promotionsEnabled: false, kioskFeatureEnabled: false, doorLockType: 'shelly', defaultBookingWindowDays: 7, defaultBookingHours: null, bookingBufferMinutes: 0, bookingGracePeriodBeforeMinutes: 0, bookingGracePeriodAfterMinutes: 0, reservationTimeoutMinutes: null, cancellationPolicyHours: 24, brandPrimaryColor: '158 100% 33%', brandLogoUrl: null, customDomain: null };
+                return { membershipsEnabled: false, leaguesEnabled: true, marketingEnabled: false, promotionsEnabled: false, kioskFeatureEnabled: false, bookingFlowMode: 'auth_first', doorLockType: 'shelly', defaultBookingWindowDays: 7, defaultBookingHours: null, bookingBufferMinutes: 0, bookingGracePeriodBeforeMinutes: 0, bookingGracePeriodAfterMinutes: 0, reservationTimeoutMinutes: null, guestReservationHoldEnabled: false, cancellationPolicyHours: 24, brandPrimaryColor: '158 100% 33%', brandLogoUrl: null, customDomain: null };
             }
             return {
                 membershipsEnabled: data.memberships_enabled,
@@ -704,25 +705,27 @@ class MembershipService {
                 marketingEnabled: (_a = data.marketing_enabled) !== null && _a !== void 0 ? _a : false,
                 promotionsEnabled: (_b = data.promotions_enabled) !== null && _b !== void 0 ? _b : false,
                 kioskFeatureEnabled: (_c = data.kiosk_feature_enabled) !== null && _c !== void 0 ? _c : false,
-                doorLockType: (_d = data.door_lock_type) !== null && _d !== void 0 ? _d : 'shelly',
+                bookingFlowMode: ((_d = data.booking_flow_mode) !== null && _d !== void 0 ? _d : 'auth_first'),
+                doorLockType: (_e = data.door_lock_type) !== null && _e !== void 0 ? _e : 'shelly',
                 defaultBookingWindowDays: data.default_booking_window_days,
                 defaultBookingHours: data.default_booking_hours_start && data.default_booking_hours_end
                     ? { start: data.default_booking_hours_start, end: data.default_booking_hours_end }
                     : null,
-                bookingBufferMinutes: (_e = data.booking_buffer_minutes) !== null && _e !== void 0 ? _e : 0,
-                bookingGracePeriodBeforeMinutes: (_f = data.booking_grace_period_before_minutes) !== null && _f !== void 0 ? _f : 0,
-                bookingGracePeriodAfterMinutes: (_g = data.booking_grace_period_after_minutes) !== null && _g !== void 0 ? _g : 0,
-                reservationTimeoutMinutes: (_h = data.reservation_timeout_minutes) !== null && _h !== void 0 ? _h : null,
-                cancellationPolicyHours: (_j = data.cancellation_policy_hours) !== null && _j !== void 0 ? _j : 24,
-                brandPrimaryColor: (_k = data.brand_primary_color) !== null && _k !== void 0 ? _k : '158 100% 33%',
-                brandLogoUrl: (_l = data.brand_logo_url) !== null && _l !== void 0 ? _l : null,
-                customDomain: (_m = data.custom_domain) !== null && _m !== void 0 ? _m : null,
+                bookingBufferMinutes: (_f = data.booking_buffer_minutes) !== null && _f !== void 0 ? _f : 0,
+                bookingGracePeriodBeforeMinutes: (_g = data.booking_grace_period_before_minutes) !== null && _g !== void 0 ? _g : 0,
+                bookingGracePeriodAfterMinutes: (_h = data.booking_grace_period_after_minutes) !== null && _h !== void 0 ? _h : 0,
+                reservationTimeoutMinutes: (_j = data.reservation_timeout_minutes) !== null && _j !== void 0 ? _j : null,
+                guestReservationHoldEnabled: (_k = data.guest_reservation_hold_enabled) !== null && _k !== void 0 ? _k : false,
+                cancellationPolicyHours: (_l = data.cancellation_policy_hours) !== null && _l !== void 0 ? _l : 24,
+                brandPrimaryColor: (_m = data.brand_primary_color) !== null && _m !== void 0 ? _m : '158 100% 33%',
+                brandLogoUrl: (_o = data.brand_logo_url) !== null && _o !== void 0 ? _o : null,
+                customDomain: (_p = data.custom_domain) !== null && _p !== void 0 ? _p : null,
             };
         });
     }
     updateLocationMembershipSettings(locationId, updates) {
         return __awaiter(this, void 0, void 0, function* () {
-            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
+            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l;
             const updateFields = {};
             if (updates.membershipsEnabled !== undefined)
                 updateFields.memberships_enabled = updates.membershipsEnabled;
@@ -734,6 +737,44 @@ class MembershipService {
                 updateFields.promotions_enabled = updates.promotionsEnabled;
             if (updates.kioskFeatureEnabled !== undefined)
                 updateFields.kiosk_feature_enabled = updates.kioskFeatureEnabled;
+            if (updates.bookingFlowMode !== undefined) {
+                if (!membership_types_1.VALID_BOOKING_FLOW_MODES.includes(updates.bookingFlowMode)) {
+                    throw new Error('Invalid booking flow mode');
+                }
+                // members_only requires memberships to be enabled
+                if (updates.bookingFlowMode === 'members_only') {
+                    const membershipsOn = (_a = updates.membershipsEnabled) !== null && _a !== void 0 ? _a : updateFields.memberships_enabled;
+                    if (membershipsOn === false) {
+                        throw new Error('Memberships must be enabled to use members-only booking flow');
+                    }
+                    // If not in this payload, check current DB value
+                    if (membershipsOn === undefined) {
+                        const { data: current } = yield database_1.supabase
+                            .from('location_settings')
+                            .select('memberships_enabled')
+                            .eq('location_id', locationId)
+                            .single();
+                        if (!(current === null || current === void 0 ? void 0 : current.memberships_enabled)) {
+                            throw new Error('Memberships must be enabled to use members-only booking flow');
+                        }
+                    }
+                }
+                updateFields.booking_flow_mode = updates.bookingFlowMode;
+            }
+            // Prevent disabling memberships while members_only flow is active
+            if (updates.membershipsEnabled === false && updates.bookingFlowMode !== 'members_only') {
+                const currentMode = updateFields.booking_flow_mode;
+                if (currentMode === undefined) {
+                    const { data: current } = yield database_1.supabase
+                        .from('location_settings')
+                        .select('booking_flow_mode')
+                        .eq('location_id', locationId)
+                        .single();
+                    if ((current === null || current === void 0 ? void 0 : current.booking_flow_mode) === 'members_only') {
+                        throw new Error('Cannot disable memberships while booking flow is set to members-only');
+                    }
+                }
+            }
             if (updates.doorLockType !== undefined) {
                 if (!location_service_1.LocationService.isValidDoorLockType(updates.doorLockType)) {
                     throw new Error('Invalid door lock type');
@@ -743,8 +784,8 @@ class MembershipService {
             if (updates.defaultBookingWindowDays !== undefined)
                 updateFields.default_booking_window_days = updates.defaultBookingWindowDays;
             if (updates.defaultBookingHours !== undefined) {
-                updateFields.default_booking_hours_start = (_b = (_a = updates.defaultBookingHours) === null || _a === void 0 ? void 0 : _a.start) !== null && _b !== void 0 ? _b : null;
-                updateFields.default_booking_hours_end = (_d = (_c = updates.defaultBookingHours) === null || _c === void 0 ? void 0 : _c.end) !== null && _d !== void 0 ? _d : null;
+                updateFields.default_booking_hours_start = (_c = (_b = updates.defaultBookingHours) === null || _b === void 0 ? void 0 : _b.start) !== null && _c !== void 0 ? _c : null;
+                updateFields.default_booking_hours_end = (_e = (_d = updates.defaultBookingHours) === null || _d === void 0 ? void 0 : _d.end) !== null && _e !== void 0 ? _e : null;
             }
             if (updates.bookingBufferMinutes !== undefined) {
                 if (updates.bookingBufferMinutes < 0 || updates.bookingBufferMinutes > 60 || updates.bookingBufferMinutes % 15 !== 0) {
@@ -754,7 +795,7 @@ class MembershipService {
             }
             if (updates.bookingGracePeriodBeforeMinutes !== undefined || updates.bookingGracePeriodAfterMinutes !== undefined) {
                 // Fetch current settings for any fields not in this update payload
-                let bufferMins = (_e = updates.bookingBufferMinutes) !== null && _e !== void 0 ? _e : updateFields.booking_buffer_minutes;
+                let bufferMins = (_f = updates.bookingBufferMinutes) !== null && _f !== void 0 ? _f : updateFields.booking_buffer_minutes;
                 let currentBefore = 0;
                 let currentAfter = 0;
                 if (bufferMins === undefined || updates.bookingGracePeriodBeforeMinutes === undefined || updates.bookingGracePeriodAfterMinutes === undefined) {
@@ -764,12 +805,12 @@ class MembershipService {
                         .eq('location_id', locationId)
                         .single();
                     if (bufferMins === undefined)
-                        bufferMins = (_f = current === null || current === void 0 ? void 0 : current.booking_buffer_minutes) !== null && _f !== void 0 ? _f : 0;
-                    currentBefore = (_g = current === null || current === void 0 ? void 0 : current.booking_grace_period_before_minutes) !== null && _g !== void 0 ? _g : 0;
-                    currentAfter = (_h = current === null || current === void 0 ? void 0 : current.booking_grace_period_after_minutes) !== null && _h !== void 0 ? _h : 0;
+                        bufferMins = (_g = current === null || current === void 0 ? void 0 : current.booking_buffer_minutes) !== null && _g !== void 0 ? _g : 0;
+                    currentBefore = (_h = current === null || current === void 0 ? void 0 : current.booking_grace_period_before_minutes) !== null && _h !== void 0 ? _h : 0;
+                    currentAfter = (_j = current === null || current === void 0 ? void 0 : current.booking_grace_period_after_minutes) !== null && _j !== void 0 ? _j : 0;
                 }
-                const before = (_j = updates.bookingGracePeriodBeforeMinutes) !== null && _j !== void 0 ? _j : currentBefore;
-                const after = (_k = updates.bookingGracePeriodAfterMinutes) !== null && _k !== void 0 ? _k : currentAfter;
+                const before = (_k = updates.bookingGracePeriodBeforeMinutes) !== null && _k !== void 0 ? _k : currentBefore;
+                const after = (_l = updates.bookingGracePeriodAfterMinutes) !== null && _l !== void 0 ? _l : currentAfter;
                 if (before < 0 || after < 0)
                     throw new Error('Grace period cannot be negative');
                 if (before + after > bufferMins) {
@@ -787,6 +828,9 @@ class MembershipService {
                     }
                 }
                 updateFields.reservation_timeout_minutes = updates.reservationTimeoutMinutes;
+            }
+            if (updates.guestReservationHoldEnabled !== undefined) {
+                updateFields.guest_reservation_hold_enabled = updates.guestReservationHoldEnabled;
             }
             if (updates.cancellationPolicyHours !== undefined) {
                 if (updates.cancellationPolicyHours < 0 || updates.cancellationPolicyHours > 168) {

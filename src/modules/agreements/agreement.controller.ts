@@ -73,6 +73,7 @@ export class AgreementController {
     }
   };
 
+
   checkAgreements = async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { bookingId } = req.params;

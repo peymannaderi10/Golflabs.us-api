@@ -12,7 +12,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.authenticateKioskOrEmployee = exports.requireEmployee = exports.resolveResourceLocation = exports.enforceLocationScopeOptional = exports.enforceLocationScope = exports.authenticateKiosk = exports.authenticateEmployee = exports.authenticateUser = void 0;
+exports.authenticateGuestBooking = exports.authenticateKioskOrEmployee = exports.requireEmployee = exports.resolveResourceLocation = exports.enforceLocationScopeOptional = exports.enforceLocationScope = exports.authenticateKiosk = exports.authenticateEmployee = exports.authenticateUser = void 0;
 exports.invalidateEmployeeProfileCache = invalidateEmployeeProfileCache;
 const crypto_1 = __importDefault(require("crypto"));
 const database_1 = require("../../config/database");
@@ -498,3 +498,55 @@ const authenticateKioskOrEmployee = (req, res, next) => __awaiter(void 0, void 0
     return (0, exports.authenticateEmployee)(req, res, next);
 });
 exports.authenticateKioskOrEmployee = authenticateKioskOrEmployee;
+/**
+ * Validates a guest session token from the `X-Guest-Token` header.
+ * Looks up the booking by `guest_session_token`, verifies it's still
+ * active (reserved/pending), and populates `req.guestBooking`.
+ */
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const authenticateGuestBooking = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
+    const guestToken = req.headers['x-guest-token'];
+    if (!guestToken || !UUID_REGEX.test(guestToken)) {
+        return res.status(401).json({ error: 'Invalid guest session token' });
+    }
+    try {
+        const { data: booking, error } = yield database_1.supabase
+            .from('bookings')
+            .select('id, guest_email, guest_name, guest_phone, location_id, status, expires_at')
+            .eq('guest_session_token', guestToken)
+            .maybeSingle();
+        if (error || !booking) {
+            return res.status(401).json({ error: 'Invalid guest session token' });
+        }
+        // Verify the booking is still active
+        if (!['reserved', 'pending'].includes(booking.status)) {
+            return res.status(410).json({ error: 'This booking session has expired' });
+        }
+        // Check reservation expiry
+        if (booking.expires_at && new Date(booking.expires_at) < new Date()) {
+            return res.status(410).json({ error: 'This reservation has expired' });
+        }
+        // Defense-in-depth: verify the location has guest_checkout mode enabled
+        const { data: settings } = yield database_1.supabase
+            .from('location_settings')
+            .select('booking_flow_mode')
+            .eq('location_id', booking.location_id)
+            .single();
+        if ((settings === null || settings === void 0 ? void 0 : settings.booking_flow_mode) !== 'guest_checkout') {
+            return res.status(403).json({ error: 'Guest checkout is not enabled for this location' });
+        }
+        req.guestBooking = {
+            bookingId: booking.id,
+            guestEmail: booking.guest_email,
+            guestName: booking.guest_name,
+            guestPhone: booking.guest_phone,
+            locationId: booking.location_id,
+        };
+        next();
+    }
+    catch (error) {
+        logger_1.logger.error({ err: error }, 'Guest booking authentication error');
+        return res.status(401).json({ error: 'Authentication failed' });
+    }
+});
+exports.authenticateGuestBooking = authenticateGuestBooking;

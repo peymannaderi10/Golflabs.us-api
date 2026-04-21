@@ -24,8 +24,8 @@ class AgreementService {
     recordAgreements(params) {
         return __awaiter(this, void 0, void 0, function* () {
             const { userId, signerName, signerEmail, bookingId, locationId, agreements, documentHashes, ipAddress, userAgent, } = params;
-            if (!userId || !bookingId || !locationId) {
-                throw new Error('userId, bookingId, and locationId are required');
+            if (!bookingId || !locationId) {
+                throw new Error('bookingId and locationId are required');
             }
             if (!signerName || !signerEmail) {
                 throw new Error('signerName and signerEmail are required for consent records');
@@ -40,12 +40,14 @@ class AgreementService {
             if (missingHashes.length > 0) {
                 throw new Error(`Missing document hashes for: ${missingHashes.join(', ')}`);
             }
-            // Check if agreements already exist for this booking
-            const { data: existing, error: checkError } = yield database_1.supabase
+            // Check if agreements already exist for this booking (scoped by booking_id only)
+            let existingQuery = database_1.supabase
                 .from('user_agreements')
                 .select('agreement_type')
-                .eq('booking_id', bookingId)
-                .eq('user_id', userId);
+                .eq('booking_id', bookingId);
+            if (userId)
+                existingQuery = existingQuery.eq('user_id', userId);
+            const { data: existing, error: checkError } = yield existingQuery;
             if (checkError) {
                 logger_1.logger.error({ err: checkError }, 'Error checking existing agreements');
                 throw new Error('Failed to check existing agreements');

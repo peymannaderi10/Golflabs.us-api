@@ -9,6 +9,7 @@ import { processAttendanceCutoffs } from './attendance-cutoff.job';
 import { processScheduledCampaigns } from './marketing-scheduler.job';
 import { enforceDataRetention } from './data-retention.job';
 import { enqueuePostBookingReviews } from './post-booking-review.job';
+import { markAbandonedGuestAttempts } from './abandoned-guest-attempts.job';
 import { logger } from '../shared/utils/logger';
 
 const intervals: NodeJS.Timeout[] = [];
@@ -30,6 +31,7 @@ export function startScheduler() {
     setInterval(processScheduledCampaigns, 60 * 1000),
     setInterval(enforceDataRetention, 24 * 60 * 60 * 1000),
     setInterval(enqueuePostBookingReviews, 5 * 60 * 1000),
+    setInterval(markAbandonedGuestAttempts, 60 * 60 * 1000), // hourly
   );
 
   logger.info('Background job scheduler started');
